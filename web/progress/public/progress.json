@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "9cb4afea9fbbbfb392661e3a615b6070c61d980b8d1576accf19f72244eb4134",
+ "content_hash": "c26d0fd8e0fd7456bbede6d1e64fa361f71f826a75007b575c015a7f31fc9b3d",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -2703,6 +2703,140 @@
    "pbs_job": null,
    "record": "pi_cam_cldfrc_fice_standalone_build.json",
    "spec_sha256": "651390d3f91385ace7c04abc16d7d87748071d538a82a888e188d184e18276b2"
+  },
+  "pi_cam_compute_tms_frame_replay.json": {
+   "bfb": true,
+   "binding": "module",
+   "calls": 10240,
+   "capture_job": "7622015",
+   "capture_run_tag": "pi_cam_pausable_kernels-a-capture_50step",
+   "compared_values": 414780,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "6e13d91cbdf9504ce9a9fd03982ba4e08b218f934a11e8f2a2a52fff8fe158ce"
+   },
+   "image_sha256": "6e13d91cbdf9504ce9a9fd03982ba4e08b218f934a11e8f2a2a52fff8fe158ce",
+   "kernel": "compute_tms",
+   "kind": "frame-replay",
+   "layout": "column",
+   "module_state_digest": "f8c32c3a01d6d6bf6cdb5946056e0862ddadd891f2b3433d88c778c0a0911cac",
+   "pbs_job": "7623850",
+   "record": "pi_cam_compute_tms_frame_replay.json",
+   "samples": 138260,
+   "shards": 32,
+   "statuses": {
+    "ok": 138260
+   }
+  },
+  "pi_cam_compute_tms_frame_replay_chunk.json": {
+   "bfb": true,
+   "binding": "module",
+   "calls": 10240,
+   "capture_job": "7622015",
+   "capture_run_tag": "pi_cam_pausable_kernels-a-capture_50step",
+   "compared_values": 414780,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "6e13d91cbdf9504ce9a9fd03982ba4e08b218f934a11e8f2a2a52fff8fe158ce"
+   },
+   "image_sha256": "6e13d91cbdf9504ce9a9fd03982ba4e08b218f934a11e8f2a2a52fff8fe158ce",
+   "kernel": "compute_tms",
+   "kind": "frame-replay",
+   "layout": "column",
+   "module_state_digest": "f8c32c3a01d6d6bf6cdb5946056e0862ddadd891f2b3433d88c778c0a0911cac",
+   "pbs_job": "7630953",
+   "record": "pi_cam_compute_tms_frame_replay_chunk.json",
+   "samples": 10240,
+   "shards": 32,
+   "statuses": {
+    "ok": 10240
+   }
+  },
+  "pi_cam_compute_tms_module_state.json": {
+   "digest": "f8c32c3a01d6d6bf6cdb5946056e0862ddadd891f2b3433d88c778c0a0911cac",
+   "image": {
+    "build": "pi_cam_promoted_p33",
+    "role": "development",
+    "sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708"
+   },
+   "kind": "module-state-snapshot",
+   "mpi_ranks": 512,
+   "pbs_job": "7623808",
+   "record": "pi_cam_compute_tms_module_state.json",
+   "stable_after_one_step": true,
+   "symbols": [
+    "trb_mtn_stress_mp_gravit_",
+    "trb_mtn_stress_mp_karman_",
+    "trb_mtn_stress_mp_orocnst_",
+    "trb_mtn_stress_mp_rair_",
+    "trb_mtn_stress_mp_z0fac_"
+   ]
+  },
+  "pi_cam_compute_tms_standalone_build.json": {
+   "archive_members": 1,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "6e13d91cbdf9504ce9a9fd03982ba4e08b218f934a11e8f2a2a52fff8fe158ce"
+   },
+   "kind": "standalone-build",
+   "library_sha256": "6e13d91cbdf9504ce9a9fd03982ba4e08b218f934a11e8f2a2a52fff8fe158ce",
+   "original_call_proof": true,
+   "pbs_job": "7623813",
+   "record": "pi_cam_compute_tms_standalone_build.json",
+   "spec_sha256": "afa5ee5765e9e4fd3de01c57a469a060ad593805476ff96aad91c96afb4d71a1"
+  },
+  "pi_cam_compute_uwshcu_inv_frame_replay.json": {
+   "bfb": true,
+   "binding": "module",
+   "calls": 10240,
+   "capture_job": "7622015",
+   "capture_run_tag": "pi_cam_pausable_kernels-a-capture_50step",
+   "compared_values": 569078160,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "e228f72801adb9f2a62eb3868b0c4af618dfa512dd49d1b9e498178cb5a0279e"
+   },
+   "image_sha256": "e228f72801adb9f2a62eb3868b0c4af618dfa512dd49d1b9e498178cb5a0279e",
+   "kernel": "compute_uwshcu_inv",
+   "kind": "frame-replay",
+   "layout": "column",
+   "module_state_digest": "7645dabf8136936d040b40f56037ebc23fc4989d28864ac9a7f759710bb2350f",
+   "pbs_job": "7623844",
+   "record": "pi_cam_compute_uwshcu_inv_frame_replay.json",
+   "samples": 138260,
+   "shards": 32,
+   "statuses": {
+    "ok": 138260
+   }
+  },
+  "pi_cam_compute_uwshcu_inv_frame_replay_chunk.json": {
+   "bfb": true,
+   "binding": "module",
+   "calls": 10240,
+   "capture_job": "7622015",
+   "capture_run_tag": "pi_cam_pausable_kernels-a-capture_50step",
+   "compared_values": 569078160,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "e228f72801adb9f2a62eb3868b0c4af618dfa512dd49d1b9e498178cb5a0279e"
+   },
+   "image_sha256": "e228f72801adb9f2a62eb3868b0c4af618dfa512dd49d1b9e498178cb5a0279e",
+   "kernel": "compute_uwshcu_inv",
+   "kind": "frame-replay",
+   "layout": "column",
+   "module_state_digest": "7645dabf8136936d040b40f56037ebc23fc4989d28864ac9a7f759710bb2350f",
+   "pbs_job": "7630954",
+   "record": "pi_cam_compute_uwshcu_inv_frame_replay_chunk.json",
+   "samples": 10240,
+   "shards": 32,
+   "statuses": {
+    "ok": 10240
+   }
   },
   "pi_cam_dadadj_capture_50step.json": {
    "kind": "run-summary",
@@ -2869,6 +3003,170 @@
    "pbs_job": null,
    "record": "pi_cam_fluxbelowinv_standalone_build.json",
    "spec_sha256": "09de4ce129fd6338a1363d398004199c0ca11694a587f8308b567e49bbd100b1"
+  },
+  "pi_cam_instratus_condensate_frame_replay.json": {
+   "bfb": true,
+   "binding": "mangled",
+   "calls": 921600,
+   "capture_job": "7622016",
+   "capture_run_tag": "pi_cam_pausable_instratus_condensate-capture_50step",
+   "compared_values": 99547200,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "571c7e95818c468a7474aeec432dc0ada954faf4b20a0356d25d63e97625d62d"
+   },
+   "image_sha256": "571c7e95818c468a7474aeec432dc0ada954faf4b20a0356d25d63e97625d62d",
+   "kernel": "instratus_condensate",
+   "kind": "frame-replay",
+   "layout": "column",
+   "module_state_digest": "42d85c15e798bc7c15e689c265f2fdd9f7c3eb07eb3c63bb8332468562cc119d",
+   "pbs_job": "7630948",
+   "record": "pi_cam_instratus_condensate_frame_replay.json",
+   "samples": 12443400,
+   "shards": 32,
+   "statuses": {
+    "ok": 12443400
+   }
+  },
+  "pi_cam_instratus_condensate_frame_replay_chunk.json": {
+   "bfb": true,
+   "binding": "mangled",
+   "calls": 921600,
+   "capture_job": "7622016",
+   "capture_run_tag": "pi_cam_pausable_instratus_condensate-capture_50step",
+   "compared_values": 99547200,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "571c7e95818c468a7474aeec432dc0ada954faf4b20a0356d25d63e97625d62d"
+   },
+   "image_sha256": "571c7e95818c468a7474aeec432dc0ada954faf4b20a0356d25d63e97625d62d",
+   "kernel": "instratus_condensate",
+   "kind": "frame-replay",
+   "layout": "column",
+   "module_state_digest": "42d85c15e798bc7c15e689c265f2fdd9f7c3eb07eb3c63bb8332468562cc119d",
+   "pbs_job": "7630955",
+   "record": "pi_cam_instratus_condensate_frame_replay_chunk.json",
+   "samples": 921600,
+   "shards": 32,
+   "statuses": {
+    "ok": 921600
+   }
+  },
+  "pi_cam_instratus_condensate_module_state.json": {
+   "digest": "42d85c15e798bc7c15e689c265f2fdd9f7c3eb07eb3c63bb8332468562cc119d",
+   "image": {
+    "build": "pi_cam_promoted_p33",
+    "role": "development",
+    "sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708"
+   },
+   "kind": "module-state-snapshot",
+   "mpi_ranks": 512,
+   "pbs_job": "7623808",
+   "record": "pi_cam_instratus_condensate_module_state.json",
+   "stable_after_one_step": true,
+   "symbols": [
+    "cam_logfile_mp_iulog_",
+    "cldfrc2m_mp_icecrit_",
+    "cldfrc2m_mp_iceopt_",
+    "cldfrc2m_mp_premib_",
+    "cldfrc2m_mp_premit_",
+    "cldfrc2m_mp_rhmaxi_const_",
+    "cldfrc2m_mp_rhminh_const_",
+    "cldfrc2m_mp_rhmini_const_",
+    "cldfrc2m_mp_rhminl_adj_land_const_",
+    "cldfrc2m_mp_rhminl_const_",
+    "cldwat2m_macro_mp_i_rhmini_",
+    "cldwat2m_macro_mp_i_rhminl_",
+    "cldwat2m_macro_mp_premib_",
+    "cldwat2m_macro_mp_premit_",
+    "cldwat2m_macro_mp_rhminh_const_",
+    "cldwat2m_macro_mp_rhminl_adj_land_const_",
+    "cldwat2m_macro_mp_rhminl_const_",
+    "constituents_mp_cnst_name_",
+    "constituents_mp_qmin_",
+    "physconst_mp_epsilo_",
+    "physconst_mp_gravit_",
+    "physconst_mp_rair_",
+    "physconst_mp_rh2o_",
+    "physconst_mp_tmelt_",
+    "ref_pres_mp_trop_cloud_top_lev_",
+    "wv_sat_methods_mp_default_idx_",
+    "wv_sat_methods_mp_epsilo_",
+    "wv_sat_methods_mp_h2otrip_",
+    "wv_sat_methods_mp_omeps_",
+    "wv_sat_methods_mp_tboil_",
+    "wv_sat_methods_mp_tmelt_",
+    "wv_sat_methods_mp_ttrice_",
+    "wv_saturation_mp_c3_",
+    "wv_saturation_mp_omeps_",
+    "wv_saturation_mp_plenest_"
+   ]
+  },
+  "pi_cam_instratus_condensate_standalone_build.json": {
+   "archive_members": 10,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "571c7e95818c468a7474aeec432dc0ada954faf4b20a0356d25d63e97625d62d"
+   },
+   "kind": "standalone-build",
+   "library_sha256": "571c7e95818c468a7474aeec432dc0ada954faf4b20a0356d25d63e97625d62d",
+   "original_call_proof": true,
+   "pbs_job": "7630943",
+   "record": "pi_cam_instratus_condensate_standalone_build.json",
+   "spec_sha256": "3da226294510b7506739b86ac7fe35358630757b6a8e21e30f43a88c8040bfc3"
+  },
+  "pi_cam_micro_mg_tend_frame_replay.json": {
+   "bfb": true,
+   "binding": "module",
+   "calls": 10240,
+   "capture_job": "7622015",
+   "capture_run_tag": "pi_cam_pausable_kernels-a-capture_50step",
+   "compared_values": 352453462,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "c39a67dddbacda9b679c1c5066162882b2436c67d6f55b8ec916ae7a383bdd20"
+   },
+   "image_sha256": "c39a67dddbacda9b679c1c5066162882b2436c67d6f55b8ec916ae7a383bdd20",
+   "kernel": "micro_mg_tend",
+   "kind": "frame-replay",
+   "layout": "column",
+   "module_state_digest": "5fca27116a31a874ba3ee0fbc7228f29c3fa45879b7b2e988d8db279a64d6a92",
+   "pbs_job": "7630946",
+   "record": "pi_cam_micro_mg_tend_frame_replay.json",
+   "samples": 134833,
+   "shards": 32,
+   "statuses": {
+    "ok": 134833
+   }
+  },
+  "pi_cam_micro_mg_tend_frame_replay_chunk.json": {
+   "bfb": true,
+   "binding": "module",
+   "calls": 10240,
+   "capture_job": "7622015",
+   "capture_run_tag": "pi_cam_pausable_kernels-a-capture_50step",
+   "compared_values": 352453462,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "c39a67dddbacda9b679c1c5066162882b2436c67d6f55b8ec916ae7a383bdd20"
+   },
+   "image_sha256": "c39a67dddbacda9b679c1c5066162882b2436c67d6f55b8ec916ae7a383bdd20",
+   "kernel": "micro_mg_tend",
+   "kind": "frame-replay",
+   "layout": "column",
+   "module_state_digest": "5fca27116a31a874ba3ee0fbc7228f29c3fa45879b7b2e988d8db279a64d6a92",
+   "pbs_job": "7630949",
+   "record": "pi_cam_micro_mg_tend_frame_replay_chunk.json",
+   "samples": 10240,
+   "shards": 32,
+   "statuses": {
+    "ok": 10240
+   }
   },
   "pi_cam_micro_mg_tend_module_state.json": {
    "digest": "5fca27116a31a874ba3ee0fbc7228f29c3fa45879b7b2e988d8db279a64d6a92",
@@ -3130,6 +3428,45 @@
    "pbs_job": "7218861",
    "record": "pi_cam_mmacro_pcond_standalone_build.json",
    "spec_sha256": "ce1ea54722f250b8adaf52eecf73b78ef5fdcd527ded1d06006990e5890e6f64"
+  },
+  "pi_cam_momtran_frame_replay_chunk.json": {
+   "bfb": true,
+   "binding": "module",
+   "calls": 10240,
+   "capture_job": "7622015",
+   "capture_run_tag": "pi_cam_pausable_kernels-a-capture_50step",
+   "compared_values": 45625800,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "23c33d741317f90404f90ee79693a5bfbb175aa1e2201589b51e5bdacc307ceb"
+   },
+   "image_sha256": "23c33d741317f90404f90ee79693a5bfbb175aa1e2201589b51e5bdacc307ceb",
+   "kernel": "momtran",
+   "kind": "frame-replay",
+   "layout": "column",
+   "module_state_digest": null,
+   "pbs_job": "7630952",
+   "record": "pi_cam_momtran_frame_replay_chunk.json",
+   "samples": 10240,
+   "shards": 32,
+   "statuses": {
+    "ok": 10240
+   }
+  },
+  "pi_cam_momtran_standalone_build.json": {
+   "archive_members": 1,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "23c33d741317f90404f90ee79693a5bfbb175aa1e2201589b51e5bdacc307ceb"
+   },
+   "kind": "standalone-build",
+   "library_sha256": "23c33d741317f90404f90ee79693a5bfbb175aa1e2201589b51e5bdacc307ceb",
+   "original_call_proof": true,
+   "pbs_job": "7623812",
+   "record": "pi_cam_momtran_standalone_build.json",
+   "spec_sha256": "c42d228631813696be4ad3c100190949d189ba04d5c3583ef02be8aea4691f8c"
   },
   "pi_cam_online_model_1month_gpu-site-AMG_failure.json": {
    "diagnosis": "A node-level filesystem fault (a stale GLADE handle on deg0022), not the model, the image or MPS: the mirror job 7588126 (G->M->A, other nodes) ran all three legs to the end.",
@@ -4384,6 +4721,289 @@
    "steps_completed": 0,
    "what": "A zero-writing kernel with instratus_condensate's arguments in shadow: the plugin mechanism's cost alone on a 19-input, 8-output hook."
   },
+  "pi_cam_pausable_instratus_condensate-capture_50step.json": {
+   "advance_seconds": 44.28,
+   "cloud_macro_micro_python": true,
+   "execution_mode": "fine_grained",
+   "frame_capture": {
+    "calls_total_by_kernel": {
+     "instratus_condensate": 921600
+    },
+    "kernels": [
+     "instratus_condensate"
+    ],
+    "run_tag": "pi_cam_pausable_instratus_condensate-capture_50step"
+   },
+   "hooks": {
+    "cldfrc_fice": {
+     "calls": 53248,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "compute_eddy_diff": {
+     "calls": 52224,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "compute_tms": {
+     "calls": 52224,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "compute_uwshcu_inv": {
+     "calls": 53248,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "fluxbelowinv": {
+     "calls": 38152530,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "instratus_condensate": {
+     "calls": 4792320,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 4608000,
+     "ranks_called": 512
+    },
+    "micro_mg_tend": {
+     "calls": 2048,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "mmacro_pcond": {
+     "calls": 2048,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "momtran": {
+     "calls": 53248,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "zm_conv_evap": {
+     "calls": 53248,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "zm_convr": {
+     "calls": 53248,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    }
+   },
+   "image": {
+    "build": "pi_cam_promoted_p33",
+    "role": "development",
+    "sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708"
+   },
+   "kind": "run-summary",
+   "mpi_ranks": 512,
+   "pbs_job": "7622016",
+   "python_stages": [
+    "dry_adjustment",
+    "shallow_convection",
+    "deep_convection",
+    "convective_tracer_transport_leaf",
+    "vertical_diffusion",
+    "gravity_wave_drag",
+    "aerosol_wet_deposition_leaf",
+    "aerosol_dry_deposition_leaf",
+    "chemistry_tendencies_leaf"
+   ],
+   "radiation_python": false,
+   "record": "pi_cam_pausable_instratus_condensate-capture_50step.json",
+   "replacement_calls": {
+    "aerosol_dry_deposition_leaf": {},
+    "aerosol_wet_deposition_leaf": {},
+    "chemistry_tendencies_leaf": {},
+    "cloud_macro_microphysics": {
+     "instratus_condensate": 9000
+    },
+    "convective_tracer_transport_leaf": {},
+    "deep_convection": {},
+    "dry_adjustment": {},
+    "gravity_wave_drag": {},
+    "shallow_convection": {},
+    "vertical_diffusion": {}
+   },
+   "run_status": "passed",
+   "segmented_original_kernels": null,
+   "steps": 50
+  },
+  "pi_cam_pausable_kernels-a-capture_50step.json": {
+   "advance_seconds": 156.91,
+   "cloud_macro_micro_python": true,
+   "execution_mode": "fine_grained",
+   "frame_capture": {
+    "calls_total_by_kernel": {
+     "compute_eddy_diff": 10240,
+     "compute_tms": 10240,
+     "compute_uwshcu_inv": 10240,
+     "micro_mg_tend": 10240,
+     "momtran": 10240,
+     "zm_conv_evap": 10240,
+     "zm_convr": 10240
+    },
+    "kernels": [
+     "micro_mg_tend",
+     "compute_uwshcu_inv",
+     "zm_convr",
+     "zm_conv_evap",
+     "momtran",
+     "compute_tms",
+     "compute_eddy_diff"
+    ],
+    "run_tag": "pi_cam_pausable_kernels-a-capture_50step"
+   },
+   "hooks": {
+    "cldfrc_fice": {
+     "calls": 53248,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "compute_eddy_diff": {
+     "calls": 1024,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "compute_tms": {
+     "calls": 1024,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "compute_uwshcu_inv": {
+     "calls": 2048,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "fluxbelowinv": {
+     "calls": 38152530,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "instratus_condensate": {
+     "calls": 4792320,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "micro_mg_tend": {
+     "calls": 2048,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "mmacro_pcond": {
+     "calls": 2048,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "momtran": {
+     "calls": 2048,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "zm_conv_evap": {
+     "calls": 2048,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "zm_convr": {
+     "calls": 2048,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    }
+   },
+   "image": {
+    "build": "pi_cam_promoted_p33",
+    "role": "development",
+    "sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708"
+   },
+   "kind": "run-summary",
+   "mpi_ranks": 512,
+   "pbs_job": "7622015",
+   "python_stages": [
+    "dry_adjustment",
+    "shallow_convection",
+    "deep_convection",
+    "convective_tracer_transport_leaf",
+    "vertical_diffusion",
+    "gravity_wave_drag",
+    "aerosol_wet_deposition_leaf",
+    "aerosol_dry_deposition_leaf",
+    "chemistry_tendencies_leaf"
+   ],
+   "radiation_python": false,
+   "record": "pi_cam_pausable_kernels-a-capture_50step.json",
+   "replacement_calls": {
+    "aerosol_dry_deposition_leaf": {},
+    "aerosol_wet_deposition_leaf": {},
+    "chemistry_tendencies_leaf": {},
+    "cloud_macro_microphysics": {
+     "micro_mg_tend": 100
+    },
+    "convective_tracer_transport_leaf": {},
+    "deep_convection": {
+     "momtran": 100,
+     "zm_conv_evap": 100,
+     "zm_convr": 100
+    },
+    "dry_adjustment": {},
+    "gravity_wave_drag": {},
+    "shallow_convection": {
+     "compute_uwshcu_inv": 100
+    },
+    "vertical_diffusion": {
+     "compute_eddy_diff": 100,
+     "compute_tms": 100
+    }
+   },
+   "run_status": "passed",
+   "segmented_original_kernels": null,
+   "steps": 50
+  },
   "pi_cam_pausable_micro-capture_50step_failure.json": {
    "diagnosis": "Version skew between the checked-out manifest and the queued image, not a numerical failure. While the job waited in the queue, native/pi_cam/segment_runners.yaml gained `original: true` for the stage-7 runner (the regenerated module exports pycam_stage7_original_v1 and pauses at cldfrc_fice); the job then ran the p10 image, whose module predates that entry, and the binding failed closed at construction as designed. The single history file the aborted run had written compared bit-for-bit; the restart files were never written.",
    "image": {
@@ -5384,6 +6004,120 @@
    "steps_completed": 1,
    "what": "50-step gate of a null Numba plugin bound in shadow at the mmacro_pcond hook (the original answers; the plugin's cost is timed), on the first image carrying the batch-A hooks"
   },
+  "pi_cam_pausable_p29-uwshcu-capture_50step.json": {
+   "advance_seconds": 19.03,
+   "cloud_macro_micro_python": false,
+   "execution_mode": "fine_grained",
+   "frame_capture": {
+    "calls_total_by_kernel": {
+     "compute_uwshcu_inv": 51200
+    },
+    "kernels": [
+     "compute_uwshcu_inv"
+    ],
+    "run_tag": "pi_cam_pausable_p29-uwshcu-capture_50step"
+   },
+   "hooks": {
+    "cldfrc_fice": {
+     "calls": 53248,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "compute_eddy_diff": {
+     "calls": 52224,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "compute_tms": {
+     "calls": 52224,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "compute_uwshcu_inv": {
+     "calls": 2048,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "fluxbelowinv": {
+     "calls": 38152530,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "instratus_condensate": {
+     "calls": 4792320,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "micro_mg_tend": {
+     "calls": 53248,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "mmacro_pcond": {
+     "calls": 53248,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "momtran": {
+     "calls": 53248,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "zm_conv_evap": {
+     "calls": 53248,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "zm_convr": {
+     "calls": 53248,
+     "missed": 0,
+     "modeled": 0,
+     "paused": 0,
+     "ranks_called": 512
+    }
+   },
+   "image": {
+    "build": "pi_cam_promoted_p29",
+    "role": "development",
+    "sha256": "085d2ce6162520f6beeaf7940f888b017fa251f1e3360068cfec74e193aa8266"
+   },
+   "kind": "run-summary",
+   "mpi_ranks": 512,
+   "pbs_job": "7493241",
+   "python_stages": [
+    "shallow_convection"
+   ],
+   "radiation_python": false,
+   "record": "pi_cam_pausable_p29-uwshcu-capture_50step.json",
+   "replacement_calls": {
+    "shallow_convection": {
+     "compute_uwshcu_inv": 100
+    }
+   },
+   "run_status": "passed",
+   "segmented_original_kernels": null,
+   "steps": 50
+  },
   "pi_cam_pausable_p32-uwshcu-pyfn-shadow_50step_failure.json": {
    "diagnosis": "The callback was built, bound (pycam_hooks_bind_plugin_v1) and reached: the hook took the plugged branch.  The generated module in image p32 still refuses a plugin at a packed block with an error stop; the branch that hands a plugin the one packed output (commit 167a71a1) was in the working tree but not in the image the job ran.  A live month with the same function (7511163) failed the same way and was deleted.",
    "image": {
@@ -5970,6 +6704,149 @@
    "pbs_job": null,
    "record": "pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json"
   },
+  "pi_cam_uwshcu_frame_replay.json": {
+   "bfb": true,
+   "binding": "module",
+   "calls": 400,
+   "capture_job": "7493241",
+   "capture_run_tag": "pi_cam_pausable_p29-uwshcu-capture_50step",
+   "compared_values": 23049600,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "4b42f9c2f4a52d50765ed5bbf83cd3093a0f7d5708550e835d9a03e8616d25a5"
+   },
+   "image_sha256": "4b42f9c2f4a52d50765ed5bbf83cd3093a0f7d5708550e835d9a03e8616d25a5",
+   "kernel": "compute_uwshcu_inv",
+   "kind": "frame-replay",
+   "layout": "column",
+   "module_state_digest": "7645dabf8136936d040b40f56037ebc23fc4989d28864ac9a7f759710bb2350f",
+   "pbs_job": null,
+   "record": "pi_cam_uwshcu_frame_replay.json",
+   "samples": 5600,
+   "statuses": {
+    "ok": 5600
+   }
+  },
+  "pi_cam_uwshcu_module_state.json": {
+   "digest": "7645dabf8136936d040b40f56037ebc23fc4989d28864ac9a7f759710bb2350f",
+   "image": {
+    "build": "pi_cam_promoted_p33",
+    "role": "development",
+    "sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708"
+   },
+   "kind": "module-state-snapshot",
+   "mpi_ranks": 512,
+   "pbs_job": "7513806",
+   "record": "pi_cam_uwshcu_module_state.json",
+   "stable_after_one_step": true,
+   "symbols": [
+    "cam_logfile_mp_iulog_",
+    "constituents_mp_cnst_name_",
+    "constituents_mp_cnst_type_",
+    "constituents_mp_qmin_",
+    "physconst_mp_epsilo_",
+    "physconst_mp_gravit_",
+    "physconst_mp_rair_",
+    "physconst_mp_rh2o_",
+    "physconst_mp_tmelt_",
+    "uwshcu_mp_cp_",
+    "uwshcu_mp_ep2_",
+    "uwshcu_mp_g_",
+    "uwshcu_mp_p00_",
+    "uwshcu_mp_r_",
+    "uwshcu_mp_rovcp_",
+    "uwshcu_mp_rpen_",
+    "uwshcu_mp_xlf_",
+    "uwshcu_mp_xls_",
+    "uwshcu_mp_xlv_",
+    "uwshcu_mp_zvir_",
+    "water_isotopes_mp_akrfa_",
+    "water_isotopes_mp_akrfb_",
+    "water_isotopes_mp_aksmc_",
+    "water_isotopes_mp_alpai_",
+    "water_isotopes_mp_alpal_",
+    "water_isotopes_mp_alpbi_",
+    "water_isotopes_mp_alpbl_",
+    "water_isotopes_mp_alpci_",
+    "water_isotopes_mp_alpcl_",
+    "water_isotopes_mp_alpdl_",
+    "water_isotopes_mp_alpel_",
+    "water_isotopes_mp_boce_",
+    "water_isotopes_mp_difrm_",
+    "water_isotopes_mp_epsmw_",
+    "water_isotopes_mp_fisub_",
+    "water_isotopes_mp_mwisp_",
+    "water_isotopes_mp_rnat_",
+    "water_isotopes_mp_rstd_",
+    "water_tracer_vars_mp_iwater_",
+    "water_tracer_vars_mp_iwistag_",
+    "water_tracer_vars_mp_iwspec_",
+    "water_tracer_vars_mp_trace_water_",
+    "water_tracer_vars_mp_wisotope_",
+    "water_tracer_vars_mp_wtrc_add_cvprecip_",
+    "water_tracer_vars_mp_wtrc_add_stprecip_",
+    "water_tracer_vars_mp_wtrc_alpha_kinetic_",
+    "water_tracer_vars_mp_wtrc_bulk_indices_",
+    "water_tracer_vars_mp_wtrc_check_show_types_",
+    "water_tracer_vars_mp_wtrc_check_total_h2o_",
+    "water_tracer_vars_mp_wtrc_citer_",
+    "water_tracer_vars_mp_wtrc_detrain_in_macrop_",
+    "water_tracer_vars_mp_wtrc_fixed_alpha_",
+    "water_tracer_vars_mp_wtrc_fixed_rstd_",
+    "water_tracer_vars_mp_wtrc_iaspec_",
+    "water_tracer_vars_mp_wtrc_iasrfpcp_",
+    "water_tracer_vars_mp_wtrc_iasrfvap_",
+    "water_tracer_vars_mp_wtrc_iatype_",
+    "water_tracer_vars_mp_wtrc_iawset_",
+    "water_tracer_vars_mp_wtrc_indices_",
+    "water_tracer_vars_mp_wtrc_is_tag_",
+    "water_tracer_vars_mp_wtrc_lh2oadj_",
+    "water_tracer_vars_mp_wtrc_limiter_18o_hgh_",
+    "water_tracer_vars_mp_wtrc_limiter_18o_low_",
+    "water_tracer_vars_mp_wtrc_limiter_hdo_hgh_",
+    "water_tracer_vars_mp_wtrc_limiter_hdo_low_",
+    "water_tracer_vars_mp_wtrc_limiter_phis_crit_",
+    "water_tracer_vars_mp_wtrc_lzmlin_",
+    "water_tracer_vars_mp_wtrc_ncnst_",
+    "water_tracer_vars_mp_wtrc_niter_",
+    "water_tracer_vars_mp_wtrc_nspec_",
+    "water_tracer_vars_mp_wtrc_nsrfpcp_",
+    "water_tracer_vars_mp_wtrc_nsrfvap_",
+    "water_tracer_vars_mp_wtrc_ntype_",
+    "water_tracer_vars_mp_wtrc_nwset_",
+    "water_tracer_vars_mp_wtrc_qchkmin_",
+    "water_tracer_vars_mp_wtrc_qmin_",
+    "water_tracer_vars_mp_wtrc_species_",
+    "water_tracer_vars_mp_wtrc_srf_bucket_mode_",
+    "water_tracer_vars_mp_wtrc_types_",
+    "water_tracer_vars_mp_wtrc_warn_only_",
+    "wv_sat_methods_mp_default_idx_",
+    "wv_sat_methods_mp_epsilo_",
+    "wv_sat_methods_mp_h2otrip_",
+    "wv_sat_methods_mp_omeps_",
+    "wv_sat_methods_mp_tboil_",
+    "wv_sat_methods_mp_tmelt_",
+    "wv_sat_methods_mp_ttrice_",
+    "wv_saturation_mp_c3_",
+    "wv_saturation_mp_omeps_",
+    "wv_saturation_mp_plenest_"
+   ]
+  },
+  "pi_cam_uwshcu_standalone_build.json": {
+   "archive_members": 13,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "e228f72801adb9f2a62eb3868b0c4af618dfa512dd49d1b9e498178cb5a0279e"
+   },
+   "kind": "standalone-build",
+   "library_sha256": "e228f72801adb9f2a62eb3868b0c4af618dfa512dd49d1b9e498178cb5a0279e",
+   "original_call_proof": true,
+   "pbs_job": "7620283",
+   "record": "pi_cam_uwshcu_standalone_build.json",
+   "spec_sha256": "613e890da7a5f1c216e16282556c8710d24402720710252bd8d42dd807dcaec4"
+  },
   "pi_cam_virtem_frame_replay.json": {
    "bfb": true,
    "binding": "module",
@@ -6023,6 +6900,158 @@
    "pbs_job": null,
    "record": "pi_cam_virtem_standalone_build.json",
    "spec_sha256": "eb6260f76cb318040f8ac9d530a1b2b8cf229dfa58b0f41dc3a4a2c248e18b09"
+  },
+  "pi_cam_zm_conv_evap_frame_replay_chunk.json": {
+   "bfb": true,
+   "binding": "module",
+   "calls": 10240,
+   "capture_job": "7622015",
+   "capture_run_tag": "pi_cam_pausable_kernels-a-capture_50step",
+   "compared_values": 42031040,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "e580cb59c7a3fd7915c19cca522b11d912e4652aaf9fc9039297bbaaa8240a93"
+   },
+   "image_sha256": "e580cb59c7a3fd7915c19cca522b11d912e4652aaf9fc9039297bbaaa8240a93",
+   "kernel": "zm_conv_evap",
+   "kind": "frame-replay",
+   "layout": "column",
+   "module_state_digest": "ec60eb1ce0de042955b66537d71bcd715fc357b12080025714e7fc4c78e61c93",
+   "pbs_job": "7630950",
+   "record": "pi_cam_zm_conv_evap_frame_replay_chunk.json",
+   "samples": 10240,
+   "shards": 32,
+   "statuses": {
+    "ok": 10240
+   }
+  },
+  "pi_cam_zm_conv_evap_module_state.json": {
+   "digest": "ec60eb1ce0de042955b66537d71bcd715fc357b12080025714e7fc4c78e61c93",
+   "image": {
+    "build": "pi_cam_promoted_p33",
+    "role": "development",
+    "sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708"
+   },
+   "kind": "module-state-snapshot",
+   "mpi_ranks": 512,
+   "pbs_job": "7623808",
+   "record": "pi_cam_zm_conv_evap_module_state.json",
+   "stable_after_one_step": true,
+   "symbols": [
+    "cam_logfile_mp_iulog_",
+    "physconst_mp_gravit_",
+    "physconst_mp_tmelt_",
+    "wv_sat_methods_mp_default_idx_",
+    "wv_sat_methods_mp_epsilo_",
+    "wv_sat_methods_mp_h2otrip_",
+    "wv_sat_methods_mp_omeps_",
+    "wv_sat_methods_mp_tboil_",
+    "wv_sat_methods_mp_tmelt_",
+    "wv_sat_methods_mp_ttrice_",
+    "wv_saturation_mp_c3_",
+    "wv_saturation_mp_omeps_",
+    "wv_saturation_mp_plenest_",
+    "zm_conv_mp_ke_",
+    "zm_conv_mp_ke_lnd_",
+    "zm_conv_mp_zm_org_"
+   ]
+  },
+  "pi_cam_zm_conv_evap_standalone_build.json": {
+   "archive_members": 9,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "e580cb59c7a3fd7915c19cca522b11d912e4652aaf9fc9039297bbaaa8240a93"
+   },
+   "kind": "standalone-build",
+   "library_sha256": "e580cb59c7a3fd7915c19cca522b11d912e4652aaf9fc9039297bbaaa8240a93",
+   "original_call_proof": true,
+   "pbs_job": "7623811",
+   "record": "pi_cam_zm_conv_evap_standalone_build.json",
+   "spec_sha256": "bf3fb18060494532fb2fbc48e5db230785f8f1be3b102e2ae234d3eeb6ab15c3"
+  },
+  "pi_cam_zm_convr_frame_replay_chunk.json": {
+   "bfb": true,
+   "binding": "module",
+   "calls": 10240,
+   "capture_job": "7622015",
+   "capture_run_tag": "pi_cam_pausable_kernels-a-capture_50step",
+   "compared_values": 87727228,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "0e821c1e8c00179187fb9f2d0b431adcb397a0b9fa06f4e7cab230192c3a1dff"
+   },
+   "image_sha256": "0e821c1e8c00179187fb9f2d0b431adcb397a0b9fa06f4e7cab230192c3a1dff",
+   "kernel": "zm_convr",
+   "kind": "frame-replay",
+   "layout": "column",
+   "module_state_digest": "74630f05941eecd32a5c05101f96b565cbbde11382d32d92ec49050649be880c",
+   "pbs_job": "7630951",
+   "record": "pi_cam_zm_convr_frame_replay_chunk.json",
+   "samples": 10240,
+   "shards": 32,
+   "statuses": {
+    "ok": 10240
+   }
+  },
+  "pi_cam_zm_convr_module_state.json": {
+   "digest": "74630f05941eecd32a5c05101f96b565cbbde11382d32d92ec49050649be880c",
+   "image": {
+    "build": "pi_cam_promoted_p33",
+    "role": "development",
+    "sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708"
+   },
+   "kind": "module-state-snapshot",
+   "mpi_ranks": 512,
+   "pbs_job": "7623808",
+   "record": "pi_cam_zm_convr_module_state.json",
+   "stable_after_one_step": true,
+   "symbols": [
+    "cam_logfile_mp_iulog_",
+    "phys_control_mp_cam_physpkg_",
+    "physconst_mp_cpwv_",
+    "physconst_mp_gravit_",
+    "physconst_mp_rh2o_",
+    "wv_sat_methods_mp_default_idx_",
+    "wv_sat_methods_mp_epsilo_",
+    "wv_sat_methods_mp_h2otrip_",
+    "wv_sat_methods_mp_omeps_",
+    "wv_sat_methods_mp_tboil_",
+    "wv_sat_methods_mp_tmelt_",
+    "wv_sat_methods_mp_ttrice_",
+    "wv_saturation_mp_c3_",
+    "wv_saturation_mp_omeps_",
+    "wv_saturation_mp_plenest_",
+    "zm_conv_mp_c0_lnd_",
+    "zm_conv_mp_c0_ocn_",
+    "zm_conv_mp_cpres_",
+    "zm_conv_mp_eps1_",
+    "zm_conv_mp_grav_",
+    "zm_conv_mp_limcnv_",
+    "zm_conv_mp_no_deep_pbl_",
+    "zm_conv_mp_rgas_",
+    "zm_conv_mp_rgrav_",
+    "zm_conv_mp_rl_",
+    "zm_conv_mp_tau_",
+    "zm_conv_mp_tfreez_",
+    "zm_conv_mp_zm_org_"
+   ]
+  },
+  "pi_cam_zm_convr_standalone_build.json": {
+   "archive_members": 8,
+   "image": {
+    "build": null,
+    "role": "unrecorded",
+    "sha256": "0e821c1e8c00179187fb9f2d0b431adcb397a0b9fa06f4e7cab230192c3a1dff"
+   },
+   "kind": "standalone-build",
+   "library_sha256": "0e821c1e8c00179187fb9f2d0b431adcb397a0b9fa06f4e7cab230192c3a1dff",
+   "original_call_proof": true,
+   "pbs_job": "7623810",
+   "record": "pi_cam_zm_convr_standalone_build.json",
+   "spec_sha256": "65eeaaa20ce42f209255197b2d9ac7370b83be95cbb26d7c283bcaea59f9aee1"
   }
  },
  "failure_records": [
@@ -6630,12 +7659,12 @@
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
   "native/pi_cam/kernel_work_items.yaml": "c92670beeae88b1fcf0bbe74525fe8489f425f9740b3f7dc6fe7eb4ea7496b44",
   "native/pi_cam/segment_runners.yaml": "37fa35306070f0b5eea12a76c44ea6798b1a7f17521659bdc4761ff32208b38a",
-  "validation/physics_kernel_decoupling.json": "b30ba060aa45a351e86847c9255922524eb0557ff4e66720aa6db67aca1b9ece",
+  "validation/physics_kernel_decoupling.json": "aaef8de4f0a1f504d11a3d5bb631f1dfbdc2d0cc60dca1bab6fcaa473ab612eb",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "82b6d8443df6cd92b82e88ff40035409ec1f6c413ea4f785d4c0f29981dc3384"
+  "web/public/catalog.json": "8cc8799522160ef535225d171e3eca1ef26f847c357349a0c419da148e8952b3"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -11743,7 +12772,10 @@
    ],
    "capabilities": {
     "adapter_build": {
-     "state": "not-implemented"
+     "evidence": [
+      "pi_cam_instratus_condensate_standalone_build.json"
+     ],
+     "state": "available"
     },
     "contract": {
      "path": "native/pi_cam/functions/instratus_condensate.yaml",
@@ -11757,7 +12789,11 @@
      "state": "available"
     },
     "independently_callable": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_instratus_condensate_frame_replay.json",
+      "pi_cam_instratus_condensate_frame_replay_chunk.json"
+     ],
+     "state": "verified"
     },
     "original_replacement_bfb": {
      "contexts": [
@@ -11766,7 +12802,12 @@
      "state": "verified"
     },
     "standalone_replay": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_instratus_condensate_frame_replay.json",
+      "pi_cam_instratus_condensate_frame_replay_chunk.json"
+     ],
+     "historical_failures": [],
+     "state": "verified"
     }
    },
    "category": "replaceable_numeric",
@@ -11792,15 +12833,11 @@
    "host": null,
    "id": "cldwat2m_macro::instratus_condensate",
    "kind": "subroutine",
-   "missing": [
-    "capture",
-    "replay_full_chunk",
-    "replay_public_api",
-    "replay_single_column",
-    "standalone_build"
-   ],
+   "missing": [],
    "module": "cldwat2m_macro",
-   "module_state": [],
+   "module_state": [
+    "pi_cam_instratus_condensate_module_state.json"
+   ],
    "note": null,
    "observation": {
     "1month": {
@@ -11844,11 +12881,11 @@
     "line_end": 1819,
     "line_start": 1405
    },
-   "status": "open",
+   "status": "complete",
    "subsystem": "macrophysics",
    "tracked": true,
    "tracked_stages": {
-    "cam_run1.cloud_macro_microphysics": "open"
+    "cam_run1.cloud_macro_microphysics": "complete"
    }
   },
   "cldwat2m_macro::instratus_core": {
@@ -24243,10 +25280,10 @@
     },
     "independently_callable": {
      "evidence": [
-      "pi_cam_micro_mg_tend_standalone_manifest.json"
+      "pi_cam_micro_mg_tend_frame_replay.json",
+      "pi_cam_micro_mg_tend_frame_replay_chunk.json"
      ],
-     "explanation": "The adapter compiled successfully, but no recorded execution through the public entrypoint exists.",
-     "state": "not-verified"
+     "state": "verified"
     },
     "original_replacement_bfb": {
      "contexts": [
@@ -24255,7 +25292,12 @@
      "state": "verified"
     },
     "standalone_replay": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_micro_mg_tend_frame_replay.json",
+      "pi_cam_micro_mg_tend_frame_replay_chunk.json"
+     ],
+     "historical_failures": [],
+     "state": "verified"
     }
    },
    "category": "replaceable_numeric",
@@ -24281,12 +25323,7 @@
    "host": null,
    "id": "micro_mg1_0::micro_mg_tend",
    "kind": "subroutine",
-   "missing": [
-    "capture",
-    "replay_full_chunk",
-    "replay_public_api",
-    "replay_single_column"
-   ],
+   "missing": [],
    "module": "micro_mg1_0",
    "module_state": [
     "pi_cam_micro_mg_tend_module_state.json"
@@ -24334,11 +25371,11 @@
     "line_end": 3697,
     "line_start": 355
    },
-   "status": "open",
+   "status": "complete",
    "subsystem": "microphysics",
    "tracked": true,
    "tracked_stages": {
-    "cam_run1.cloud_macro_microphysics": "open"
+    "cam_run1.cloud_macro_microphysics": "complete"
    }
   },
   "micro_mg_cam::micro_mg_cam_tend": {
@@ -48921,7 +49958,10 @@
    ],
    "capabilities": {
     "adapter_build": {
-     "state": "not-implemented"
+     "evidence": [
+      "pi_cam_compute_tms_standalone_build.json"
+     ],
+     "state": "available"
     },
     "contract": {
      "path": "native/pi_cam/functions/compute_tms.yaml",
@@ -48935,7 +49975,11 @@
      "state": "available"
     },
     "independently_callable": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_compute_tms_frame_replay.json",
+      "pi_cam_compute_tms_frame_replay_chunk.json"
+     ],
+     "state": "verified"
     },
     "original_replacement_bfb": {
      "contexts": [
@@ -48944,7 +49988,12 @@
      "state": "verified"
     },
     "standalone_replay": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_compute_tms_frame_replay.json",
+      "pi_cam_compute_tms_frame_replay_chunk.json"
+     ],
+     "historical_failures": [],
+     "state": "verified"
     }
    },
    "category": "unclassified",
@@ -48956,15 +50005,11 @@
    "host": null,
    "id": "trb_mtn_stress::compute_tms",
    "kind": "subroutine",
-   "missing": [
-    "capture",
-    "replay_full_chunk",
-    "replay_public_api",
-    "replay_single_column",
-    "standalone_build"
-   ],
+   "missing": [],
    "module": "trb_mtn_stress",
-   "module_state": [],
+   "module_state": [
+    "pi_cam_compute_tms_module_state.json"
+   ],
    "note": null,
    "observation": {
     "1month": {
@@ -49008,11 +50053,11 @@
     "line_end": 178,
     "line_start": 59
    },
-   "status": "open",
+   "status": "complete",
    "subsystem": null,
    "tracked": true,
    "tracked_stages": {
-    "cam_run2.vertical_diffusion": "open"
+    "cam_run2.vertical_diffusion": "complete"
    }
   },
   "tropopause::tropopause_analytic": {
@@ -50485,7 +51530,10 @@
    ],
    "capabilities": {
     "adapter_build": {
-     "state": "not-implemented"
+     "evidence": [
+      "pi_cam_uwshcu_standalone_build.json"
+     ],
+     "state": "available"
     },
     "contract": {
      "path": "native/pi_cam/functions/uwshcu.yaml",
@@ -50499,7 +51547,12 @@
      "state": "available"
     },
     "independently_callable": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_compute_uwshcu_inv_frame_replay.json",
+      "pi_cam_compute_uwshcu_inv_frame_replay_chunk.json",
+      "pi_cam_uwshcu_frame_replay.json"
+     ],
+     "state": "verified"
     },
     "original_replacement_bfb": {
      "contexts": [
@@ -50508,7 +51561,13 @@
      "state": "verified"
     },
     "standalone_replay": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_compute_uwshcu_inv_frame_replay.json",
+      "pi_cam_compute_uwshcu_inv_frame_replay_chunk.json",
+      "pi_cam_uwshcu_frame_replay.json"
+     ],
+     "historical_failures": [],
+     "state": "verified"
     }
    },
    "category": "unclassified",
@@ -50520,15 +51579,11 @@
    "host": null,
    "id": "uwshcu::compute_uwshcu_inv",
    "kind": "subroutine",
-   "missing": [
-    "capture",
-    "replay_full_chunk",
-    "replay_public_api",
-    "replay_single_column",
-    "standalone_build"
-   ],
+   "missing": [],
    "module": "uwshcu",
-   "module_state": [],
+   "module_state": [
+    "pi_cam_uwshcu_module_state.json"
+   ],
    "note": null,
    "observation": {
     "1month": {
@@ -50572,11 +51627,11 @@
     "line_end": 496,
     "line_start": 242
    },
-   "status": "open",
+   "status": "complete",
    "subsystem": null,
    "tracked": true,
    "tracked_stages": {
-    "cam_run1.shallow_convection": "open"
+    "cam_run1.shallow_convection": "complete"
    }
   },
   "uwshcu::conden": {
@@ -56677,7 +57732,10 @@
    ],
    "capabilities": {
     "adapter_build": {
-     "state": "not-implemented"
+     "evidence": [
+      "pi_cam_momtran_standalone_build.json"
+     ],
+     "state": "available"
     },
     "contract": {
      "path": "native/pi_cam/functions/momtran.yaml",
@@ -56691,7 +57749,10 @@
      "state": "available"
     },
     "independently_callable": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_momtran_frame_replay_chunk.json"
+     ],
+     "state": "verified"
     },
     "original_replacement_bfb": {
      "contexts": [
@@ -56700,7 +57761,11 @@
      "state": "verified"
     },
     "standalone_replay": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_momtran_frame_replay_chunk.json"
+     ],
+     "historical_failures": [],
+     "state": "verified"
     }
    },
    "category": "unclassified",
@@ -56712,13 +57777,7 @@
    "host": null,
    "id": "zm_conv::momtran",
    "kind": "subroutine",
-   "missing": [
-    "capture",
-    "replay_full_chunk",
-    "replay_public_api",
-    "replay_single_column",
-    "standalone_build"
-   ],
+   "missing": [],
    "module": "zm_conv",
    "module_state": [],
    "note": null,
@@ -56764,11 +57823,11 @@
     "line_end": 1824,
     "line_start": 1414
    },
-   "status": "open",
+   "status": "complete",
    "subsystem": null,
    "tracked": true,
    "tracked_stages": {
-    "cam_run1.deep_convection": "open"
+    "cam_run1.deep_convection": "complete"
    }
   },
   "zm_conv::parcel_dilute": {
@@ -57029,7 +58088,10 @@
    ],
    "capabilities": {
     "adapter_build": {
-     "state": "not-implemented"
+     "evidence": [
+      "pi_cam_zm_conv_evap_standalone_build.json"
+     ],
+     "state": "available"
     },
     "contract": {
      "path": "native/pi_cam/functions/zm_conv_evap.yaml",
@@ -57043,7 +58105,10 @@
      "state": "available"
     },
     "independently_callable": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_zm_conv_evap_frame_replay_chunk.json"
+     ],
+     "state": "verified"
     },
     "original_replacement_bfb": {
      "contexts": [
@@ -57052,7 +58117,11 @@
      "state": "verified"
     },
     "standalone_replay": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_zm_conv_evap_frame_replay_chunk.json"
+     ],
+     "historical_failures": [],
+     "state": "verified"
     }
    },
    "category": "unclassified",
@@ -57065,14 +58134,13 @@
    "id": "zm_conv::zm_conv_evap",
    "kind": "subroutine",
    "missing": [
-    "capture",
-    "replay_full_chunk",
     "replay_public_api",
-    "replay_single_column",
-    "standalone_build"
+    "replay_single_column"
    ],
    "module": "zm_conv",
-   "module_state": [],
+   "module_state": [
+    "pi_cam_zm_conv_evap_module_state.json"
+   ],
    "note": null,
    "observation": {
     "1month": {
@@ -57137,7 +58205,10 @@
    ],
    "capabilities": {
     "adapter_build": {
-     "state": "not-implemented"
+     "evidence": [
+      "pi_cam_zm_convr_standalone_build.json"
+     ],
+     "state": "available"
     },
     "contract": {
      "path": "native/pi_cam/functions/zm_convr.yaml",
@@ -57151,7 +58222,10 @@
      "state": "available"
     },
     "independently_callable": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_zm_convr_frame_replay_chunk.json"
+     ],
+     "state": "verified"
     },
     "original_replacement_bfb": {
      "contexts": [
@@ -57160,7 +58234,11 @@
      "state": "verified"
     },
     "standalone_replay": {
-     "state": "not-assessed"
+     "evidence": [
+      "pi_cam_zm_convr_frame_replay_chunk.json"
+     ],
+     "historical_failures": [],
+     "state": "verified"
     }
    },
    "category": "unclassified",
@@ -57172,15 +58250,11 @@
    "host": null,
    "id": "zm_conv::zm_convr",
    "kind": "subroutine",
-   "missing": [
-    "capture",
-    "replay_full_chunk",
-    "replay_public_api",
-    "replay_single_column",
-    "standalone_build"
-   ],
+   "missing": [],
    "module": "zm_conv",
-   "module_state": [],
+   "module_state": [
+    "pi_cam_zm_convr_module_state.json"
+   ],
    "note": null,
    "observation": {
     "1month": {
@@ -57224,11 +58298,11 @@
     "line_end": 861,
     "line_start": 132
    },
-   "status": "open",
+   "status": "complete",
    "subsystem": null,
    "tracked": true,
    "tracked_stages": {
-    "cam_run1.deep_convection": "open"
+    "cam_run1.deep_convection": "complete"
    }
   },
   "zm_conv_intr::zm_conv_tend": {
@@ -72114,7 +73188,7 @@
      "id": "trb_mtn_stress::compute_tms",
      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
      "routine": "compute_tms",
-     "status": "open"
+     "status": "complete"
     },
     {
      "id": "eddy_diff::compute_eddy_diff",
@@ -72868,7 +73942,7 @@
      "id": "zm_conv::zm_convr",
      "owner_class": "freecam.physics.pausable.DeepConvection",
      "routine": "zm_convr",
-     "status": "open"
+     "status": "complete"
     },
     {
      "id": "zm_conv::zm_conv_evap",
@@ -72880,7 +73954,7 @@
      "id": "zm_conv::momtran",
      "owner_class": "freecam.physics.pausable.DeepConvection",
      "routine": "momtran",
-     "status": "open"
+     "status": "complete"
     },
     {
      "id": "cloud_fraction::cldfrc_fice",
@@ -72917,7 +73991,7 @@
      "id": "uwshcu::compute_uwshcu_inv",
      "owner_class": "freecam.physics.pausable.ShallowConvection",
      "routine": "compute_uwshcu_inv",
-     "status": "open"
+     "status": "complete"
     },
     {
      "id": "uwshcu::fluxbelowinv",
@@ -72934,7 +74008,7 @@
    "id": "cam_run1.shallow_convection",
    "in_default": true,
    "kind": "scheme",
-   "ledger_coverage": "partial",
+   "ledger_coverage": "complete",
    "native_id": 425,
    "note": null,
    "operation": "convect_shallow_tend",
@@ -72990,13 +74064,13 @@
      "id": "cldwat2m_macro::instratus_condensate",
      "owner_class": "freecam.physics.macrophysics.Macrophysics",
      "routine": "instratus_condensate",
-     "status": "open"
+     "status": "complete"
     },
     {
      "id": "micro_mg1_0::micro_mg_tend",
      "owner_class": "freecam.physics.microphysics.Microphysics",
      "routine": "micro_mg_tend",
-     "status": "open"
+     "status": "complete"
     }
    ],
    "default_index": 39,
@@ -73007,7 +74081,7 @@
    "id": "cam_run1.cloud_macro_microphysics",
    "in_default": true,
    "kind": "scheme",
-   "ledger_coverage": "partial",
+   "ledger_coverage": "complete",
    "native_id": 427,
    "note": null,
    "operation": "macro_microphysics",
@@ -74188,7 +75262,7 @@
   "additional_apis_runnable": 0,
   "candidate_kernels": 601,
   "in_model_replacement_available": 21,
-  "independently_callable_verified": 5,
+  "independently_callable_verified": 12,
   "kernels_by_category": {
    "control": 5,
    "data_movement": 14,
@@ -74207,10 +75281,10 @@
   "processes_enabled": 47,
   "processes_with_dedicated_class": 23,
   "redirectable_calls": 428,
-  "standalone_replay_verified": 5,
+  "standalone_replay_verified": 12,
   "tracked_by_status": {
-   "complete": 5,
-   "open": 16
+   "complete": 11,
+   "open": 10
   },
   "tracked_kernels": 21,
   "unmapped_kernels": 6,
@@ -74227,8 +75301,8 @@
  ],
  "volatile": {
   "branch": "HEAD",
-  "commit": "786fbe2bf543d00730bdeb692847316964639de5",
-  "generated_at": "2026-09-27T20:31:14+00:00"
+  "commit": "bbbc2fd1b8c32dea94ec0f6b26498d5aedd5cf10",
+  "generated_at": "2026-09-28T19:44:13+00:00"
  },
  "work_items": [
   {
