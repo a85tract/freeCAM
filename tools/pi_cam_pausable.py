@@ -2651,9 +2651,13 @@ def _batch_pieces(spec: Spec, hooked: list[str], paused_pcs: str) -> tuple[str, 
         return "", "", "", "pc /= pc_idle", ""
     ep, prefix = spec.entry_prefix, spec.prefix
     units = list(spec.units.values())
-    slots_calls = "".join(f"    call {u.key}_chunk_slots(nslots)\n" for u in units)
+    # a slot beyond the chunks' holds the entry state: what the units held when batched mode
+    # began -- a chunk run to its end, as each chunk finds them in the original's order
+    slots_calls = "".join(f"    call {u.key}_chunk_slots(nslots + 1)\n" for u in units)
+    entry_calls = "".join(f"    call {u.key}_store_chunk(nslots + 1)\n" for u in units)
     store_calls = "".join(f"      call {u.key}_store_chunk(live)\n" for u in units)
     load_calls = "".join(f"      call {u.key}_load_chunk(live)\n" for u in units)
+    fresh_calls = "".join(f"      call {u.key}_load_chunk(nslots + 1)\n" for u in units)
     hook_refusal = ""
     if hooked:
         hook_refusal = (
@@ -2709,7 +2713,7 @@ def _batch_pieces(spec: Spec, hooked: list[str], paused_pcs: str) -> tuple[str, 
       slot_token(s) = int(s, c_int) * 1048576_c_int
       slot_stored(s) = .false.
     end do
-{slots_calls}    call_index = 0_c_int
+{slots_calls}{entry_calls}    call_index = 0_c_int
     live = 0
     pc = pc_idle
     batched = .true.
@@ -2719,7 +2723,9 @@ def _batch_pieces(spec: Spec, hooked: list[str], paused_pcs: str) -> tuple[str, 
 
   integer(c_int) function {ep}_batch_select_v1(context, slot) bind(C, name='{ep}_batch_select_v1') result(status)
     ! Make a slot live: the live slot's registers kept, and its units' state stored
-    ! unless its chunk has finished; the slot's state loaded if it was stored.
+    ! unless its chunk has finished; the slot's state loaded if it was stored, and a
+    ! slot not yet started given the entry state, so its chunk begins as it would after
+    ! the previous chunk had finished -- not amid another chunk's allocations.
     integer(c_int), value, intent(in) :: context, slot
     status = 1_c_int
     if (.not. created .or. context /= context_id) then
@@ -2747,7 +2753,8 @@ def _batch_pieces(spec: Spec, hooked: list[str], paused_pcs: str) -> tuple[str, 
     lchnk = slot_lchnk(live)
     token = slot_token(live)
     if (slot_stored(live)) then
-{load_calls}    end if
+{load_calls}    else if (pc == pc_chunk_begin) then
+{fresh_calls}    end if
     status = 0_c_int
   end function {ep}_batch_select_v1
 

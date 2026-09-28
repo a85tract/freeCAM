@@ -434,8 +434,10 @@ contains
       slot_token(s) = int(s, c_int) * 1048576_c_int
       slot_stored(s) = .false.
     end do
-    call glue_chunk_slots(nslots)
-    call driver_chunk_slots(nslots)
+    call glue_chunk_slots(nslots + 1)
+    call driver_chunk_slots(nslots + 1)
+    call glue_store_chunk(nslots + 1)
+    call driver_store_chunk(nslots + 1)
     call_index = 0_c_int
     live = 0
     pc = pc_idle
@@ -446,7 +448,9 @@ contains
 
   integer(c_int) function pycam_shcu_batch_select_v1(context, slot) bind(C, name='pycam_shcu_batch_select_v1') result(status)
     ! Make a slot live: the live slot's registers kept, and its units' state stored
-    ! unless its chunk has finished; the slot's state loaded if it was stored.
+    ! unless its chunk has finished; the slot's state loaded if it was stored, and a
+    ! slot not yet started given the entry state, so its chunk begins as it would after
+    ! the previous chunk had finished -- not amid another chunk's allocations.
     integer(c_int), value, intent(in) :: context, slot
     status = 1_c_int
     if (.not. created .or. context /= context_id) then
@@ -478,6 +482,9 @@ contains
     if (slot_stored(live)) then
       call glue_load_chunk(live)
       call driver_load_chunk(live)
+    else if (pc == pc_chunk_begin) then
+      call glue_load_chunk(nslots + 1)
+      call driver_load_chunk(nslots + 1)
     end if
     status = 0_c_int
   end function pycam_shcu_batch_select_v1

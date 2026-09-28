@@ -395,3 +395,26 @@ def test_batched_chunks_need_a_runner_with_a_batched_mode() -> None:
     stage = SegmentedStage("s", FakeRunner())
     with pytest.raises(PhysicsError, match="no batched mode"):
         stage.run({"a": _original_a, "b": None}, batched=True)
+
+
+def test_a_slot_whose_frame_comes_back_changed_is_reported(monkeypatch) -> None:
+    monkeypatch.setenv("FREECAM_BATCH_VERIFY", "1")
+    runner = BatchedFakeRunner()
+    original_select = runner.batch_select
+
+    def select(cid, slot):
+        original_select(cid, slot)
+        if slot == 0 and runner.contexts[cid]["pc"] == (0, 0, "a") and ("frame", "a", 11, 0) in runner.log:
+            runner.x[10][2, 1] += 1.0                         # the store lost a value of chunk 10
+    runner.batch_select = select
+    stage = SegmentedStage("s", runner)
+    assert stage.verify_frames
+    with pytest.raises(PhysicsError, match=r"lchnk 10\) came back with its frame inputs changed: x: 1 of 24 differ, first at \(2, 1\)"):
+        stage.run({"a": StackedOriginal(), "b": None}, batched=True)
+
+
+def test_a_faithful_store_passes_the_check(monkeypatch) -> None:
+    monkeypatch.setenv("FREECAM_BATCH_VERIFY", "1")
+    runner = BatchedFakeRunner()
+    SegmentedStage("s", runner).run({"a": StackedOriginal(), "b": None}, batched=True)
+    assert all(np.array_equal(_whole().y[c], runner.y[c]) for c in (10, 11))

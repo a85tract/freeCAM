@@ -15,6 +15,7 @@ runner and later bound to the image's ``pycam_stage_*`` entries.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
@@ -362,6 +363,33 @@ class _Waiting:
     ncol: int
     batch: dict[str, np.ndarray] | None
     lanes: frozenset[str]
+    #: the frame's inputs as parked, when the stage verifies what comes back (verify_frames)
+    parked: dict[str, np.ndarray] | None = None
+
+
+def _verify_restored(stage: str, slot: int, frame: KernelFrame, parked: Mapping[str, np.ndarray]) -> None:
+    """A slot's frame inputs as they were parked, bit for bit, or a report of what came back changed."""
+
+    changed = []
+    for argument in frame.arguments:
+        if argument.name not in parked:
+            continue
+        now = np.ascontiguousarray(_lanes(argument.array, frame.ncol))
+        then = np.ascontiguousarray(parked[argument.name])
+        if now.shape != then.shape:
+            changed.append(f"{argument.name} shape {then.shape} -> {now.shape}")
+            continue
+        if now.size == 0 or now.tobytes() == then.tobytes():
+            continue
+        width = now.dtype.itemsize
+        differ = (now.view(np.uint8).reshape(now.size, width) != then.view(np.uint8).reshape(then.size, width)).any(axis=1)
+        first = int(np.flatnonzero(differ)[0])
+        index = np.unravel_index(first, now.shape) if now.ndim else ()
+        changed.append(f"{argument.name}: {int(differ.sum())} of {now.size} differ, first at {tuple(int(i) for i in index)} "
+                       f"(parked {then.reshape(-1)[first]!r}, back {now.reshape(-1)[first]!r})")
+    if changed:
+        raise PhysicsError(f"{stage}: chunk slot {slot} (lchnk {frame.lchnk}) came back with its frame "
+                           f"inputs changed: " + "; ".join(changed))
 
 
 def _lane_names(frame: KernelFrame) -> frozenset[str]:
@@ -414,6 +442,10 @@ class SegmentedStage:
         self.tainted: str | None = None
         self.generation = 0
         self.counters = SegmentCounters()
+        #: batched mode: a slot's frame inputs, copied when it is parked, must come back bit
+        #: for bit when it is made live again -- a check of the runner's chunk store
+        #: (FREECAM_BATCH_VERIFY=1 turns it on)
+        self.verify_frames = os.environ.get("FREECAM_BATCH_VERIFY") == "1"
 
     @property
     def idle(self) -> bool:
@@ -536,8 +568,10 @@ class SegmentedStage:
             batch = frame.batch() if stacked else None
             if batch is not None:
                 counters.bytes_copied_in += sum(v.nbytes for v in batch.values())
+            parked = ({a.name: np.array(_lanes(a.array, frame.ncol), copy=True) for a in frame.arguments if a.is_input}
+                      if self.verify_frames else None)
             waiting[slot] = _Waiting(kernel=frame.kernel, token=frame.token, lchnk=frame.lchnk, ncol=frame.ncol,
-                                     batch=batch, lanes=_lane_names(frame))
+                                     batch=batch, lanes=_lane_names(frame), parked=parked)
 
         try:
             for slot in range(slots):
@@ -565,6 +599,8 @@ class SegmentedStage:
                         raise PhysicsError(
                             f"{self.stage_name}: chunk slot {slot} came back paused on {frame.kernel!r} "
                             f"(token {frame.token}), not where it was parked ({parked.kernel!r}, {parked.token})")
+                    if parked.parked is not None:
+                        _verify_restored(self.stage_name, slot, frame, parked.parked)
                     self.paused_on = frame
                     model = kernels[frame.kernel]
                     if slot in answers:
