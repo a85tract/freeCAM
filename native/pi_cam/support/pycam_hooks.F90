@@ -17,7 +17,8 @@ module pycam_hooks
   public :: pycam_hooks_arm_v1, pycam_hooks_counts_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
             pycam_hooks_original_v1, pycam_hooks_reset_v1, pycam_hooks_count_v1, pycam_hooks_name_v1, &
             pycam_hooks_bind_model_v1, pycam_hooks_bind_model_v2, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1, &
-            pycam_hooks_model_seconds_v1, pycam_hooks_bind_plugin_v1
+            pycam_hooks_model_seconds_v1, pycam_hooks_bind_plugin_v1, pycam_hooks_batch_v1, pycam_hooks_batch_stats_v1, &
+            pycam_hooks_batch_begin_compute_uwshcu_inv, pycam_hooks_batch_put_compute_uwshcu_inv, pycam_hooks_batch_forward_compute_uwshcu_inv
 
   integer, parameter :: nhooks = 11
   integer(c_int), parameter :: ev_needs_kernel = 1_c_int
@@ -79,6 +80,78 @@ module pycam_hooks
   integer(c_int), save :: frame_ndims(max_slots) = 0_c_int, frame_dtypes(max_slots) = 0_c_int, frame_intents(max_slots) = 0_c_int
   integer(c_int64_t), save :: frame_shapes(max_rank, max_slots) = 0_c_int64_t
   integer(c_int), save :: frame_nslots = 0_c_int, frame_ncol = 0_c_int
+  ! every chunk of the rank answered at once (pycam_hooks_batch_v1): 0 call by call; 1 the bound
+  ! model, one forward over every chunk's live columns gathered before the stage runs; 2 the
+  ! original on each gathered chunk (the gate).  Each call then takes its chunk's answer, after
+  ! its inputs are found to be what was gathered for it, bit for bit
+  logical, parameter :: can_batch(nhooks) = (/ .false., .false., .false., .false., .false., .true., .false., .false., .false., .false., .false. /)
+  integer, save :: batch_mode(nhooks) = 0
+  ! check: every call also runs the model on its own chunk and the largest difference is kept
+  logical, save :: batch_check(nhooks) = .false.
+  real(c_double), save :: batch_check_diff(nhooks) = 0.0_c_double
+  integer(c_int64_t), save :: batch_forwards(nhooks) = 0_c_int64_t, batch_chunks(nhooks) = 0_c_int64_t
+  integer(c_int64_t), save :: batch_rows(nhooks) = 0_c_int64_t, batch_untaken(nhooks) = 0_c_int64_t
+  integer(c_int64_t), save :: batch_ticks(nhooks) = 0_c_int64_t
+  ! compute_uwshcu_inv: the chunks gathered (bn of bcap), their live columns stacked (bfill of brows)
+  integer, save :: bn_compute_uwshcu_inv = 0, bcap_compute_uwshcu_inv = 0, bfill_compute_uwshcu_inv = 0, brows_compute_uwshcu_inv = 0
+  integer, allocatable, save :: bchunk_compute_uwshcu_inv(:), boff_compute_uwshcu_inv(:), bcol_compute_uwshcu_inv(:)
+  logical, allocatable, save :: btaken_compute_uwshcu_inv(:)
+  integer(c_int), allocatable, save :: bs_compute_uwshcu_inv_mix(:)
+  integer(c_int), allocatable, save :: bs_compute_uwshcu_inv_mkx(:)
+  integer(c_int), allocatable, save :: bs_compute_uwshcu_inv_iend(:)
+  integer(c_int), allocatable, save :: bs_compute_uwshcu_inv_ncnst(:)
+  real(c_double), allocatable, save :: bs_compute_uwshcu_inv_dt(:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_ps0_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_zs0_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_p0_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_z0_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_dp0_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_u0_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_v0_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_qv0_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_ql0_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_qi0_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_t0_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_s0_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_tr0_inv(:,:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_tke_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_cldfrct_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_concldfrct_inv(:,:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_pblh(:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_cush(:)
+  integer(c_int), allocatable, save :: bs_compute_uwshcu_inv_lchnk(:)
+  real(c_double), allocatable, target, save :: bi_compute_uwshcu_inv_dpdry0_inv(:,:)
+  real(c_double), allocatable, target, save :: bo_compute_uwshcu_inv(:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_cush(:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_umf_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_slflx_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_qtflx_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_flxprc1_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_flxsnow1_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_qvten_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_qlten_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_qiten_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_sten_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_uten_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_vten_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_trten_inv(:,:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_qrten_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_qsten_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_precip(:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_snow(:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_evapc_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_cufrc_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_qcu_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_qlu_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_qiu_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_cbmf(:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_qc_inv(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_rliq(:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_cnt_inv(:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_cnb_inv(:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_wtprec(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_wtsnow(:,:,:)
+  real(c_double), allocatable, save :: bf_compute_uwshcu_inv_wtqc_inv(:,:,:,:)
 
   interface
     integer(c_int) function pycam_fiber_running_v1() bind(C, name='pycam_fiber_running_v1')
@@ -3248,6 +3321,14 @@ contains
     real(c_double), intent(out), target :: wtqc_inv(16, 30, 57)
     integer(c_int64_t) :: h0, h1
     calls(6) = calls(6) + 1_c_int64_t
+    if (batch_mode(6) /= 0) then
+      ! answered for every chunk before the stage ran: the call takes its chunk's rows
+      call system_clock(h0)
+      call batched_compute_uwshcu_inv(mix, mkx, iend, ncnst, dt, ps0_inv, zs0_inv, p0_inv, z0_inv, dp0_inv, u0_inv, v0_inv, qv0_inv, ql0_inv, qi0_inv, t0_inv, s0_inv, tr0_inv, tke_inv, cldfrct_inv, concldfrct_inv, pblh, cush, umf_inv, slflx_inv, qtflx_inv, flxprc1_inv, flxsnow1_inv, qvten_inv, qlten_inv, qiten_inv, sten_inv, uten_inv, vten_inv, trten_inv, qrten_inv, qsten_inv, precip, snow, evapc_inv, cufrc_inv, qcu_inv, qlu_inv, qiu_inv, cbmf, qc_inv, rliq, cnt_inv, cnb_inv, lchnk, dpdry0_inv, wtprec, wtsnow, wtqc_inv)
+      call system_clock(h1)
+      hook_ticks(6) = hook_ticks(6) + (h1 - h0)
+      return
+    end if
     if (modeled(6)) then
       answered(6) = answered(6) + 1_c_int64_t
       call system_clock(h0)
@@ -3758,6 +3839,810 @@ contains
     call torch_delete(in_t)
     call torch_delete(out_t)
   end subroutine warm_compute_uwshcu_inv
+
+  subroutine pycam_hooks_batch_begin_compute_uwshcu_inv(nslots, nrows)
+    ! a new batch for compute_uwshcu_inv: nslots chunks with nrows live columns in all
+    integer, intent(in) :: nslots, nrows
+    if (bn_compute_uwshcu_inv > 0) batch_untaken(6) = batch_untaken(6) + count(.not. btaken_compute_uwshcu_inv(1:bn_compute_uwshcu_inv))
+    if (nslots /= bcap_compute_uwshcu_inv .or. nrows /= brows_compute_uwshcu_inv) then
+      if (allocated(bchunk_compute_uwshcu_inv)) then
+        deallocate(bchunk_compute_uwshcu_inv)
+        deallocate(boff_compute_uwshcu_inv)
+        deallocate(bcol_compute_uwshcu_inv)
+        deallocate(btaken_compute_uwshcu_inv)
+        deallocate(bo_compute_uwshcu_inv)
+        deallocate(bs_compute_uwshcu_inv_mix)
+        deallocate(bs_compute_uwshcu_inv_mkx)
+        deallocate(bs_compute_uwshcu_inv_iend)
+        deallocate(bs_compute_uwshcu_inv_ncnst)
+        deallocate(bs_compute_uwshcu_inv_dt)
+        deallocate(bi_compute_uwshcu_inv_ps0_inv)
+        deallocate(bi_compute_uwshcu_inv_zs0_inv)
+        deallocate(bi_compute_uwshcu_inv_p0_inv)
+        deallocate(bi_compute_uwshcu_inv_z0_inv)
+        deallocate(bi_compute_uwshcu_inv_dp0_inv)
+        deallocate(bi_compute_uwshcu_inv_u0_inv)
+        deallocate(bi_compute_uwshcu_inv_v0_inv)
+        deallocate(bi_compute_uwshcu_inv_qv0_inv)
+        deallocate(bi_compute_uwshcu_inv_ql0_inv)
+        deallocate(bi_compute_uwshcu_inv_qi0_inv)
+        deallocate(bi_compute_uwshcu_inv_t0_inv)
+        deallocate(bi_compute_uwshcu_inv_s0_inv)
+        deallocate(bi_compute_uwshcu_inv_tr0_inv)
+        deallocate(bi_compute_uwshcu_inv_tke_inv)
+        deallocate(bi_compute_uwshcu_inv_cldfrct_inv)
+        deallocate(bi_compute_uwshcu_inv_concldfrct_inv)
+        deallocate(bi_compute_uwshcu_inv_pblh)
+        deallocate(bi_compute_uwshcu_inv_cush)
+        deallocate(bs_compute_uwshcu_inv_lchnk)
+        deallocate(bi_compute_uwshcu_inv_dpdry0_inv)
+        deallocate(bf_compute_uwshcu_inv_cush)
+        deallocate(bf_compute_uwshcu_inv_umf_inv)
+        deallocate(bf_compute_uwshcu_inv_slflx_inv)
+        deallocate(bf_compute_uwshcu_inv_qtflx_inv)
+        deallocate(bf_compute_uwshcu_inv_flxprc1_inv)
+        deallocate(bf_compute_uwshcu_inv_flxsnow1_inv)
+        deallocate(bf_compute_uwshcu_inv_qvten_inv)
+        deallocate(bf_compute_uwshcu_inv_qlten_inv)
+        deallocate(bf_compute_uwshcu_inv_qiten_inv)
+        deallocate(bf_compute_uwshcu_inv_sten_inv)
+        deallocate(bf_compute_uwshcu_inv_uten_inv)
+        deallocate(bf_compute_uwshcu_inv_vten_inv)
+        deallocate(bf_compute_uwshcu_inv_trten_inv)
+        deallocate(bf_compute_uwshcu_inv_qrten_inv)
+        deallocate(bf_compute_uwshcu_inv_qsten_inv)
+        deallocate(bf_compute_uwshcu_inv_precip)
+        deallocate(bf_compute_uwshcu_inv_snow)
+        deallocate(bf_compute_uwshcu_inv_evapc_inv)
+        deallocate(bf_compute_uwshcu_inv_cufrc_inv)
+        deallocate(bf_compute_uwshcu_inv_qcu_inv)
+        deallocate(bf_compute_uwshcu_inv_qlu_inv)
+        deallocate(bf_compute_uwshcu_inv_qiu_inv)
+        deallocate(bf_compute_uwshcu_inv_cbmf)
+        deallocate(bf_compute_uwshcu_inv_qc_inv)
+        deallocate(bf_compute_uwshcu_inv_rliq)
+        deallocate(bf_compute_uwshcu_inv_cnt_inv)
+        deallocate(bf_compute_uwshcu_inv_cnb_inv)
+        deallocate(bf_compute_uwshcu_inv_wtprec)
+        deallocate(bf_compute_uwshcu_inv_wtsnow)
+        deallocate(bf_compute_uwshcu_inv_wtqc_inv)
+      end if
+      allocate(bchunk_compute_uwshcu_inv(nslots), boff_compute_uwshcu_inv(nslots), bcol_compute_uwshcu_inv(nslots), btaken_compute_uwshcu_inv(nslots))
+      allocate(bs_compute_uwshcu_inv_mix(nslots))
+      allocate(bs_compute_uwshcu_inv_mkx(nslots))
+      allocate(bs_compute_uwshcu_inv_iend(nslots))
+      allocate(bs_compute_uwshcu_inv_ncnst(nslots))
+      allocate(bs_compute_uwshcu_inv_dt(nslots))
+      allocate(bi_compute_uwshcu_inv_ps0_inv(nrows, 31))
+      allocate(bi_compute_uwshcu_inv_zs0_inv(nrows, 31))
+      allocate(bi_compute_uwshcu_inv_p0_inv(nrows, 30))
+      allocate(bi_compute_uwshcu_inv_z0_inv(nrows, 30))
+      allocate(bi_compute_uwshcu_inv_dp0_inv(nrows, 30))
+      allocate(bi_compute_uwshcu_inv_u0_inv(nrows, 30))
+      allocate(bi_compute_uwshcu_inv_v0_inv(nrows, 30))
+      allocate(bi_compute_uwshcu_inv_qv0_inv(nrows, 30))
+      allocate(bi_compute_uwshcu_inv_ql0_inv(nrows, 30))
+      allocate(bi_compute_uwshcu_inv_qi0_inv(nrows, 30))
+      allocate(bi_compute_uwshcu_inv_t0_inv(nrows, 30))
+      allocate(bi_compute_uwshcu_inv_s0_inv(nrows, 30))
+      allocate(bi_compute_uwshcu_inv_tr0_inv(nrows, 30, 57))
+      allocate(bi_compute_uwshcu_inv_tke_inv(nrows, 31))
+      allocate(bi_compute_uwshcu_inv_cldfrct_inv(nrows, 30))
+      allocate(bi_compute_uwshcu_inv_concldfrct_inv(nrows, 30))
+      allocate(bi_compute_uwshcu_inv_pblh(nrows))
+      allocate(bi_compute_uwshcu_inv_cush(nrows))
+      allocate(bs_compute_uwshcu_inv_lchnk(nslots))
+      allocate(bi_compute_uwshcu_inv_dpdry0_inv(nrows, 30))
+      allocate(bo_compute_uwshcu_inv(nrows, 1190))
+      allocate(bf_compute_uwshcu_inv_cush(16, nslots))
+      allocate(bf_compute_uwshcu_inv_umf_inv(16, 31, nslots))
+      allocate(bf_compute_uwshcu_inv_slflx_inv(16, 31, nslots))
+      allocate(bf_compute_uwshcu_inv_qtflx_inv(16, 31, nslots))
+      allocate(bf_compute_uwshcu_inv_flxprc1_inv(16, 31, nslots))
+      allocate(bf_compute_uwshcu_inv_flxsnow1_inv(16, 31, nslots))
+      allocate(bf_compute_uwshcu_inv_qvten_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_qlten_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_qiten_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_sten_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_uten_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_vten_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_trten_inv(16, 30, 57, nslots))
+      allocate(bf_compute_uwshcu_inv_qrten_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_qsten_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_precip(16, nslots))
+      allocate(bf_compute_uwshcu_inv_snow(16, nslots))
+      allocate(bf_compute_uwshcu_inv_evapc_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_cufrc_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_qcu_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_qlu_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_qiu_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_cbmf(16, nslots))
+      allocate(bf_compute_uwshcu_inv_qc_inv(16, 30, nslots))
+      allocate(bf_compute_uwshcu_inv_rliq(16, nslots))
+      allocate(bf_compute_uwshcu_inv_cnt_inv(16, nslots))
+      allocate(bf_compute_uwshcu_inv_cnb_inv(16, nslots))
+      allocate(bf_compute_uwshcu_inv_wtprec(16, 57, nslots))
+      allocate(bf_compute_uwshcu_inv_wtsnow(16, 57, nslots))
+      allocate(bf_compute_uwshcu_inv_wtqc_inv(16, 30, 57, nslots))
+      bcap_compute_uwshcu_inv = nslots; brows_compute_uwshcu_inv = nrows
+    end if
+    bn_compute_uwshcu_inv = 0; bfill_compute_uwshcu_inv = 0
+  end subroutine pycam_hooks_batch_begin_compute_uwshcu_inv
+
+  subroutine pycam_hooks_batch_put_compute_uwshcu_inv(mix, mkx, iend, ncnst, dt, ps0_inv, zs0_inv, p0_inv, z0_inv, dp0_inv, u0_inv, v0_inv, qv0_inv, ql0_inv, qi0_inv, t0_inv, s0_inv, tr0_inv, tke_inv, cldfrct_inv, concldfrct_inv, pblh, cush, lchnk, dpdry0_inv)
+    ! one chunk's inputs, gathered as its call to compute_uwshcu_inv will pass them
+    integer(c_int), intent(in) :: mix
+    integer(c_int), intent(in) :: mkx
+    integer(c_int), intent(in) :: iend
+    integer(c_int), intent(in) :: ncnst
+    real(c_double), intent(in) :: dt
+    real(c_double), intent(in) :: ps0_inv(16, 31)
+    real(c_double), intent(in) :: zs0_inv(16, 31)
+    real(c_double), intent(in) :: p0_inv(16, 30)
+    real(c_double), intent(in) :: z0_inv(16, 30)
+    real(c_double), intent(in) :: dp0_inv(16, 30)
+    real(c_double), intent(in) :: u0_inv(16, 30)
+    real(c_double), intent(in) :: v0_inv(16, 30)
+    real(c_double), intent(in) :: qv0_inv(16, 30)
+    real(c_double), intent(in) :: ql0_inv(16, 30)
+    real(c_double), intent(in) :: qi0_inv(16, 30)
+    real(c_double), intent(in) :: t0_inv(16, 30)
+    real(c_double), intent(in) :: s0_inv(16, 30)
+    real(c_double), intent(in) :: tr0_inv(16, 30, 57)
+    real(c_double), intent(in) :: tke_inv(16, 31)
+    real(c_double), intent(in) :: cldfrct_inv(16, 30)
+    real(c_double), intent(in) :: concldfrct_inv(16, 30)
+    real(c_double), intent(in) :: pblh(16)
+    real(c_double), intent(in) :: cush(16)
+    integer(c_int), intent(in) :: lchnk
+    real(c_double), intent(in) :: dpdry0_inv(16, 30)
+    integer :: n, o
+    if (bn_compute_uwshcu_inv >= bcap_compute_uwshcu_inv) error stop 'pycam_hooks: more chunks gathered for compute_uwshcu_inv than the batch was begun for'
+    n = int(iend); o = bfill_compute_uwshcu_inv
+    if (n < 0 .or. n > 16 .or. o + n > brows_compute_uwshcu_inv) error stop 'pycam_hooks: compute_uwshcu_inv: a chunk''s columns overrun the batch'
+    bn_compute_uwshcu_inv = bn_compute_uwshcu_inv + 1
+    bchunk_compute_uwshcu_inv(bn_compute_uwshcu_inv) = int(lchnk); boff_compute_uwshcu_inv(bn_compute_uwshcu_inv) = o; bcol_compute_uwshcu_inv(bn_compute_uwshcu_inv) = n; btaken_compute_uwshcu_inv(bn_compute_uwshcu_inv) = .false.
+    bs_compute_uwshcu_inv_mix(bn_compute_uwshcu_inv) = mix
+    bs_compute_uwshcu_inv_mkx(bn_compute_uwshcu_inv) = mkx
+    bs_compute_uwshcu_inv_iend(bn_compute_uwshcu_inv) = iend
+    bs_compute_uwshcu_inv_ncnst(bn_compute_uwshcu_inv) = ncnst
+    bs_compute_uwshcu_inv_dt(bn_compute_uwshcu_inv) = dt
+    bi_compute_uwshcu_inv_ps0_inv(o + 1:o + n, :) = ps0_inv(1:n, :)
+    bi_compute_uwshcu_inv_zs0_inv(o + 1:o + n, :) = zs0_inv(1:n, :)
+    bi_compute_uwshcu_inv_p0_inv(o + 1:o + n, :) = p0_inv(1:n, :)
+    bi_compute_uwshcu_inv_z0_inv(o + 1:o + n, :) = z0_inv(1:n, :)
+    bi_compute_uwshcu_inv_dp0_inv(o + 1:o + n, :) = dp0_inv(1:n, :)
+    bi_compute_uwshcu_inv_u0_inv(o + 1:o + n, :) = u0_inv(1:n, :)
+    bi_compute_uwshcu_inv_v0_inv(o + 1:o + n, :) = v0_inv(1:n, :)
+    bi_compute_uwshcu_inv_qv0_inv(o + 1:o + n, :) = qv0_inv(1:n, :)
+    bi_compute_uwshcu_inv_ql0_inv(o + 1:o + n, :) = ql0_inv(1:n, :)
+    bi_compute_uwshcu_inv_qi0_inv(o + 1:o + n, :) = qi0_inv(1:n, :)
+    bi_compute_uwshcu_inv_t0_inv(o + 1:o + n, :) = t0_inv(1:n, :)
+    bi_compute_uwshcu_inv_s0_inv(o + 1:o + n, :) = s0_inv(1:n, :)
+    bi_compute_uwshcu_inv_tr0_inv(o + 1:o + n, :, :) = tr0_inv(1:n, :, :)
+    bi_compute_uwshcu_inv_tke_inv(o + 1:o + n, :) = tke_inv(1:n, :)
+    bi_compute_uwshcu_inv_cldfrct_inv(o + 1:o + n, :) = cldfrct_inv(1:n, :)
+    bi_compute_uwshcu_inv_concldfrct_inv(o + 1:o + n, :) = concldfrct_inv(1:n, :)
+    bi_compute_uwshcu_inv_pblh(o + 1:o + n) = pblh(1:n)
+    bi_compute_uwshcu_inv_cush(o + 1:o + n) = cush(1:n)
+    bs_compute_uwshcu_inv_lchnk(bn_compute_uwshcu_inv) = lchnk
+    bi_compute_uwshcu_inv_dpdry0_inv(o + 1:o + n, :) = dpdry0_inv(1:n, :)
+    bfill_compute_uwshcu_inv = o + n
+  end subroutine pycam_hooks_batch_put_compute_uwshcu_inv
+
+  subroutine pycam_hooks_batch_forward_compute_uwshcu_inv()
+    ! every gathered chunk of compute_uwshcu_inv answered: one forward of the bound model over the stacked
+    ! live columns (mode 1), or the original chunk by chunk (mode 2)
+    type(torch_tensor) :: in_t(20), out_t(1)
+    real(c_double), pointer, contiguous :: op_packed(:,:)
+    real(c_double), target :: s_dt(1)
+    real(c_double), pointer, contiguous :: sp_dt(:)
+    real(c_double), pointer, contiguous :: v_ps0_inv(:,:)
+    real(c_double), pointer, contiguous :: v_zs0_inv(:,:)
+    real(c_double), pointer, contiguous :: v_p0_inv(:,:)
+    real(c_double), pointer, contiguous :: v_z0_inv(:,:)
+    real(c_double), pointer, contiguous :: v_dp0_inv(:,:)
+    real(c_double), pointer, contiguous :: v_u0_inv(:,:)
+    real(c_double), pointer, contiguous :: v_v0_inv(:,:)
+    real(c_double), pointer, contiguous :: v_qv0_inv(:,:)
+    real(c_double), pointer, contiguous :: v_ql0_inv(:,:)
+    real(c_double), pointer, contiguous :: v_qi0_inv(:,:)
+    real(c_double), pointer, contiguous :: v_t0_inv(:,:)
+    real(c_double), pointer, contiguous :: v_s0_inv(:,:)
+    real(c_double), pointer, contiguous :: v_tr0_inv(:,:,:)
+    real(c_double), pointer, contiguous :: v_tke_inv(:,:)
+    real(c_double), pointer, contiguous :: v_cldfrct_inv(:,:)
+    real(c_double), pointer, contiguous :: v_concldfrct_inv(:,:)
+    real(c_double), pointer, contiguous :: v_pblh(:)
+    real(c_double), pointer, contiguous :: v_cush(:)
+    real(c_double), pointer, contiguous :: v_dpdry0_inv(:,:)
+    real(c_double), save :: l_ps0_inv(16, 31)
+    real(c_double), save :: l_zs0_inv(16, 31)
+    real(c_double), save :: l_p0_inv(16, 30)
+    real(c_double), save :: l_z0_inv(16, 30)
+    real(c_double), save :: l_dp0_inv(16, 30)
+    real(c_double), save :: l_u0_inv(16, 30)
+    real(c_double), save :: l_v0_inv(16, 30)
+    real(c_double), save :: l_qv0_inv(16, 30)
+    real(c_double), save :: l_ql0_inv(16, 30)
+    real(c_double), save :: l_qi0_inv(16, 30)
+    real(c_double), save :: l_t0_inv(16, 30)
+    real(c_double), save :: l_s0_inv(16, 30)
+    real(c_double), save :: l_tr0_inv(16, 30, 57)
+    real(c_double), save :: l_tke_inv(16, 31)
+    real(c_double), save :: l_cldfrct_inv(16, 30)
+    real(c_double), save :: l_concldfrct_inv(16, 30)
+    real(c_double), save :: l_pblh(16)
+    real(c_double), save :: l_cush(16)
+    real(c_double), save :: l_umf_inv(16, 31)
+    real(c_double), save :: l_slflx_inv(16, 31)
+    real(c_double), save :: l_qtflx_inv(16, 31)
+    real(c_double), save :: l_flxprc1_inv(16, 31)
+    real(c_double), save :: l_flxsnow1_inv(16, 31)
+    real(c_double), save :: l_qvten_inv(16, 30)
+    real(c_double), save :: l_qlten_inv(16, 30)
+    real(c_double), save :: l_qiten_inv(16, 30)
+    real(c_double), save :: l_sten_inv(16, 30)
+    real(c_double), save :: l_uten_inv(16, 30)
+    real(c_double), save :: l_vten_inv(16, 30)
+    real(c_double), save :: l_trten_inv(16, 30, 57)
+    real(c_double), save :: l_qrten_inv(16, 30)
+    real(c_double), save :: l_qsten_inv(16, 30)
+    real(c_double), save :: l_precip(16)
+    real(c_double), save :: l_snow(16)
+    real(c_double), save :: l_evapc_inv(16, 30)
+    real(c_double), save :: l_cufrc_inv(16, 30)
+    real(c_double), save :: l_qcu_inv(16, 30)
+    real(c_double), save :: l_qlu_inv(16, 30)
+    real(c_double), save :: l_qiu_inv(16, 30)
+    real(c_double), save :: l_cbmf(16)
+    real(c_double), save :: l_qc_inv(16, 30)
+    real(c_double), save :: l_rliq(16)
+    real(c_double), save :: l_cnt_inv(16)
+    real(c_double), save :: l_cnb_inv(16)
+    real(c_double), save :: l_dpdry0_inv(16, 30)
+    real(c_double), save :: l_wtprec(16, 57)
+    real(c_double), save :: l_wtsnow(16, 57)
+    real(c_double), save :: l_wtqc_inv(16, 30, 57)
+    integer :: slot, n, o
+    integer(c_int64_t) :: t0, t1
+    if (bn_compute_uwshcu_inv /= bcap_compute_uwshcu_inv .or. bfill_compute_uwshcu_inv /= brows_compute_uwshcu_inv) error stop 'pycam_hooks: compute_uwshcu_inv: the batch is not complete'
+    call system_clock(t0)
+    select case (batch_mode(6))
+    case (1)
+      ! dt goes to the model once: every chunk's must be alike
+      if (any(bs_compute_uwshcu_inv_dt(1:bn_compute_uwshcu_inv) /= bs_compute_uwshcu_inv_dt(1))) error stop 'pycam_hooks: compute_uwshcu_inv: the chunks differ in dt'
+      s_dt(1) = bs_compute_uwshcu_inv_dt(1)
+      sp_dt => s_dt
+      call torch_tensor_from_array(in_t(1), sp_dt, model_device(6), model_device_index(6))
+      v_ps0_inv => bi_compute_uwshcu_inv_ps0_inv
+      call torch_tensor_from_array(in_t(2), v_ps0_inv, model_device(6), model_device_index(6))
+      v_zs0_inv => bi_compute_uwshcu_inv_zs0_inv
+      call torch_tensor_from_array(in_t(3), v_zs0_inv, model_device(6), model_device_index(6))
+      v_p0_inv => bi_compute_uwshcu_inv_p0_inv
+      call torch_tensor_from_array(in_t(4), v_p0_inv, model_device(6), model_device_index(6))
+      v_z0_inv => bi_compute_uwshcu_inv_z0_inv
+      call torch_tensor_from_array(in_t(5), v_z0_inv, model_device(6), model_device_index(6))
+      v_dp0_inv => bi_compute_uwshcu_inv_dp0_inv
+      call torch_tensor_from_array(in_t(6), v_dp0_inv, model_device(6), model_device_index(6))
+      v_u0_inv => bi_compute_uwshcu_inv_u0_inv
+      call torch_tensor_from_array(in_t(7), v_u0_inv, model_device(6), model_device_index(6))
+      v_v0_inv => bi_compute_uwshcu_inv_v0_inv
+      call torch_tensor_from_array(in_t(8), v_v0_inv, model_device(6), model_device_index(6))
+      v_qv0_inv => bi_compute_uwshcu_inv_qv0_inv
+      call torch_tensor_from_array(in_t(9), v_qv0_inv, model_device(6), model_device_index(6))
+      v_ql0_inv => bi_compute_uwshcu_inv_ql0_inv
+      call torch_tensor_from_array(in_t(10), v_ql0_inv, model_device(6), model_device_index(6))
+      v_qi0_inv => bi_compute_uwshcu_inv_qi0_inv
+      call torch_tensor_from_array(in_t(11), v_qi0_inv, model_device(6), model_device_index(6))
+      v_t0_inv => bi_compute_uwshcu_inv_t0_inv
+      call torch_tensor_from_array(in_t(12), v_t0_inv, model_device(6), model_device_index(6))
+      v_s0_inv => bi_compute_uwshcu_inv_s0_inv
+      call torch_tensor_from_array(in_t(13), v_s0_inv, model_device(6), model_device_index(6))
+      v_tr0_inv => bi_compute_uwshcu_inv_tr0_inv
+      call torch_tensor_from_array(in_t(14), v_tr0_inv, model_device(6), model_device_index(6))
+      v_tke_inv => bi_compute_uwshcu_inv_tke_inv
+      call torch_tensor_from_array(in_t(15), v_tke_inv, model_device(6), model_device_index(6))
+      v_cldfrct_inv => bi_compute_uwshcu_inv_cldfrct_inv
+      call torch_tensor_from_array(in_t(16), v_cldfrct_inv, model_device(6), model_device_index(6))
+      v_concldfrct_inv => bi_compute_uwshcu_inv_concldfrct_inv
+      call torch_tensor_from_array(in_t(17), v_concldfrct_inv, model_device(6), model_device_index(6))
+      v_pblh => bi_compute_uwshcu_inv_pblh
+      call torch_tensor_from_array(in_t(18), v_pblh, model_device(6), model_device_index(6))
+      v_cush => bi_compute_uwshcu_inv_cush
+      call torch_tensor_from_array(in_t(19), v_cush, model_device(6), model_device_index(6))
+      v_dpdry0_inv => bi_compute_uwshcu_inv_dpdry0_inv
+      call torch_tensor_from_array(in_t(20), v_dpdry0_inv, model_device(6), model_device_index(6))
+      op_packed => bo_compute_uwshcu_inv
+      call torch_tensor_from_array(out_t(1), op_packed, torch_kCPU)
+      call torch_model_forward(models(6), in_t, out_t)
+      call torch_delete(in_t)
+      call torch_delete(out_t)
+    case (2)
+      do slot = 1, bn_compute_uwshcu_inv
+        n = bcol_compute_uwshcu_inv(slot); o = boff_compute_uwshcu_inv(slot)
+        l_ps0_inv = 0.0_c_double
+        l_ps0_inv(1:n, :) = bi_compute_uwshcu_inv_ps0_inv(o + 1:o + n, :)
+        l_zs0_inv = 0.0_c_double
+        l_zs0_inv(1:n, :) = bi_compute_uwshcu_inv_zs0_inv(o + 1:o + n, :)
+        l_p0_inv = 0.0_c_double
+        l_p0_inv(1:n, :) = bi_compute_uwshcu_inv_p0_inv(o + 1:o + n, :)
+        l_z0_inv = 0.0_c_double
+        l_z0_inv(1:n, :) = bi_compute_uwshcu_inv_z0_inv(o + 1:o + n, :)
+        l_dp0_inv = 0.0_c_double
+        l_dp0_inv(1:n, :) = bi_compute_uwshcu_inv_dp0_inv(o + 1:o + n, :)
+        l_u0_inv = 0.0_c_double
+        l_u0_inv(1:n, :) = bi_compute_uwshcu_inv_u0_inv(o + 1:o + n, :)
+        l_v0_inv = 0.0_c_double
+        l_v0_inv(1:n, :) = bi_compute_uwshcu_inv_v0_inv(o + 1:o + n, :)
+        l_qv0_inv = 0.0_c_double
+        l_qv0_inv(1:n, :) = bi_compute_uwshcu_inv_qv0_inv(o + 1:o + n, :)
+        l_ql0_inv = 0.0_c_double
+        l_ql0_inv(1:n, :) = bi_compute_uwshcu_inv_ql0_inv(o + 1:o + n, :)
+        l_qi0_inv = 0.0_c_double
+        l_qi0_inv(1:n, :) = bi_compute_uwshcu_inv_qi0_inv(o + 1:o + n, :)
+        l_t0_inv = 0.0_c_double
+        l_t0_inv(1:n, :) = bi_compute_uwshcu_inv_t0_inv(o + 1:o + n, :)
+        l_s0_inv = 0.0_c_double
+        l_s0_inv(1:n, :) = bi_compute_uwshcu_inv_s0_inv(o + 1:o + n, :)
+        l_tr0_inv = 0.0_c_double
+        l_tr0_inv(1:n, :, :) = bi_compute_uwshcu_inv_tr0_inv(o + 1:o + n, :, :)
+        l_tke_inv = 0.0_c_double
+        l_tke_inv(1:n, :) = bi_compute_uwshcu_inv_tke_inv(o + 1:o + n, :)
+        l_cldfrct_inv = 0.0_c_double
+        l_cldfrct_inv(1:n, :) = bi_compute_uwshcu_inv_cldfrct_inv(o + 1:o + n, :)
+        l_concldfrct_inv = 0.0_c_double
+        l_concldfrct_inv(1:n, :) = bi_compute_uwshcu_inv_concldfrct_inv(o + 1:o + n, :)
+        l_pblh = 0.0_c_double
+        l_pblh(1:n) = bi_compute_uwshcu_inv_pblh(o + 1:o + n)
+        l_cush = 0.0_c_double
+        l_cush(1:n) = bi_compute_uwshcu_inv_cush(o + 1:o + n)
+        l_umf_inv = 0.0_c_double
+        l_slflx_inv = 0.0_c_double
+        l_qtflx_inv = 0.0_c_double
+        l_flxprc1_inv = 0.0_c_double
+        l_flxsnow1_inv = 0.0_c_double
+        l_qvten_inv = 0.0_c_double
+        l_qlten_inv = 0.0_c_double
+        l_qiten_inv = 0.0_c_double
+        l_sten_inv = 0.0_c_double
+        l_uten_inv = 0.0_c_double
+        l_vten_inv = 0.0_c_double
+        l_trten_inv = 0.0_c_double
+        l_qrten_inv = 0.0_c_double
+        l_qsten_inv = 0.0_c_double
+        l_precip = 0.0_c_double
+        l_snow = 0.0_c_double
+        l_evapc_inv = 0.0_c_double
+        l_cufrc_inv = 0.0_c_double
+        l_qcu_inv = 0.0_c_double
+        l_qlu_inv = 0.0_c_double
+        l_qiu_inv = 0.0_c_double
+        l_cbmf = 0.0_c_double
+        l_qc_inv = 0.0_c_double
+        l_rliq = 0.0_c_double
+        l_cnt_inv = 0.0_c_double
+        l_cnb_inv = 0.0_c_double
+        l_dpdry0_inv = 0.0_c_double
+        l_dpdry0_inv(1:n, :) = bi_compute_uwshcu_inv_dpdry0_inv(o + 1:o + n, :)
+        l_wtprec = 0.0_c_double
+        l_wtsnow = 0.0_c_double
+        l_wtqc_inv = 0.0_c_double
+        call original_compute_uwshcu_inv(bs_compute_uwshcu_inv_mix(slot), bs_compute_uwshcu_inv_mkx(slot), bs_compute_uwshcu_inv_iend(slot), bs_compute_uwshcu_inv_ncnst(slot), bs_compute_uwshcu_inv_dt(slot), l_ps0_inv, l_zs0_inv, l_p0_inv, l_z0_inv, l_dp0_inv, l_u0_inv, l_v0_inv, l_qv0_inv, l_ql0_inv, l_qi0_inv, l_t0_inv, l_s0_inv, l_tr0_inv, l_tke_inv, l_cldfrct_inv, l_concldfrct_inv, l_pblh, l_cush, l_umf_inv, l_slflx_inv, l_qtflx_inv, l_flxprc1_inv, l_flxsnow1_inv, l_qvten_inv, l_qlten_inv, l_qiten_inv, l_sten_inv, l_uten_inv, l_vten_inv, l_trten_inv, l_qrten_inv, l_qsten_inv, l_precip, l_snow, l_evapc_inv, l_cufrc_inv, l_qcu_inv, l_qlu_inv, l_qiu_inv, l_cbmf, l_qc_inv, l_rliq, l_cnt_inv, l_cnb_inv, bs_compute_uwshcu_inv_lchnk(slot), l_dpdry0_inv, l_wtprec, l_wtsnow, l_wtqc_inv)
+        bf_compute_uwshcu_inv_cush(:, slot) = l_cush
+        bf_compute_uwshcu_inv_umf_inv(:, :, slot) = l_umf_inv
+        bf_compute_uwshcu_inv_slflx_inv(:, :, slot) = l_slflx_inv
+        bf_compute_uwshcu_inv_qtflx_inv(:, :, slot) = l_qtflx_inv
+        bf_compute_uwshcu_inv_flxprc1_inv(:, :, slot) = l_flxprc1_inv
+        bf_compute_uwshcu_inv_flxsnow1_inv(:, :, slot) = l_flxsnow1_inv
+        bf_compute_uwshcu_inv_qvten_inv(:, :, slot) = l_qvten_inv
+        bf_compute_uwshcu_inv_qlten_inv(:, :, slot) = l_qlten_inv
+        bf_compute_uwshcu_inv_qiten_inv(:, :, slot) = l_qiten_inv
+        bf_compute_uwshcu_inv_sten_inv(:, :, slot) = l_sten_inv
+        bf_compute_uwshcu_inv_uten_inv(:, :, slot) = l_uten_inv
+        bf_compute_uwshcu_inv_vten_inv(:, :, slot) = l_vten_inv
+        bf_compute_uwshcu_inv_trten_inv(:, :, :, slot) = l_trten_inv
+        bf_compute_uwshcu_inv_qrten_inv(:, :, slot) = l_qrten_inv
+        bf_compute_uwshcu_inv_qsten_inv(:, :, slot) = l_qsten_inv
+        bf_compute_uwshcu_inv_precip(:, slot) = l_precip
+        bf_compute_uwshcu_inv_snow(:, slot) = l_snow
+        bf_compute_uwshcu_inv_evapc_inv(:, :, slot) = l_evapc_inv
+        bf_compute_uwshcu_inv_cufrc_inv(:, :, slot) = l_cufrc_inv
+        bf_compute_uwshcu_inv_qcu_inv(:, :, slot) = l_qcu_inv
+        bf_compute_uwshcu_inv_qlu_inv(:, :, slot) = l_qlu_inv
+        bf_compute_uwshcu_inv_qiu_inv(:, :, slot) = l_qiu_inv
+        bf_compute_uwshcu_inv_cbmf(:, slot) = l_cbmf
+        bf_compute_uwshcu_inv_qc_inv(:, :, slot) = l_qc_inv
+        bf_compute_uwshcu_inv_rliq(:, slot) = l_rliq
+        bf_compute_uwshcu_inv_cnt_inv(:, slot) = l_cnt_inv
+        bf_compute_uwshcu_inv_cnb_inv(:, slot) = l_cnb_inv
+        bf_compute_uwshcu_inv_wtprec(:, :, slot) = l_wtprec
+        bf_compute_uwshcu_inv_wtsnow(:, :, slot) = l_wtsnow
+        bf_compute_uwshcu_inv_wtqc_inv(:, :, :, slot) = l_wtqc_inv
+      end do
+    case default
+      error stop 'pycam_hooks: compute_uwshcu_inv: a batch was gathered while the hook answers call by call'
+    end select
+    call system_clock(t1)
+    batch_ticks(6) = batch_ticks(6) + (t1 - t0)
+    batch_forwards(6) = batch_forwards(6) + 1_c_int64_t
+    batch_chunks(6) = batch_chunks(6) + int(bn_compute_uwshcu_inv, c_int64_t)
+    batch_rows(6) = batch_rows(6) + int(bfill_compute_uwshcu_inv, c_int64_t)
+  end subroutine pycam_hooks_batch_forward_compute_uwshcu_inv
+
+  subroutine batched_compute_uwshcu_inv(mix, mkx, iend, ncnst, dt, ps0_inv, zs0_inv, p0_inv, z0_inv, dp0_inv, u0_inv, v0_inv, qv0_inv, ql0_inv, qi0_inv, t0_inv, s0_inv, tr0_inv, tke_inv, cldfrct_inv, concldfrct_inv, pblh, cush, umf_inv, slflx_inv, qtflx_inv, flxprc1_inv, flxsnow1_inv, qvten_inv, qlten_inv, qiten_inv, sten_inv, uten_inv, vten_inv, trten_inv, qrten_inv, qsten_inv, precip, snow, evapc_inv, cufrc_inv, qcu_inv, qlu_inv, qiu_inv, cbmf, qc_inv, rliq, cnt_inv, cnb_inv, lchnk, dpdry0_inv, wtprec, wtsnow, wtqc_inv)
+    ! the call takes its chunk's answer from the batch, once its inputs are found to be what was
+    ! gathered for it, bit for bit
+    integer(c_int), intent(in) :: mix
+    integer(c_int), intent(in) :: mkx
+    integer(c_int), intent(in) :: iend
+    integer(c_int), intent(in) :: ncnst
+    real(c_double), intent(in) :: dt
+    real(c_double), intent(in), target :: ps0_inv(16, 31)
+    real(c_double), intent(in), target :: zs0_inv(16, 31)
+    real(c_double), intent(in), target :: p0_inv(16, 30)
+    real(c_double), intent(in), target :: z0_inv(16, 30)
+    real(c_double), intent(in), target :: dp0_inv(16, 30)
+    real(c_double), intent(in), target :: u0_inv(16, 30)
+    real(c_double), intent(in), target :: v0_inv(16, 30)
+    real(c_double), intent(in), target :: qv0_inv(16, 30)
+    real(c_double), intent(in), target :: ql0_inv(16, 30)
+    real(c_double), intent(in), target :: qi0_inv(16, 30)
+    real(c_double), intent(in), target :: t0_inv(16, 30)
+    real(c_double), intent(in), target :: s0_inv(16, 30)
+    real(c_double), intent(in), target :: tr0_inv(16, 30, 57)
+    real(c_double), intent(in), target :: tke_inv(16, 31)
+    real(c_double), intent(in), target :: cldfrct_inv(16, 30)
+    real(c_double), intent(in), target :: concldfrct_inv(16, 30)
+    real(c_double), intent(in), target :: pblh(16)
+    real(c_double), intent(inout), target :: cush(16)
+    real(c_double), intent(out), target :: umf_inv(16, 31)
+    real(c_double), intent(out), target :: slflx_inv(16, 31)
+    real(c_double), intent(out), target :: qtflx_inv(16, 31)
+    real(c_double), intent(out), target :: flxprc1_inv(16, 31)
+    real(c_double), intent(out), target :: flxsnow1_inv(16, 31)
+    real(c_double), intent(out), target :: qvten_inv(16, 30)
+    real(c_double), intent(out), target :: qlten_inv(16, 30)
+    real(c_double), intent(out), target :: qiten_inv(16, 30)
+    real(c_double), intent(out), target :: sten_inv(16, 30)
+    real(c_double), intent(out), target :: uten_inv(16, 30)
+    real(c_double), intent(out), target :: vten_inv(16, 30)
+    real(c_double), intent(out), target :: trten_inv(16, 30, 57)
+    real(c_double), intent(out), target :: qrten_inv(16, 30)
+    real(c_double), intent(out), target :: qsten_inv(16, 30)
+    real(c_double), intent(out), target :: precip(16)
+    real(c_double), intent(out), target :: snow(16)
+    real(c_double), intent(out), target :: evapc_inv(16, 30)
+    real(c_double), intent(out), target :: cufrc_inv(16, 30)
+    real(c_double), intent(out), target :: qcu_inv(16, 30)
+    real(c_double), intent(out), target :: qlu_inv(16, 30)
+    real(c_double), intent(out), target :: qiu_inv(16, 30)
+    real(c_double), intent(out), target :: cbmf(16)
+    real(c_double), intent(out), target :: qc_inv(16, 30)
+    real(c_double), intent(out), target :: rliq(16)
+    real(c_double), intent(out), target :: cnt_inv(16)
+    real(c_double), intent(out), target :: cnb_inv(16)
+    integer(c_int), intent(in) :: lchnk
+    real(c_double), intent(in), target :: dpdry0_inv(16, 30)
+    real(c_double), intent(out), target :: wtprec(16, 57)
+    real(c_double), intent(out), target :: wtsnow(16, 57)
+    real(c_double), intent(out), target :: wtqc_inv(16, 30, 57)
+    real(c_double), save :: o_packed(16, 1190)
+    integer :: hk_j, hk_k, hk_s, hk_n, slot, n, o
+    integer, parameter :: sub_trten_inv(12) = (/ 10, 11, 12, 17, 18, 19, 24, 25, 26, 31, 32, 33 /)
+    integer, parameter :: sub_wtqc_inv(8) = (/ 11, 12, 18, 19, 25, 26, 32, 33 /)
+    integer, parameter :: sub_wtprec(4) = (/ 10, 17, 24, 31 /)
+    integer, parameter :: sub_wtsnow(4) = (/ 10, 17, 24, 31 /)
+    real(c_double), pointer, contiguous :: w_cush(:)
+    real(c_double), save :: c_cush(16)
+    real(c_double), pointer, contiguous :: w_umf_inv(:,:)
+    real(c_double), save :: c_umf_inv(16, 31)
+    real(c_double), pointer, contiguous :: w_slflx_inv(:,:)
+    real(c_double), save :: c_slflx_inv(16, 31)
+    real(c_double), pointer, contiguous :: w_qtflx_inv(:,:)
+    real(c_double), save :: c_qtflx_inv(16, 31)
+    real(c_double), pointer, contiguous :: w_flxprc1_inv(:,:)
+    real(c_double), save :: c_flxprc1_inv(16, 31)
+    real(c_double), pointer, contiguous :: w_flxsnow1_inv(:,:)
+    real(c_double), save :: c_flxsnow1_inv(16, 31)
+    real(c_double), pointer, contiguous :: w_qvten_inv(:,:)
+    real(c_double), save :: c_qvten_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_qlten_inv(:,:)
+    real(c_double), save :: c_qlten_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_qiten_inv(:,:)
+    real(c_double), save :: c_qiten_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_sten_inv(:,:)
+    real(c_double), save :: c_sten_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_uten_inv(:,:)
+    real(c_double), save :: c_uten_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_vten_inv(:,:)
+    real(c_double), save :: c_vten_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_qrten_inv(:,:)
+    real(c_double), save :: c_qrten_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_qsten_inv(:,:)
+    real(c_double), save :: c_qsten_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_precip(:)
+    real(c_double), save :: c_precip(16)
+    real(c_double), pointer, contiguous :: w_snow(:)
+    real(c_double), save :: c_snow(16)
+    real(c_double), pointer, contiguous :: w_evapc_inv(:,:)
+    real(c_double), save :: c_evapc_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_cufrc_inv(:,:)
+    real(c_double), save :: c_cufrc_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_qcu_inv(:,:)
+    real(c_double), save :: c_qcu_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_qlu_inv(:,:)
+    real(c_double), save :: c_qlu_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_qiu_inv(:,:)
+    real(c_double), save :: c_qiu_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_cbmf(:)
+    real(c_double), save :: c_cbmf(16)
+    real(c_double), pointer, contiguous :: w_qc_inv(:,:)
+    real(c_double), save :: c_qc_inv(16, 30)
+    real(c_double), pointer, contiguous :: w_rliq(:)
+    real(c_double), save :: c_rliq(16)
+    real(c_double), pointer, contiguous :: w_cnt_inv(:)
+    real(c_double), save :: c_cnt_inv(16)
+    real(c_double), pointer, contiguous :: w_cnb_inv(:)
+    real(c_double), save :: c_cnb_inv(16)
+    real(c_double), pointer, contiguous :: w_trten_inv(:,:,:)
+    real(c_double), save :: c_trten_inv(16, 30, 57)
+    real(c_double), pointer, contiguous :: w_wtqc_inv(:,:,:)
+    real(c_double), save :: c_wtqc_inv(16, 30, 57)
+    real(c_double), pointer, contiguous :: w_wtprec(:,:)
+    real(c_double), save :: c_wtprec(16, 57)
+    real(c_double), pointer, contiguous :: w_wtsnow(:,:)
+    real(c_double), save :: c_wtsnow(16, 57)
+    slot = 0
+    do n = 1, bn_compute_uwshcu_inv
+      if (bchunk_compute_uwshcu_inv(n) == int(lchnk) .and. .not. btaken_compute_uwshcu_inv(n)) then
+        slot = n; exit
+      end if
+    end do
+    if (slot == 0) error stop 'pycam_hooks: compute_uwshcu_inv was called for a chunk the batch does not hold'
+    n = bcol_compute_uwshcu_inv(slot); o = boff_compute_uwshcu_inv(slot)
+    if (mix /= bs_compute_uwshcu_inv_mix(slot)) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s mix is not what was gathered for its chunk'
+    if (mkx /= bs_compute_uwshcu_inv_mkx(slot)) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s mkx is not what was gathered for its chunk'
+    if (iend /= bs_compute_uwshcu_inv_iend(slot)) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s iend is not what was gathered for its chunk'
+    if (ncnst /= bs_compute_uwshcu_inv_ncnst(slot)) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s ncnst is not what was gathered for its chunk'
+    if (transfer(dt, 0_c_int64_t) /= transfer(bs_compute_uwshcu_inv_dt(slot), 0_c_int64_t)) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s dt is not what was gathered for its chunk'
+    if (any(transfer(ps0_inv(1:n, :), 0_c_int64_t, n * 31) /= transfer(bi_compute_uwshcu_inv_ps0_inv(o + 1:o + n, :), 0_c_int64_t, n * 31))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s ps0_inv is not what was gathered for its chunk'
+    if (any(transfer(zs0_inv(1:n, :), 0_c_int64_t, n * 31) /= transfer(bi_compute_uwshcu_inv_zs0_inv(o + 1:o + n, :), 0_c_int64_t, n * 31))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s zs0_inv is not what was gathered for its chunk'
+    if (any(transfer(p0_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_p0_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s p0_inv is not what was gathered for its chunk'
+    if (any(transfer(z0_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_z0_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s z0_inv is not what was gathered for its chunk'
+    if (any(transfer(dp0_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_dp0_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s dp0_inv is not what was gathered for its chunk'
+    if (any(transfer(u0_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_u0_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s u0_inv is not what was gathered for its chunk'
+    if (any(transfer(v0_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_v0_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s v0_inv is not what was gathered for its chunk'
+    if (any(transfer(qv0_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_qv0_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s qv0_inv is not what was gathered for its chunk'
+    if (any(transfer(ql0_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_ql0_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s ql0_inv is not what was gathered for its chunk'
+    if (any(transfer(qi0_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_qi0_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s qi0_inv is not what was gathered for its chunk'
+    if (any(transfer(t0_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_t0_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s t0_inv is not what was gathered for its chunk'
+    if (any(transfer(s0_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_s0_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s s0_inv is not what was gathered for its chunk'
+    if (any(transfer(tr0_inv(1:n, :, :), 0_c_int64_t, n * 1710) /= transfer(bi_compute_uwshcu_inv_tr0_inv(o + 1:o + n, :, :), 0_c_int64_t, n * 1710))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s tr0_inv is not what was gathered for its chunk'
+    if (any(transfer(tke_inv(1:n, :), 0_c_int64_t, n * 31) /= transfer(bi_compute_uwshcu_inv_tke_inv(o + 1:o + n, :), 0_c_int64_t, n * 31))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s tke_inv is not what was gathered for its chunk'
+    if (any(transfer(cldfrct_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_cldfrct_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s cldfrct_inv is not what was gathered for its chunk'
+    if (any(transfer(concldfrct_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_concldfrct_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s concldfrct_inv is not what was gathered for its chunk'
+    if (any(transfer(pblh(1:n), 0_c_int64_t, n * 1) /= transfer(bi_compute_uwshcu_inv_pblh(o + 1:o + n), 0_c_int64_t, n * 1))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s pblh is not what was gathered for its chunk'
+    if (any(transfer(cush(1:n), 0_c_int64_t, n * 1) /= transfer(bi_compute_uwshcu_inv_cush(o + 1:o + n), 0_c_int64_t, n * 1))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s cush is not what was gathered for its chunk'
+    if (lchnk /= bs_compute_uwshcu_inv_lchnk(slot)) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s lchnk is not what was gathered for its chunk'
+    if (any(transfer(dpdry0_inv(1:n, :), 0_c_int64_t, n * 30) /= transfer(bi_compute_uwshcu_inv_dpdry0_inv(o + 1:o + n, :), 0_c_int64_t, n * 30))) error stop 'pycam_hooks: compute_uwshcu_inv: the call''s dpdry0_inv is not what was gathered for its chunk'
+    btaken_compute_uwshcu_inv(slot) = .true.
+    if (batch_mode(6) == 2) then
+      cush(1:n) = bf_compute_uwshcu_inv_cush(1:n, slot)
+      umf_inv(1:n, :) = bf_compute_uwshcu_inv_umf_inv(1:n, :, slot)
+      slflx_inv(1:n, :) = bf_compute_uwshcu_inv_slflx_inv(1:n, :, slot)
+      qtflx_inv(1:n, :) = bf_compute_uwshcu_inv_qtflx_inv(1:n, :, slot)
+      flxprc1_inv(1:n, :) = bf_compute_uwshcu_inv_flxprc1_inv(1:n, :, slot)
+      flxsnow1_inv(1:n, :) = bf_compute_uwshcu_inv_flxsnow1_inv(1:n, :, slot)
+      qvten_inv(1:n, :) = bf_compute_uwshcu_inv_qvten_inv(1:n, :, slot)
+      qlten_inv(1:n, :) = bf_compute_uwshcu_inv_qlten_inv(1:n, :, slot)
+      qiten_inv(1:n, :) = bf_compute_uwshcu_inv_qiten_inv(1:n, :, slot)
+      sten_inv(1:n, :) = bf_compute_uwshcu_inv_sten_inv(1:n, :, slot)
+      uten_inv(1:n, :) = bf_compute_uwshcu_inv_uten_inv(1:n, :, slot)
+      vten_inv(1:n, :) = bf_compute_uwshcu_inv_vten_inv(1:n, :, slot)
+      trten_inv(1:n, :, :) = bf_compute_uwshcu_inv_trten_inv(1:n, :, :, slot)
+      qrten_inv(1:n, :) = bf_compute_uwshcu_inv_qrten_inv(1:n, :, slot)
+      qsten_inv(1:n, :) = bf_compute_uwshcu_inv_qsten_inv(1:n, :, slot)
+      precip(1:n) = bf_compute_uwshcu_inv_precip(1:n, slot)
+      snow(1:n) = bf_compute_uwshcu_inv_snow(1:n, slot)
+      evapc_inv(1:n, :) = bf_compute_uwshcu_inv_evapc_inv(1:n, :, slot)
+      cufrc_inv(1:n, :) = bf_compute_uwshcu_inv_cufrc_inv(1:n, :, slot)
+      qcu_inv(1:n, :) = bf_compute_uwshcu_inv_qcu_inv(1:n, :, slot)
+      qlu_inv(1:n, :) = bf_compute_uwshcu_inv_qlu_inv(1:n, :, slot)
+      qiu_inv(1:n, :) = bf_compute_uwshcu_inv_qiu_inv(1:n, :, slot)
+      cbmf(1:n) = bf_compute_uwshcu_inv_cbmf(1:n, slot)
+      qc_inv(1:n, :) = bf_compute_uwshcu_inv_qc_inv(1:n, :, slot)
+      rliq(1:n) = bf_compute_uwshcu_inv_rliq(1:n, slot)
+      cnt_inv(1:n) = bf_compute_uwshcu_inv_cnt_inv(1:n, slot)
+      cnb_inv(1:n) = bf_compute_uwshcu_inv_cnb_inv(1:n, slot)
+      wtprec(1:n, :) = bf_compute_uwshcu_inv_wtprec(1:n, :, slot)
+      wtsnow(1:n, :) = bf_compute_uwshcu_inv_wtsnow(1:n, :, slot)
+      wtqc_inv(1:n, :, :) = bf_compute_uwshcu_inv_wtqc_inv(1:n, :, :, slot)
+      return
+    end if
+    answered(6) = answered(6) + 1_c_int64_t
+    if (batch_check(6)) then
+      call model_compute_uwshcu_inv(mix, mkx, iend, ncnst, dt, ps0_inv, zs0_inv, p0_inv, z0_inv, dp0_inv, u0_inv, v0_inv, qv0_inv, ql0_inv, qi0_inv, t0_inv, s0_inv, tr0_inv, tke_inv, cldfrct_inv, concldfrct_inv, pblh, cush, umf_inv, slflx_inv, qtflx_inv, flxprc1_inv, flxsnow1_inv, qvten_inv, qlten_inv, qiten_inv, sten_inv, uten_inv, vten_inv, trten_inv, qrten_inv, qsten_inv, precip, snow, evapc_inv, cufrc_inv, qcu_inv, qlu_inv, qiu_inv, cbmf, qc_inv, rliq, cnt_inv, cnb_inv, lchnk, dpdry0_inv, wtprec, wtsnow, wtqc_inv)
+      c_cush = cush
+      c_umf_inv = umf_inv
+      c_slflx_inv = slflx_inv
+      c_qtflx_inv = qtflx_inv
+      c_flxprc1_inv = flxprc1_inv
+      c_flxsnow1_inv = flxsnow1_inv
+      c_qvten_inv = qvten_inv
+      c_qlten_inv = qlten_inv
+      c_qiten_inv = qiten_inv
+      c_sten_inv = sten_inv
+      c_uten_inv = uten_inv
+      c_vten_inv = vten_inv
+      c_qrten_inv = qrten_inv
+      c_qsten_inv = qsten_inv
+      c_precip = precip
+      c_snow = snow
+      c_evapc_inv = evapc_inv
+      c_cufrc_inv = cufrc_inv
+      c_qcu_inv = qcu_inv
+      c_qlu_inv = qlu_inv
+      c_qiu_inv = qiu_inv
+      c_cbmf = cbmf
+      c_qc_inv = qc_inv
+      c_rliq = rliq
+      c_cnt_inv = cnt_inv
+      c_cnb_inv = cnb_inv
+      c_trten_inv = trten_inv
+      c_wtqc_inv = wtqc_inv
+      c_wtprec = wtprec
+      c_wtsnow = wtsnow
+    end if
+    o_packed(1:n, :) = bo_compute_uwshcu_inv(o + 1:o + n, :)
+    hk_n = n
+    call c_f_pointer(c_loc(cush), w_cush, (/ 16 /))
+    call c_f_pointer(c_loc(umf_inv), w_umf_inv, (/ 16, 31 /))
+    call c_f_pointer(c_loc(slflx_inv), w_slflx_inv, (/ 16, 31 /))
+    call c_f_pointer(c_loc(qtflx_inv), w_qtflx_inv, (/ 16, 31 /))
+    call c_f_pointer(c_loc(flxprc1_inv), w_flxprc1_inv, (/ 16, 31 /))
+    call c_f_pointer(c_loc(flxsnow1_inv), w_flxsnow1_inv, (/ 16, 31 /))
+    call c_f_pointer(c_loc(qvten_inv), w_qvten_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(qlten_inv), w_qlten_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(qiten_inv), w_qiten_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(sten_inv), w_sten_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(uten_inv), w_uten_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(vten_inv), w_vten_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(qrten_inv), w_qrten_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(qsten_inv), w_qsten_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(precip), w_precip, (/ 16 /))
+    call c_f_pointer(c_loc(snow), w_snow, (/ 16 /))
+    call c_f_pointer(c_loc(evapc_inv), w_evapc_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(cufrc_inv), w_cufrc_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(qcu_inv), w_qcu_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(qlu_inv), w_qlu_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(qiu_inv), w_qiu_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(cbmf), w_cbmf, (/ 16 /))
+    call c_f_pointer(c_loc(qc_inv), w_qc_inv, (/ 16, 30 /))
+    call c_f_pointer(c_loc(rliq), w_rliq, (/ 16 /))
+    call c_f_pointer(c_loc(cnt_inv), w_cnt_inv, (/ 16 /))
+    call c_f_pointer(c_loc(cnb_inv), w_cnb_inv, (/ 16 /))
+    call c_f_pointer(c_loc(trten_inv), w_trten_inv, (/ 16, 30, 57 /))
+    call c_f_pointer(c_loc(wtqc_inv), w_wtqc_inv, (/ 16, 30, 57 /))
+    call c_f_pointer(c_loc(wtprec), w_wtprec, (/ 16, 57 /))
+    call c_f_pointer(c_loc(wtsnow), w_wtsnow, (/ 16, 57 /))
+    w_cush(1:hk_n) = o_packed(1:hk_n, 1)
+    do hk_j = 1, 31
+      w_umf_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 1 + hk_j)
+    end do
+    do hk_j = 1, 31
+      w_slflx_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 32 + hk_j)
+    end do
+    do hk_j = 1, 31
+      w_qtflx_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 63 + hk_j)
+    end do
+    do hk_j = 1, 31
+      w_flxprc1_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 94 + hk_j)
+    end do
+    do hk_j = 1, 31
+      w_flxsnow1_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 125 + hk_j)
+    end do
+    do hk_j = 1, 30
+      w_qvten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 156 + hk_j)
+    end do
+    do hk_j = 1, 30
+      w_qlten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 186 + hk_j)
+    end do
+    do hk_j = 1, 30
+      w_qiten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 216 + hk_j)
+    end do
+    do hk_j = 1, 30
+      w_sten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 246 + hk_j)
+    end do
+    do hk_j = 1, 30
+      w_uten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 276 + hk_j)
+    end do
+    do hk_j = 1, 30
+      w_vten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 306 + hk_j)
+    end do
+    do hk_j = 1, 30
+      w_qrten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 336 + hk_j)
+    end do
+    do hk_j = 1, 30
+      w_qsten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 366 + hk_j)
+    end do
+    w_precip(1:hk_n) = o_packed(1:hk_n, 397)
+    w_snow(1:hk_n) = o_packed(1:hk_n, 398)
+    do hk_j = 1, 30
+      w_evapc_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 398 + hk_j)
+    end do
+    do hk_j = 1, 30
+      w_cufrc_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 428 + hk_j)
+    end do
+    do hk_j = 1, 30
+      w_qcu_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 458 + hk_j)
+    end do
+    do hk_j = 1, 30
+      w_qlu_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 488 + hk_j)
+    end do
+    do hk_j = 1, 30
+      w_qiu_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 518 + hk_j)
+    end do
+    w_cbmf(1:hk_n) = o_packed(1:hk_n, 549)
+    do hk_j = 1, 30
+      w_qc_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 549 + hk_j)
+    end do
+    w_rliq(1:hk_n) = o_packed(1:hk_n, 580)
+    w_cnt_inv(1:hk_n) = o_packed(1:hk_n, 581)
+    w_cnb_inv(1:hk_n) = o_packed(1:hk_n, 582)
+    w_trten_inv(1:hk_n, :, :) = 0.0_c_double
+    do hk_j = 1, 30
+      do hk_s = 1, 12
+        w_trten_inv(1:hk_n, hk_j, sub_trten_inv(hk_s)) = o_packed(1:hk_n, 582 + (hk_j - 1) * 12 + hk_s)
+      end do
+    end do
+    w_wtqc_inv(1:hk_n, :, :) = 0.0_c_double
+    do hk_j = 1, 30
+      do hk_s = 1, 8
+        w_wtqc_inv(1:hk_n, hk_j, sub_wtqc_inv(hk_s)) = o_packed(1:hk_n, 942 + (hk_j - 1) * 8 + hk_s)
+      end do
+    end do
+    w_wtprec(1:hk_n, :) = 0.0_c_double
+    do hk_s = 1, 4
+      w_wtprec(1:hk_n, sub_wtprec(hk_s)) = o_packed(1:hk_n, 1182 + hk_s)
+    end do
+    w_wtsnow(1:hk_n, :) = 0.0_c_double
+    do hk_s = 1, 4
+      w_wtsnow(1:hk_n, sub_wtsnow(hk_s)) = o_packed(1:hk_n, 1186 + hk_s)
+    end do
+    if (batch_check(6)) then
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_cush(1:n) - cush(1:n))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_umf_inv(1:n, :) - umf_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_slflx_inv(1:n, :) - slflx_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_qtflx_inv(1:n, :) - qtflx_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_flxprc1_inv(1:n, :) - flxprc1_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_flxsnow1_inv(1:n, :) - flxsnow1_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_qvten_inv(1:n, :) - qvten_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_qlten_inv(1:n, :) - qlten_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_qiten_inv(1:n, :) - qiten_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_sten_inv(1:n, :) - sten_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_uten_inv(1:n, :) - uten_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_vten_inv(1:n, :) - vten_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_qrten_inv(1:n, :) - qrten_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_qsten_inv(1:n, :) - qsten_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_precip(1:n) - precip(1:n))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_snow(1:n) - snow(1:n))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_evapc_inv(1:n, :) - evapc_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_cufrc_inv(1:n, :) - cufrc_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_qcu_inv(1:n, :) - qcu_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_qlu_inv(1:n, :) - qlu_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_qiu_inv(1:n, :) - qiu_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_cbmf(1:n) - cbmf(1:n))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_qc_inv(1:n, :) - qc_inv(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_rliq(1:n) - rliq(1:n))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_cnt_inv(1:n) - cnt_inv(1:n))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_cnb_inv(1:n) - cnb_inv(1:n))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_trten_inv(1:n, :, :) - trten_inv(1:n, :, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_wtqc_inv(1:n, :, :) - wtqc_inv(1:n, :, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_wtprec(1:n, :) - wtprec(1:n, :))))
+      batch_check_diff(6) = max(batch_check_diff(6), maxval(abs(c_wtsnow(1:n, :) - wtsnow(1:n, :))))
+    end if
+  end subroutine batched_compute_uwshcu_inv
 
   subroutine hook_mmacro_pcond(lchnk, ncol, dt, p, dp, t0, qv0, ql0, qi0, nl0, ni0, a_t, a_qv, a_ql, a_qi, a_nl, a_ni, c_t, c_qv, c_ql, c_qi, c_nl, c_ni, c_qlst, d_t, d_qv, d_ql, d_qi, d_nl, d_ni, a_cud, a_cu0, clrw_old, clri_old, landfrac, snowh, tke, qtl_flx, qti_flx, cmfr_det, qlr_det, qir_det, s_tendout, qv_tendout, ql_tendout, qi_tendout, nl_tendout, ni_tendout, qme, qvadj, qladj, qiadj, qllim, qilim, cld, al_st_star, ai_st_star, ql_st_star, qi_st_star, do_cldice)
     ! cldwat2m_macro::mmacro_pcond, as its redirected callers call it; rename-references, Fortran-bound
@@ -7636,10 +8521,64 @@ contains
     status = 0_c_int
   end function pycam_hooks_original_v1
 
+  integer(c_int) function pycam_hooks_batch_v1(hook, mode, check) bind(C, name='pycam_hooks_batch_v1') result(status)
+    ! answer the hook's calls from a batch gathered before the stage runs (mode 1: the bound model,
+    ! one forward; 2: the original on each gathered chunk) or call by call again (0); check /= 0
+    ! also runs the bound model on every call's own chunk and keeps the largest difference
+    integer(c_int), value, intent(in) :: hook, mode, check
+    status = 1_c_int
+    if (hook < 1 .or. hook > nhooks) return
+    if (.not. can_batch(hook)) then
+      status = 2_c_int; return          ! the table has no batch block for the hook
+    end if
+    if (mode < 0 .or. mode > 2) then
+      status = 5_c_int; return
+    end if
+    if (armed(hook)) then
+      status = 4_c_int; return
+    end if
+    if (mode == 1 .and. (.not. modeled(hook) .or. plugged(hook) .or. shadow(hook))) then
+      status = 3_c_int; return          ! one forward for the batch: a bound TorchScript model, not a shadow
+    end if
+    if (mode /= 1 .and. modeled(hook)) then
+      status = 6_c_int; return          ! the original's batch leaves no bound model to answer
+    end if
+    batch_mode(hook) = int(mode)
+    batch_check(hook) = check /= 0_c_int .and. mode == 1
+    status = 0_c_int
+  end function pycam_hooks_batch_v1
+
+  integer(c_int) function pycam_hooks_batch_stats_v1(hook, forwards, chunks, rows, untaken, pending, seconds, check_diff) &
+       bind(C, name='pycam_hooks_batch_stats_v1') result(status)
+    ! batches answered, the chunks and live columns they held, chunks a batch held that no call took
+    ! (untaken, over earlier batches; pending, in the current one), wall seconds gathering nothing
+    ! but answering the batches (the forwards), and the check's largest difference
+    integer(c_int), value, intent(in) :: hook
+    integer(c_int64_t), intent(out) :: forwards, chunks, rows, untaken, pending
+    real(c_double), intent(out) :: seconds, check_diff
+    integer(c_int64_t) :: rate
+    forwards = 0_c_int64_t; chunks = 0_c_int64_t; rows = 0_c_int64_t; untaken = 0_c_int64_t; pending = 0_c_int64_t
+    seconds = 0.0_c_double; check_diff = 0.0_c_double
+    status = 1_c_int
+    if (hook < 1 .or. hook > nhooks) return
+    status = 2_c_int
+    if (.not. can_batch(hook)) return
+    call system_clock(count_rate=rate)
+    forwards = batch_forwards(hook); chunks = batch_chunks(hook); rows = batch_rows(hook)
+    untaken = batch_untaken(hook)
+    select case (hook)
+    case (6)
+      if (bn_compute_uwshcu_inv > 0) pending = int(count(.not. btaken_compute_uwshcu_inv(1:bn_compute_uwshcu_inv)), c_int64_t)
+    end select
+    seconds = real(batch_ticks(hook), c_double) / real(rate, c_double)
+    check_diff = batch_check_diff(hook)
+    status = 0_c_int
+  end function pycam_hooks_batch_stats_v1
   subroutine pycam_hooks_reset_v1() bind(C, name='pycam_hooks_reset_v1')
     integer :: hook
     armed = .false.
     paused_hook = 0
+    batch_mode = 0
     do hook = 1, nhooks
       if (modeled(hook)) then
         call torch_delete(models(hook))

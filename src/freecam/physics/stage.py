@@ -1125,6 +1125,10 @@ class StageExecution:
     segment_pauses: int = 0
     #: model calls by the kernel they answered, whichever path made them
     model_calls_by_kernel: dict[str, int] = field(default_factory=dict)
+    #: how a hook batch answered the stage's kernel (``model``: one forward over every chunk,
+    #: ``original``: the original on each gathered chunk; None call by call), and the steps it did
+    batch: str | None = None
+    batched_steps: int = 0
 
     def count_model_call(self, kernel: str) -> None:
         self.python_model_calls += 1
@@ -1142,6 +1146,7 @@ class StageExecution:
             "python_model_calls_by_kernel": dict(self.model_calls_by_kernel),
             "legacy_steps": self.legacy_steps,
             "python_fortran_crossings_per_step": crossings,
+            **({"hook_batch": self.batch, "batched_steps": self.batched_steps} if self.batch else {}),
         }
 
 
@@ -1749,7 +1754,7 @@ class NativeStage:
             # the models are bound at their hooks once; then the original stage
             # runs whole and the hooks answer inside the image: one crossing
             self.bind_native_models(native)
-            native.run_action(self.STAGE)
+            self.run_whole(native)
             self.execution.native_stage_calls += 1
             return
         if mode == "native-whole":
@@ -1757,7 +1762,7 @@ class NativeStage:
             # own (disabled) workflow action -- no walk, no views, no copies;
             # a split stage leaves the driver to its resume half instead
             if self.WHOLE_ACTION:
-                native.run_action(self.STAGE)
+                self.run_whole(native)
             else:
                 self.native_between_halves(native)
             self.execution.native_stage_calls += 1
@@ -1768,6 +1773,11 @@ class NativeStage:
             return
         self.execution.legacy_steps += 1
         self._tend_walk(native, context)
+
+    def run_whole(self, native: Any) -> None:
+        """The stage's whole Fortran action, once: what native-whole and native-model run."""
+
+        native.run_action(self.STAGE)
 
     def bind_native_models(self, native: Any) -> None:
         """Bind every :class:`NativeModel` in a slot at its kernel's hook, once per file.

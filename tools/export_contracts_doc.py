@@ -60,9 +60,13 @@ def function_sections() -> list[str]:
                 subsets = ("  Returned only at these 1-based indices of their last axis, the rest zeroed by the hook: "
                            + "; ".join(f"{name} {list(indices)}" for name, indices in hook.model_subsets) + "."
                            if hook.model_subsets else "")
+                batch = (f"  Batched (`--batch-chunks`): every chunk's inputs gathered before the stage runs, one "
+                         f"forward over their live columns, each call taking its chunk's rows (`{hook.batch_columns}` "
+                         f"live columns, `{hook.batch_chunk}` the chunk) once its inputs match what was gathered."
+                         if hook.batches else "")
                 lines.append(f"Model block: {len(hook.model_inputs)} inputs "
                              f"({', '.join(hook.model_inputs)}), {len(hook.model_outputs)} outputs{shape} "
-                             f"({', '.join(hook.model_outputs)}).{zeroed}{subsets}\n")
+                             f"({', '.join(hook.model_outputs)}).{zeroed}{subsets}{batch}\n")
             else:
                 lines.append("No model block: the hook counts and pauses only.\n")
         else:

@@ -134,6 +134,15 @@ def _hook_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
         if hook.takes_model:
             lines.append("    integer(c_int64_t) :: h0, h1")
         lines.append(f"    calls({index}) = calls({index}) + 1_c_int64_t")
+        if hook.batches:
+            lines.append(f"    if (batch_mode({index}) /= 0) then")
+            lines.append("      ! answered for every chunk before the stage ran: the call takes its chunk's rows")
+            lines.append("      call system_clock(h0)")
+            lines.append(f"      call batched_{hook.kernel}({names})")
+            lines.append("      call system_clock(h1)")
+            lines.append(f"      hook_ticks({index}) = hook_ticks({index}) + (h1 - h0)")
+            lines.append("      return")
+            lines.append("    end if")
         if hook.takes_model:
             lines.append(f"    if (modeled({index})) then")
             lines.append(f"      answered({index}) = answered({index}) + 1_c_int64_t")
@@ -592,6 +601,340 @@ def _pointer_declarations(table: HookTable) -> list[str]:
     return lines
 
 
+def _check_batch(hook: Hook, spec: FunctionSpec) -> None:
+    """A batched hook: every dummy is a plain number or a real array led by the column axis."""
+
+    dummies = _dummies(spec)
+    for dummy in (hook.batch_columns, hook.batch_chunk):
+        item = next((i for i in dummies if i.name == dummy), None)
+        if item is None or item.rank or item.dtype != "int32" or ROLE_INTENT[item.role] != "in":
+            raise SystemExit(f"hook {hook.kernel}: batch dummy {dummy!r} must be an integer input of the contract")
+    for item in dummies:
+        if item.carrier or item.pointer:
+            raise SystemExit(f"hook {hook.kernel}: {item.name!r} is a logical, character or pointer dummy; "
+                             f"a batched hook stacks plain arrays only")
+        if item.rank and (item.dtype != "float64" or _dim(spec, item.native_shape[0]) != _dim(spec, "pcols")):
+            raise SystemExit(f"hook {hook.kernel}: {item.name!r} is not a real array led by the column axis; "
+                             f"a batched hook stacks columns")
+    if _zero_outputs(hook, spec):
+        raise SystemExit(f"hook {hook.kernel}: a batched hook has no zeroed outputs yet")
+
+
+def _batch_inputs(spec: FunctionSpec):
+    return [item for item in _dummies(spec) if ROLE_INTENT[item.role] in ("in", "inout")]
+
+
+def _batch_outputs(spec: FunctionSpec):
+    return [item for item in _dummies(spec) if ROLE_INTENT[item.role] in ("out", "inout")]
+
+
+def _rest(spec: FunctionSpec, item) -> list[int]:
+    return [_dim(spec, axis) for axis in item.native_shape[1:]]
+
+
+def _batch_declarations(table: HookTable) -> str:
+    """The module state a batched hook keeps: every chunk's inputs stacked, and their answers."""
+
+    batched = [(hook, _contract(hook)) for hook in table.hooks if hook.batches]
+    if not batched:
+        return ""
+    can_batch = ", ".join(".true." if hook.batches else ".false." for hook in table.hooks)
+    lines = ["  ! every chunk of the rank answered at once (pycam_hooks_batch_v1): 0 call by call; 1 the bound",
+             "  ! model, one forward over every chunk's live columns gathered before the stage runs; 2 the",
+             "  ! original on each gathered chunk (the gate).  Each call then takes its chunk's answer, after",
+             "  ! its inputs are found to be what was gathered for it, bit for bit",
+             f"  logical, parameter :: can_batch(nhooks) = (/ {can_batch} /)",
+             "  integer, save :: batch_mode(nhooks) = 0",
+             "  ! check: every call also runs the model on its own chunk and the largest difference is kept",
+             "  logical, save :: batch_check(nhooks) = .false.",
+             "  real(c_double), save :: batch_check_diff(nhooks) = 0.0_c_double",
+             "  integer(c_int64_t), save :: batch_forwards(nhooks) = 0_c_int64_t, batch_chunks(nhooks) = 0_c_int64_t",
+             "  integer(c_int64_t), save :: batch_rows(nhooks) = 0_c_int64_t, batch_untaken(nhooks) = 0_c_int64_t",
+             "  integer(c_int64_t), save :: batch_ticks(nhooks) = 0_c_int64_t"]
+    for hook, spec in batched:
+        k = hook.kernel
+        lines.append(f"  ! {k}: the chunks gathered (bn of bcap), their live columns stacked (bfill of brows)")
+        lines.append(f"  integer, save :: bn_{k} = 0, bcap_{k} = 0, bfill_{k} = 0, brows_{k} = 0")
+        lines.append(f"  integer, allocatable, save :: bchunk_{k}(:), boff_{k}(:), bcol_{k}(:)")
+        lines.append(f"  logical, allocatable, save :: btaken_{k}(:)")
+        for item in _batch_inputs(spec):
+            if item.rank == 0:
+                lines.append(f"  {C_TYPES[item.dtype]}, allocatable, save :: bs_{k}_{item.name}(:)")
+            else:
+                colons = ",".join(":" for _ in range(item.rank))
+                lines.append(f"  real(c_double), allocatable, target, save :: bi_{k}_{item.name}({colons})")
+        _, outputs = _model_arguments(hook, spec)
+        lines.append(f"  real(c_double), allocatable, target, save :: bo_{k}(:,:)")
+        for item in _batch_outputs(spec):
+            colons = ",".join(":" for _ in range(item.rank + 1))
+            lines.append(f"  real(c_double), allocatable, save :: bf_{k}_{item.name}({colons})")
+    return "\n".join(lines) + "\n"
+
+
+def _batch_procedures(hook: Hook, spec: FunctionSpec, index: int) -> str:
+    """Gather, answer and take: the batched path of one hook."""
+
+    _check_batch(hook, spec)
+    k = hook.kernel
+    dummies = _dummies(spec)
+    names = ", ".join(item.name for item in dummies)
+    inputs = _batch_inputs(spec)
+    every_output = _batch_outputs(spec)
+    model_inputs, outputs = _model_arguments(hook, spec)
+    width = sum(_width(spec, o, hook) for o in outputs)
+    lead = _dim(spec, "pcols")
+    cols, chunk = hook.batch_columns, hook.batch_chunk
+    out = []
+
+    # -- begin: size the store for this step's chunks ---------------------------------------------
+    out.append(f"  subroutine pycam_hooks_batch_begin_{k}(nslots, nrows)")
+    out.append(f"    ! a new batch for {k}: nslots chunks with nrows live columns in all")
+    out.append("    integer, intent(in) :: nslots, nrows")
+    out.append(f"    if (bn_{k} > 0) batch_untaken({index}) = batch_untaken({index}) + count(.not. btaken_{k}(1:bn_{k}))")
+    out.append(f"    if (nslots /= bcap_{k} .or. nrows /= brows_{k}) then")
+    out.append(f"      if (allocated(bchunk_{k})) then")
+    frees = [f"bchunk_{k}", f"boff_{k}", f"bcol_{k}", f"btaken_{k}", f"bo_{k}"]
+    frees += [f"bs_{k}_{i.name}" if i.rank == 0 else f"bi_{k}_{i.name}" for i in inputs]
+    frees += [f"bf_{k}_{i.name}" for i in every_output]
+    for name in frees:
+        out.append(f"        deallocate({name})")
+    out.append("      end if")
+    out.append(f"      allocate(bchunk_{k}(nslots), boff_{k}(nslots), bcol_{k}(nslots), btaken_{k}(nslots))")
+    for item in inputs:
+        if item.rank == 0:
+            out.append(f"      allocate(bs_{k}_{item.name}(nslots))")
+        else:
+            rest = "".join(f", {e}" for e in _rest(spec, item))
+            out.append(f"      allocate(bi_{k}_{item.name}(nrows{rest}))")
+    out.append(f"      allocate(bo_{k}(nrows, {width}))")
+    for item in every_output:
+        rest = "".join(f"{e}, " for e in _rest(spec, item))
+        out.append(f"      allocate(bf_{k}_{item.name}({lead}, {rest}nslots))")
+    out.append(f"      bcap_{k} = nslots; brows_{k} = nrows")
+    out.append("    end if")
+    out.append(f"    bn_{k} = 0; bfill_{k} = 0")
+    out.append(f"  end subroutine pycam_hooks_batch_begin_{k}")
+    out.append("")
+
+    # -- put: one chunk's inputs, as its call will pass them ------------------------------------
+    input_names = ", ".join(item.name for item in inputs)
+    out.append(f"  subroutine pycam_hooks_batch_put_{k}({input_names})")
+    out.append(f"    ! one chunk's inputs, gathered as its call to {k} will pass them")
+    out.extend(_declaration(hook, spec, item, target=False).replace("intent(inout)", "intent(in)") for item in inputs)
+    out.append("    integer :: n, o")
+    out.append(f"    if (bn_{k} >= bcap_{k}) error stop 'pycam_hooks: more chunks gathered for {k} than the batch was begun for'")
+    out.append(f"    n = int({cols}); o = bfill_{k}")
+    out.append(f"    if (n < 0 .or. n > {lead} .or. o + n > brows_{k}) error stop 'pycam_hooks: {k}: a chunk''s columns overrun the batch'")
+    out.append(f"    bn_{k} = bn_{k} + 1")
+    out.append(f"    bchunk_{k}(bn_{k}) = int({chunk}); boff_{k}(bn_{k}) = o; bcol_{k}(bn_{k}) = n; btaken_{k}(bn_{k}) = .false.")
+    for item in inputs:
+        if item.rank == 0:
+            out.append(f"    bs_{k}_{item.name}(bn_{k}) = {item.name}")
+        else:
+            out.append(f"    bi_{k}_{item.name}{_section(item, 'o + 1:o + n')} = {item.name}{_section(item, '1:n')}")
+    out.append(f"    bfill_{k} = o + n")
+    out.append(f"  end subroutine pycam_hooks_batch_put_{k}")
+    out.append("")
+
+    # -- forward: every gathered chunk answered at once -----------------------------------------
+    out.append(f"  subroutine pycam_hooks_batch_forward_{k}()")
+    out.append(f"    ! every gathered chunk of {k} answered: one forward of the bound model over the stacked")
+    out.append("    ! live columns (mode 1), or the original chunk by chunk (mode 2)")
+    out.append(f"    type(torch_tensor) :: in_t({len(model_inputs)}), out_t(1)")
+    out.append("    real(c_double), pointer, contiguous :: op_packed(:,:)")
+    for item in model_inputs:
+        if item.rank == 0:
+            out.append(f"    real(c_double), target :: s_{item.name}(1)")
+            out.append(f"    real(c_double), pointer, contiguous :: sp_{item.name}(:)")
+        else:
+            colons = ",".join(":" for _ in range(item.rank))
+            out.append(f"    real(c_double), pointer, contiguous :: v_{item.name}({colons})")
+    for item in dummies:
+        if item.rank:
+            out.append(f"    real(c_double), save :: l_{item.name}({_extents(spec, item)})")
+    out.append("    integer :: slot, n, o")
+    out.append("    integer(c_int64_t) :: t0, t1")
+    out.append(f"    if (bn_{k} /= bcap_{k} .or. bfill_{k} /= brows_{k}) error stop 'pycam_hooks: {k}: the batch is not complete'")
+    out.append("    call system_clock(t0)")
+    out.append(f"    select case (batch_mode({index}))")
+    out.append("    case (1)")
+    for item in model_inputs:
+        if item.rank == 0:
+            out.append(f"      ! {item.name} goes to the model once: every chunk's must be alike")
+            out.append(f"      if (any(bs_{k}_{item.name}(1:bn_{k}) /= bs_{k}_{item.name}(1))) error stop 'pycam_hooks: {k}: the chunks differ in {item.name}'")
+            value = f"bs_{k}_{item.name}(1)" if item.dtype == "float64" else f"real(bs_{k}_{item.name}(1), c_double)"
+            out.append(f"      s_{item.name}(1) = {value}")
+    for slot, item in enumerate(model_inputs, start=1):
+        if item.rank == 0:
+            out.append(f"      sp_{item.name} => s_{item.name}")
+            out.append(f"      call torch_tensor_from_array(in_t({slot}), sp_{item.name}, model_device({index}), model_device_index({index}))")
+        else:
+            out.append(f"      v_{item.name} => bi_{k}_{item.name}")
+            out.append(f"      call torch_tensor_from_array(in_t({slot}), v_{item.name}, model_device({index}), model_device_index({index}))")
+    out.append(f"      op_packed => bo_{k}")
+    out.append("      call torch_tensor_from_array(out_t(1), op_packed, torch_kCPU)")
+    out.append(f"      call torch_model_forward(models({index}), in_t, out_t)")
+    out.append("      call torch_delete(in_t)")
+    out.append("      call torch_delete(out_t)")
+    out.append("    case (2)")
+    out.append(f"      do slot = 1, bn_{k}")
+    out.append(f"        n = bcol_{k}(slot); o = boff_{k}(slot)")
+    actuals = []
+    for item in dummies:
+        role = ROLE_INTENT[item.role]
+        if item.rank == 0:
+            actuals.append(f"bs_{k}_{item.name}(slot)")
+            continue
+        actuals.append(f"l_{item.name}")
+        out.append(f"        l_{item.name} = 0.0_c_double")
+        if role in ("in", "inout"):
+            out.append(f"        l_{item.name}{_section(item, '1:n')} = bi_{k}_{item.name}{_section(item, 'o + 1:o + n')}")
+    out.append(f"        call original_{k}({', '.join(actuals)})")
+    for item in every_output:
+        out.append(f"        bf_{k}_{item.name}(" + ", ".join(":" for _ in range(item.rank)) + f", slot) = l_{item.name}")
+    out.append("      end do")
+    out.append("    case default")
+    out.append(f"      error stop 'pycam_hooks: {k}: a batch was gathered while the hook answers call by call'")
+    out.append("    end select")
+    out.append("    call system_clock(t1)")
+    out.append(f"    batch_ticks({index}) = batch_ticks({index}) + (t1 - t0)")
+    out.append(f"    batch_forwards({index}) = batch_forwards({index}) + 1_c_int64_t")
+    out.append(f"    batch_chunks({index}) = batch_chunks({index}) + int(bn_{k}, c_int64_t)")
+    out.append(f"    batch_rows({index}) = batch_rows({index}) + int(bfill_{k}, c_int64_t)")
+    out.append(f"  end subroutine pycam_hooks_batch_forward_{k}")
+    out.append("")
+
+    # -- take: the call's own chunk, checked and written back -----------------------------------
+    out.append(f"  subroutine batched_{k}({names})")
+    out.append(f"    ! the call takes its chunk's answer from the batch, once its inputs are found to be what was")
+    out.append("    ! gathered for it, bit for bit")
+    out.extend(_declaration(hook, spec, item, target=True) for item in dummies)
+    out.append(f"    real(c_double), save :: o_packed({lead}, {width})")
+    out.append("    integer :: hk_j, hk_k, hk_s, hk_n, slot, n, o")
+    for item in outputs:
+        subset = _subset(hook, spec, item)
+        if subset is not None:
+            out.append(f"    integer, parameter :: sub_{item.name}({len(subset)}) = (/ {', '.join(str(i) for i in subset)} /)")
+    for item in outputs:
+        colons = ",".join(":" for _ in range(item.rank))
+        out.append(f"    real(c_double), pointer, contiguous :: w_{item.name}({colons})")
+        out.append(f"    real(c_double), save :: c_{item.name}({_extents(spec, item)})")
+    out.append("    slot = 0")
+    out.append(f"    do n = 1, bn_{k}")
+    out.append(f"      if (bchunk_{k}(n) == int({chunk}) .and. .not. btaken_{k}(n)) then")
+    out.append("        slot = n; exit")
+    out.append("      end if")
+    out.append("    end do")
+    out.append(f"    if (slot == 0) error stop 'pycam_hooks: {k} was called for a chunk the batch does not hold'")
+    out.append(f"    n = bcol_{k}(slot); o = boff_{k}(slot)")
+    for item in inputs:
+        if item.rank == 0:
+            if item.dtype == "float64":
+                test = f"transfer({item.name}, 0_c_int64_t) /= transfer(bs_{k}_{item.name}(slot), 0_c_int64_t)"
+            else:
+                test = f"{item.name} /= bs_{k}_{item.name}(slot)"
+        else:
+            test = (f"any(transfer({item.name}{_section(item, '1:n')}, 0_c_int64_t, n * {_prod(_rest(spec, item))}) /= "
+                    f"transfer(bi_{k}_{item.name}{_section(item, 'o + 1:o + n')}, 0_c_int64_t, n * {_prod(_rest(spec, item))}))")
+        out.append(f"    if ({test}) error stop 'pycam_hooks: {k}: the call''s {item.name} is not what was gathered for its chunk'")
+    out.append(f"    btaken_{k}(slot) = .true.")
+    out.append(f"    if (batch_mode({index}) == 2) then")
+    for item in every_output:
+        out.append(f"      {item.name}{_section(item, '1:n')} = bf_{k}_{item.name}({_section(item, '1:n')[1:-1]}, slot)")
+    out.append("      return")
+    out.append("    end if")
+    out.append(f"    answered({index}) = answered({index}) + 1_c_int64_t")
+    out.append(f"    if (batch_check({index})) then")
+    out.append(f"      call model_{k}({names})")
+    for item in outputs:
+        out.append(f"      c_{item.name} = {item.name}")
+    out.append("    end if")
+    out.append(f"    o_packed(1:n, :) = bo_{k}(o + 1:o + n, :)")
+    out.append("    hk_n = n")
+    for item in outputs:
+        out.append(f"    call c_f_pointer(c_loc({item.name}), w_{item.name}, (/ {_extents(spec, item, hook)} /))")
+    out.extend(line[2:] for line in _packed_copies(spec, outputs, hook))
+    out.append(f"    if (batch_check({index})) then")
+    for item in outputs:
+        section = _section(item, "1:n")
+        out.append(f"      batch_check_diff({index}) = max(batch_check_diff({index}), maxval(abs(c_{item.name}{section} - {item.name}{section})))")
+    out.append("    end if")
+    out.append(f"  end subroutine batched_{k}")
+    return "\n".join(out)
+
+
+def _prod(values) -> int:
+    result = 1
+    for value in values:
+        result *= value
+    return result
+
+
+def _batch_api(table: HookTable) -> str:
+    """The C entries Python drives a batch with, and the reset each batched hook needs."""
+
+    batched = [(index, hook) for index, hook in enumerate(table.hooks, start=1) if hook.batches]
+    if not batched:
+        return ""
+    lines = ["  integer(c_int) function pycam_hooks_batch_v1(hook, mode, check) bind(C, name='pycam_hooks_batch_v1') result(status)",
+             "    ! answer the hook's calls from a batch gathered before the stage runs (mode 1: the bound model,",
+             "    ! one forward; 2: the original on each gathered chunk) or call by call again (0); check /= 0",
+             "    ! also runs the bound model on every call's own chunk and keeps the largest difference",
+             "    integer(c_int), value, intent(in) :: hook, mode, check",
+             "    status = 1_c_int",
+             "    if (hook < 1 .or. hook > nhooks) return",
+             "    if (.not. can_batch(hook)) then",
+             "      status = 2_c_int; return          ! the table has no batch block for the hook",
+             "    end if",
+             "    if (mode < 0 .or. mode > 2) then",
+             "      status = 5_c_int; return",
+             "    end if",
+             "    if (armed(hook)) then",
+             "      status = 4_c_int; return",
+             "    end if",
+             "    if (mode == 1 .and. (.not. modeled(hook) .or. plugged(hook) .or. shadow(hook))) then",
+             "      status = 3_c_int; return          ! one forward for the batch: a bound TorchScript model, not a shadow",
+             "    end if",
+             "    if (mode /= 1 .and. modeled(hook)) then",
+             "      status = 6_c_int; return          ! the original's batch leaves no bound model to answer",
+             "    end if",
+             "    batch_mode(hook) = int(mode)",
+             "    batch_check(hook) = check /= 0_c_int .and. mode == 1",
+             "    status = 0_c_int",
+             "  end function pycam_hooks_batch_v1",
+             "",
+             "  integer(c_int) function pycam_hooks_batch_stats_v1(hook, forwards, chunks, rows, untaken, pending, seconds, check_diff) &",
+             "       bind(C, name='pycam_hooks_batch_stats_v1') result(status)",
+             "    ! batches answered, the chunks and live columns they held, chunks a batch held that no call took",
+             "    ! (untaken, over earlier batches; pending, in the current one), wall seconds gathering nothing",
+             "    ! but answering the batches (the forwards), and the check's largest difference",
+             "    integer(c_int), value, intent(in) :: hook",
+             "    integer(c_int64_t), intent(out) :: forwards, chunks, rows, untaken, pending",
+             "    real(c_double), intent(out) :: seconds, check_diff",
+             "    integer(c_int64_t) :: rate",
+             "    forwards = 0_c_int64_t; chunks = 0_c_int64_t; rows = 0_c_int64_t; untaken = 0_c_int64_t; pending = 0_c_int64_t",
+             "    seconds = 0.0_c_double; check_diff = 0.0_c_double",
+             "    status = 1_c_int",
+             "    if (hook < 1 .or. hook > nhooks) return",
+             "    status = 2_c_int",
+             "    if (.not. can_batch(hook)) return",
+             "    call system_clock(count_rate=rate)",
+             "    forwards = batch_forwards(hook); chunks = batch_chunks(hook); rows = batch_rows(hook)",
+             "    untaken = batch_untaken(hook)",
+             "    select case (hook)"]
+    for index, hook in batched:
+        k = hook.kernel
+        lines.append(f"    case ({index})")
+        lines.append(f"      if (bn_{k} > 0) pending = int(count(.not. btaken_{k}(1:bn_{k})), c_int64_t)")
+    lines += ["    end select",
+              "    seconds = real(batch_ticks(hook), c_double) / real(rate, c_double)",
+              "    check_diff = batch_check_diff(hook)",
+              "    status = 0_c_int",
+              "  end function pycam_hooks_batch_stats_v1",
+              ""]
+    return "\n".join(lines)
+
+
 def render(table: HookTable) -> str:
     specs = [_contract(hook) for hook in table.hooks]
     framed = [len(_dummies(spec)) for hook, spec in zip(table.hooks, specs) if hook.pausable]
@@ -611,6 +954,9 @@ def render(table: HookTable) -> str:
             procedures.append("")
             procedures.append(_warm_procedure(hook, spec, index))
             procedures.append("")
+        if hook.batches:
+            procedures.append(_batch_procedures(hook, spec, index))
+            procedures.append("")
     procedures.append(_warm_dispatch(table))
     procedures.append("")
     has_model = ", ".join(".true." if hook.takes_model else ".false." for hook in table.hooks)
@@ -618,6 +964,12 @@ def render(table: HookTable) -> str:
                                if hook.pausable)
     can_pause = ", ".join(".true." if hook.pausable else ".false." for hook in table.hooks)
     kernel_names = "\n".join(f"  character(len=*), parameter :: name_{i} = '{hook.kernel}'" for i, hook in enumerate(table.hooks, start=1))
+    batched = [hook.kernel for hook in table.hooks if hook.batches]
+    batch_public = "".join(
+        f", &\n            pycam_hooks_batch_begin_{k}, pycam_hooks_batch_put_{k}, pycam_hooks_batch_forward_{k}" for k in batched)
+    if batched:
+        batch_public = ", pycam_hooks_batch_v1, pycam_hooks_batch_stats_v1" + batch_public
+    batch_reset = "    batch_mode = 0\n" if batched else ""
     return f'''! Hooks: kernels reached inside compiled routines, their callers' references
 ! redirected at link time to these procedures.  Each counts its calls, calls the
 ! original when unarmed, and when armed hands Python the frame by yielding the
@@ -637,7 +989,7 @@ module pycam_hooks
   public :: pycam_hooks_arm_v1, pycam_hooks_counts_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
             pycam_hooks_original_v1, pycam_hooks_reset_v1, pycam_hooks_count_v1, pycam_hooks_name_v1, &
             pycam_hooks_bind_model_v1, pycam_hooks_bind_model_v2, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1, &
-            pycam_hooks_model_seconds_v1, pycam_hooks_bind_plugin_v1
+            pycam_hooks_model_seconds_v1, pycam_hooks_bind_plugin_v1{batch_public}
 
   integer, parameter :: nhooks = {len(table.hooks)}
   integer(c_int), parameter :: ev_needs_kernel = 1_c_int
@@ -689,7 +1041,7 @@ module pycam_hooks
   integer(c_int), save :: frame_ndims(max_slots) = 0_c_int, frame_dtypes(max_slots) = 0_c_int, frame_intents(max_slots) = 0_c_int
   integer(c_int64_t), save :: frame_shapes(max_rank, max_slots) = 0_c_int64_t
   integer(c_int), save :: frame_nslots = 0_c_int, frame_ncol = 0_c_int
-
+{_batch_declarations(table)}
   interface
     integer(c_int) function pycam_fiber_running_v1() bind(C, name='pycam_fiber_running_v1')
       import :: c_int
@@ -933,11 +1285,11 @@ contains
     status = 0_c_int
   end function pycam_hooks_original_v1
 
-  subroutine pycam_hooks_reset_v1() bind(C, name='pycam_hooks_reset_v1')
+{_batch_api(table)}  subroutine pycam_hooks_reset_v1() bind(C, name='pycam_hooks_reset_v1')
     integer :: hook
     armed = .false.
     paused_hook = 0
-    do hook = 1, nhooks
+{batch_reset}    do hook = 1, nhooks
       if (modeled(hook)) then
         call torch_delete(models(hook))
         modeled(hook) = .false.

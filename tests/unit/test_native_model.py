@@ -91,7 +91,9 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     # only the hooks with a model block have the branch; the others cannot be bound
     table = load_hooks()
     flags = lambda values: "(/ " + ", ".join(".true." if v else ".false." for v in values) + " /)"  # noqa: E731
-    assert text.count("call model_") == sum(1 for hook in table.hooks if hook.takes_model)
+    # each hook's model branch, and a batched hook's check that runs it on the call's own chunk
+    assert text.count("call model_") == (sum(1 for hook in table.hooks if hook.takes_model)
+                                         + sum(1 for hook in table.hooks if hook.batches))
     assert not table.hook("fluxbelowinv").takes_model and table.hook("cldfrc_fice").takes_model
     assert f"has_model(nhooks) = {flags(hook.takes_model for hook in table.hooks)}" in text
     assert f"can_pause(nhooks) = {flags(hook.pausable for hook in table.hooks)}" in text

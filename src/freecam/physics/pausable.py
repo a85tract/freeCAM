@@ -42,9 +42,74 @@ class PausableStage(NativeStage):
     WHOLE_ACTION = True
     #: the runner's entry prefix without the leading ``pycam_``; see the manifest
     RUNNER_PREFIX = ""
+    #: a kernel whose hook the image can answer for every chunk at once (a ``batch`` block in
+    #: native/pi_cam/hooks.yaml), and the image's entry that gathers every chunk's inputs for it
+    #: before the action runs; None where the stage has no such kernel
+    BATCH_KERNEL: str | None = None
+    BATCH_ENTRY: str | None = None
 
     def __init__(self, *, kernels: Mapping[str, Any] | None = None) -> None:
         super().__init__(kernels=kernels)
+        #: test only: with batch_chunks and nothing replaced, BATCH_KERNEL's calls take answers the
+        #: original computed on each gathered chunk -- the gate of the gathering, bit-for-bit
+        self.batch_original = False
+        #: test only: a model batch also runs the model on every call's own chunk, and the largest
+        #: difference from the batch's answer is kept (read_hook_batch's check_max_abs_diff)
+        self.batch_check = False
+
+    def hook_batch_mode(self) -> str | None:
+        """How BATCH_KERNEL's hook answers this step: ``model``, ``original``, or None call by call.
+
+        With batch_chunks, a TorchScript model bound at the kernel's hook runs once over every
+        chunk's live columns; with batch_original and nothing replaced, the original answers
+        each gathered chunk.  A Python replacement batches through the runner instead.
+        """
+
+        if not self.batch_chunks or self.BATCH_KERNEL is None:
+            return None
+        from .native_model import NativeModel
+
+        slot = self.kernels.get(self.BATCH_KERNEL)
+        if isinstance(slot, NativeModel):
+            if slot.shadow:
+                raise PhysicsError(f"{type(self).__name__}: a shadow model at {self.BATCH_KERNEL!r} runs call by "
+                                   f"call beside the original; batch_chunks has nothing to batch")
+            return "model"
+        if self.batch_original and not self.replacements():
+            return "original"
+        return None
+
+    def run_whole(self, native: Any) -> None:
+        """The whole action; with a hook batch, every chunk's kernel inputs gathered and answered first."""
+
+        batch = self.hook_batch_mode()
+        if batch is None:
+            super().run_whole(native)
+            return
+        from ..pi_cam.hooks import load_hooks, read_hook_batch, set_hook_batch
+
+        library = native.library
+        if getattr(self, "_hook_batch", None) != batch:
+            hook = load_hooks().hook(self.BATCH_KERNEL)
+            if not hook.batches:
+                raise PhysicsError(f"hook {self.BATCH_KERNEL!r} has no batch block in native/pi_cam/hooks.yaml")
+            bind_stage_hosts(native)
+            set_hook_batch(library, hook.id, batch, check=self.batch_check and batch == "model")
+            self._hook_batch, self._hook_id = batch, hook.id
+        entry = getattr(library, self.BATCH_ENTRY, None)
+        if entry is None:
+            raise PICAMConfigurationError(f"this image has no {self.BATCH_ENTRY}: it was built before hook batches")
+        status = int(entry())
+        if status:
+            raise PhysicsError(f"{self.BATCH_ENTRY} refused ({status}): 2 the stage hosts are not bound, 3 the "
+                               f"scheme is not the one the gathering was written for, 4 a buffer field is missing")
+        native.run_action(self.STAGE)
+        stats = read_hook_batch(library, self._hook_id)
+        if stats is None or stats["pending"] or stats["untaken"]:
+            raise PhysicsError(f"{type(self).__name__}: the stage ran but {self.BATCH_KERNEL!r}'s calls did not take "
+                               f"every gathered chunk: {stats}")
+        self.execution.batch = batch
+        self.execution.batched_steps += 1
 
     def select_mode(self, native: Any = None) -> str:
         policy = self.execution_policy
@@ -94,6 +159,10 @@ class ShallowConvection(PausableStage):
     RUNNER_PREFIX = "shcu"
     PROCESS_NAME = "shallow_convection"
     SWAPPABLE = ("compute_uwshcu_inv", "fluxbelowinv")
+    #: the driver computes none of the core's inputs, so pycam_shcu_batch gathers them for
+    #: every chunk and the hook answers the rank's chunks in one forward
+    BATCH_KERNEL = "compute_uwshcu_inv"
+    BATCH_ENTRY = "pycam_shcu_batch_v1"
 
 
 class DeepConvection(PausableStage):

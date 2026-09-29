@@ -31,13 +31,17 @@
 #      image, on the host CPU;
 #   G  the same on the node's GPUs through MPS (GPU nodes, a CUDA FTorch image): one server of
 #      the job's own a GPU (PYCAM_GPU_MPS_MODE=own, the default), or the site's server of a
-#      node that PBS starts for :mps=1 in the select (PYCAM_GPU_MPS_MODE=site).
+#      node that PBS starts for :mps=1 in the select (PYCAM_GPU_MPS_MODE=site);
+#   N  M with every chunk of a rank answered by one forward a step (--batch-chunks
+#      PYCAM_BATCH_STAGE): the kernel's inputs gathered for every chunk before the stage runs;
+#   H  G, batched as N is.
 #
 # M and G are not bit-for-bit by construction: their drift from the oracle month and their
 # health (the log's repair counts) are recorded instead.  One record for the allocation:
 # validation/pi_cam_online_model_1month_<PYCAM_RUN_TAG>.json (tools/report_pi_cam_online_legs.py).
 #
-#   PYCAM_LEGS             the legs in run order, from A C M G (default ACM)
+#   PYCAM_LEGS             the legs in run order, from A C M G N H (default ACM)
+#   PYCAM_BATCH_STAGE      the stage N and H batch (default shallow_convection)
 #   PYCAM_MODEL            the TorchScript archive for M and G
 #   PYCAM_MODEL_KERNEL     the kernel slot it answers (default compute_uwshcu_inv)
 #   PYCAM_PYTHON_STAGES    the stage classes installed in every freeCAM leg (default
@@ -57,6 +61,7 @@ legs=${PYCAM_LEGS:-ACM}
 tag=${PYCAM_RUN_TAG:-${legs}}
 kernel=${PYCAM_MODEL_KERNEL:-compute_uwshcu_inv}
 stages=${PYCAM_PYTHON_STAGES:-shallow_convection}
+batch_stage=${PYCAM_BATCH_STAGE:-shallow_convection}
 policy=${PYCAM_STAGE_EXECUTION:-auto}
 mps_mode=${PYCAM_GPU_MPS_MODE:-own}
 case "${mps_mode}" in
@@ -64,9 +69,9 @@ case "${mps_mode}" in
   *) echo "PYCAM_GPU_MPS_MODE is own or site, not '${mps_mode}'" >&2; exit 2 ;;
 esac
 case "${legs}" in
-  *[!ACMG]*|"") echo "PYCAM_LEGS takes the letters A C M G, not '${legs}'" >&2; exit 2 ;;
+  *[!ACMGNH]*|"") echo "PYCAM_LEGS takes the letters A C M G N H, not '${legs}'" >&2; exit 2 ;;
 esac
-if [[ "${legs}" == *[MG]* ]]; then
+if [[ "${legs}" == *[MGNH]* ]]; then
   if [ -z "${PYCAM_MODEL:-}" ] || [ ! -f "${PYCAM_MODEL}" ]; then
     echo "legs ${legs} need PYCAM_MODEL, a TorchScript archive" >&2; exit 2
   fi
@@ -142,14 +147,17 @@ run_freecam() {
     flags+=(--native-manifest "${PYCAM_NATIVE_MANIFEST}")
   fi
   case "${leg}" in
-    M) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cpu) ;;
-    G) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cuda)
+    M|N) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cpu) ;;
+    G|H) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cuda)
        # the job shell's CUDA_VISIBLE_DEVICES names the head node's GPUs and must not reach the
        # other nodes; every rank sees its own GPU only, through its GPU's server of the job's own
        # or through the site's server of the node (validation/jobs/gpu_rank_env.sh)
        launch=(env -u CUDA_VISIBLE_DEVICES mpiexec)
        rank_env=(bash "${repo}/validation/jobs/gpu_rank_env.sh") ;;
   esac
+  if [[ "${leg}" == [NH] ]]; then
+    flags+=(--batch-chunks "${batch_stage}")
+  fi
   echo "=== ${leg}: freeCAM online month ($(date)) ==="
   ( source "${reference_case}/.env_mach_specific.sh" >/dev/null 2>&1
     mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
@@ -171,7 +179,7 @@ provider = CESMOnlineBoundaryProvider(library=Path("${library}"), run_dir=Path("
 Path("${cam_run}/.exact-cesm-provider.pkl").write_bytes(cloudpickle.dumps(provider, protocol=5))
 PY
     cd "${repo}"
-    if [ "${leg}" = G ] && [ "${mps_mode}" = own ]; then
+    if [[ "${leg}" == [GH] ]] && [ "${mps_mode}" = own ]; then
       "${launch[@]}" -ppn 1 -n 4 bash "${repo}/validation/jobs/gpu_mps_per_gpu.sh" start
     fi
     "${launch[@]}" --label -n 512 "${rank_env[@]}" "${python}" -m freecam.pi_cam.cli \
@@ -183,9 +191,9 @@ PY
       --memory-sample-every 0 \
       --summary "${dir}/summary.json" \
       > "${cam_run}/freecam.log" 2>&1 || echo "${leg} exited $?"
-    if [ "${leg}" = G ] && [ "${mps_mode}" = own ]; then
+    if [[ "${leg}" == [GH] ]] && [ "${mps_mode}" = own ]; then
       "${launch[@]}" -ppn 1 -n 4 bash "${repo}/validation/jobs/gpu_mps_per_gpu.sh" stop | tee "${dir}/mps.txt"
-    elif [ "${leg}" = G ]; then
+    elif [[ "${leg}" == [GH] ]]; then
       # the site's server: the GPUs in Exclusive_Process mode refuse any rank that missed MPS,
       # so a node's four GPUs in that mode and no refused rank show every rank went through it
       "${launch[@]}" -ppn 1 -n 4 bash -c 'echo "$(hostname): site MPS exclusive GPUs $(nvidia-smi --query-gpu=compute_mode --format=csv,noheader | grep -c Exclusive_Process) of $(nvidia-smi --query-gpu=index --format=csv,noheader | wc -l)"' | tee "${dir}/mps.txt" || true

@@ -39,6 +39,9 @@ LEGS = {
     "M": "freeCAM online, the kernel answered by the TorchScript model inside the image on the host CPU",
     "G": "freeCAM online, the kernel answered by the TorchScript model inside the image on the node's GPUs "
          "through MPS",
+    "N": "M with every chunk of a rank answered by one forward a step (--batch-chunks): the kernel's inputs "
+         "gathered for every chunk before the stage runs, each call taking its chunk's rows",
+    "H": "G with every chunk of a rank answered by one forward a step (--batch-chunks)",
 }
 _MPS_LINE = re.compile(r"GPU (?P<gpu>\d+) servers \[(?P<servers>[^\]]*)\] client disconnects (?P<clients>\d+) "
                        r"log faults (?P<faults>\d+)")
@@ -68,6 +71,26 @@ def model_cost(hooks: dict[str, Any] | None, kernel: str) -> dict[str, Any]:
     if ranks and total is not None:
         cost["model_seconds_per_rank"] = total / ranks
         cost["model_seconds_slowest_rank"] = row.get("call_seconds_max")
+    batch = row.get("batch")
+    if batch and batch.get("forwards"):
+        # the hook batch: a call only takes its chunk's rows (call_seconds); the model's work is
+        # the forwards, one a step, timed apart -- the model's cost a rank is both together
+        forwards, brank = int(batch["forwards"]), int(batch.get("ranks") or ranks or 1)
+        cost.pop("ms_per_call_after_first", None)
+        cost.pop("first_call_seconds_per_rank", None)
+        cost.pop("first_call_seconds_slowest_rank", None)
+        cost["batch"] = {
+            "forwards": forwards,
+            "chunks_per_forward": batch["chunks"] / forwards,
+            "columns_per_forward": batch["rows"] / forwards,
+            "ms_per_forward": 1e3 * batch["forward_seconds"] / forwards,
+            "forward_seconds_per_rank": batch["forward_seconds"] / brank,
+            "forward_seconds_slowest_rank": batch.get("forward_seconds_max"),
+            "take_seconds_per_rank": None if total is None or not ranks else total / ranks,
+            "untaken_chunks": batch.get("untaken", 0) + batch.get("pending", 0),
+        }
+        if total is not None and ranks:
+            cost["model_seconds_per_rank"] = (total + batch["forward_seconds"]) / ranks
     return cost
 
 
@@ -152,7 +175,7 @@ def freecam_leg(directory: Path, kernel: str) -> dict[str, Any]:
 
 def ratios(legs: dict[str, dict[str, Any]]) -> dict[str, float]:
     loops = {name: leg.get("coupling_loop_seconds") for name, leg in legs.items() if leg.get("completed")}
-    pairs = [(x, "A") for x in "CMG"] + [("M", "C"), ("G", "C"), ("G", "M")]
+    pairs = [(x, "A") for x in "CMGNH"] + [("M", "C"), ("G", "C"), ("G", "M"), ("N", "M"), ("H", "G"), ("H", "N")]
     return {f"{x}/{y}": loops[x] / loops[y] for x, y in pairs if loops.get(x) and loops.get(y)}
 
 
@@ -191,7 +214,7 @@ def main() -> int:
         "pbs_job_id": arguments.pbs_job_id,
         "git_commit": arguments.git_commit,
         "hardware": arguments.hardware,
-        "gpu_mps": arguments.gpu_mps if "G" in arguments.legs else None,
+        "gpu_mps": arguments.gpu_mps if set("GH") & set(arguments.legs) else None,
         "root": arguments.root_label or None,
         "order": arguments.legs,
         "kernel": arguments.kernel,

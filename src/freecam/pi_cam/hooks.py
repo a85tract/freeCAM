@@ -58,6 +58,12 @@ class Hook:
     model_subsets: tuple[tuple[str, tuple[int, ...]], ...] = ()
     #: ``c`` or ``fortran``, see :data:`BINDINGS`
     binding: str = "c"
+    #: the dummies that carry a call's live column count and its chunk, when every chunk of a
+    #: rank can be answered at once before the stage runs (the table's ``batch`` block): the
+    #: inputs are gathered for all chunks, the model runs once on their live columns, and each
+    #: call takes its chunk's answer.  None when the hook answers call by call only
+    batch_columns: str | None = None
+    batch_chunk: str | None = None
 
     @property
     def takes_model(self) -> bool:
@@ -72,6 +78,12 @@ class Hook:
             if output == name:
                 return indices
         return None
+
+    @property
+    def batches(self) -> bool:
+        """Whether every chunk's call can be answered at once, before the stage runs."""
+
+        return self.batch_columns is not None
 
     @property
     def symbol(self) -> str:
@@ -168,6 +180,10 @@ def load_hooks(path: str | Path | None = None) -> HookTable:
             raise PICAMConfigurationError(f"{source}: hook {kernel!r} binding must be one of {BINDINGS}")
         if binding == "fortran" and redirect != "rename-references":
             raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a Fortran-bound hook is reached by renamed references")
+        batch = dict(record.get("batch") or {})
+        if batch and (set(batch) != {"columns", "chunk"} or not model_packed or binding != "fortran"):
+            raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a batch block names the columns and chunk "
+                                          f"dummies of a Fortran-bound hook with a packed model block")
         HOOK_IDS[kernel] = index
         hooks.append(Hook(
             kernel=kernel, contract=str(record["contract"]), callee_symbol=str(record["callee_symbol"]),
@@ -175,6 +191,7 @@ def load_hooks(path: str | Path | None = None) -> HookTable:
             original_symbol=original.get("symbol"), callers=callers,
             model_inputs=model_inputs, model_outputs=model_outputs, binding=binding,
             model_packed=model_packed, model_zero_outputs=model_zero_outputs, model_subsets=tuple(subsets),
+            batch_columns=str(batch["columns"]) if batch else None, batch_chunk=str(batch["chunk"]) if batch else None,
         ))
     import hashlib
 
@@ -182,7 +199,8 @@ def load_hooks(path: str | Path | None = None) -> HookTable:
                      sha256=hashlib.sha256(text.encode()).hexdigest())
 
 
-__all__ = ["BINDINGS", "HOOKS", "HOOK_MODULE", "Hook", "HookCaller", "HookTable", "hooked_model_kernels", "load_hooks"]
+__all__ = ["BATCH_MODES", "BINDINGS", "HOOKS", "HOOK_MODULE", "Hook", "HookCaller", "HookTable", "hooked_model_kernels",
+           "load_hooks", "read_hook_batch", "set_hook_batch"]
 
 
 def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
@@ -242,6 +260,9 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
                 record["first_call_seconds"] = float(first.value)      # the first modeled call alone
                 record["warm_seconds"] = float(warm.value)             # the warm-up forward at bind
                 record["original_seconds"] = float(original.value)     # the original on the calls a shadow model also answered
+        batch = read_hook_batch(library, hook)
+        if batch is not None and batch["forwards"]:
+            record["batch"] = batch
         result[buffer.value.decode("ascii", errors="replace")] = record
     return result
 
@@ -253,6 +274,54 @@ BIND_STATUS = {1: "no such hook", 2: "the hook takes no model (hooks.yaml has no
                7: "the device is neither the host nor CUDA"}
 #: what pycam_hooks_arm_v1 answers when a hook cannot be armed
 ARM_STATUS = {1: "no such hook", 3: "a model is bound at the hook", 5: "the hook has no frame (a Fortran-bound hook cannot pause)"}
+
+
+#: how pycam_hooks_batch_v1 answers the modes a hook batch runs in
+BATCH_MODES = {"off": 0, "model": 1, "original": 2}
+BATCH_STATUS = {1: "no such hook", 2: "the hook has no batch block in native/pi_cam/hooks.yaml",
+                3: "a model batch needs a TorchScript model bound at the hook, not a plugin or a shadow",
+                4: "the hook is armed for a Python replacement", 5: "no such batch mode",
+                6: "a model is bound at the hook; the original's batch would leave it unused"}
+
+
+def set_hook_batch(library: Any, hook_id: int, mode: str, *, check: bool = False) -> None:
+    """Answer a hook's calls from a batch gathered before its stage runs (see ``batch`` in hooks.yaml).
+
+    ``model``: the bound model runs once over every chunk's live columns; ``original``: the
+    original runs on each gathered chunk (the gate of the gathering); ``off``: call by call.
+    ``check`` also runs the bound model on every call's own chunk and keeps the largest difference.
+    """
+
+    import ctypes
+
+    entry = getattr(library, "pycam_hooks_batch_v1", None)
+    if entry is None:
+        raise PICAMConfigurationError("this image has no pycam_hooks_batch_v1: it was built before hook batches")
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.c_int32, ctypes.c_int32, ctypes.c_int32]
+    status = int(entry(int(hook_id), BATCH_MODES[mode], 1 if check else 0))
+    if status:
+        raise PICAMConfigurationError(f"pycam_hooks_batch_v1 refused hook {hook_id} ({status}): "
+                                      f"{BATCH_STATUS.get(status, 'unknown status')}")
+
+
+def read_hook_batch(library: Any, hook_id: int) -> dict[str, float | int] | None:
+    """A batched hook's counters: batches answered, chunks and columns they held, chunks no call took."""
+
+    import ctypes
+
+    entry = getattr(library, "pycam_hooks_batch_stats_v1", None)
+    if entry is None:
+        return None
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.c_int32] + [ctypes.POINTER(ctypes.c_int64)] * 5 + [ctypes.POINTER(ctypes.c_double)] * 2
+    counts = [ctypes.c_int64(0) for _ in range(5)]
+    seconds, diff = ctypes.c_double(0.0), ctypes.c_double(0.0)
+    if entry(int(hook_id), *(ctypes.byref(c) for c in counts), ctypes.byref(seconds), ctypes.byref(diff)) != 0:
+        return None
+    forwards, chunks, rows, untaken, pending = (int(c.value) for c in counts)
+    return {"forwards": forwards, "chunks": chunks, "rows": rows, "untaken": untaken, "pending": pending,
+            "forward_seconds": float(seconds.value), "check_max_abs_diff": float(diff.value)}
 
 
 def hooked_model_kernels() -> frozenset[str]:
