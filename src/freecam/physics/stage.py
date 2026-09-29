@@ -41,7 +41,7 @@ from ..pi_cam.kernel_codegen import load_direct_kernels
 from .capture import lane_sha256
 from .errors import PhysicsError
 from .native_model import NativeModel, NativePlugin
-from .segments import ByChunk, OriginalAtPause, OriginalByChunk, OriginalKernel, SegmentedStage
+from .segments import ByChunk, OriginalAtPause, OriginalAtPauseByChunk, OriginalByChunk, OriginalKernel, SegmentedStage
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -1334,13 +1334,15 @@ class NativeStage:
         object.__setattr__(self, name, value)
 
     def binding_kind(self, name: str) -> str:
-        """What is in kernel ``name``'s slot: original, original-through-python, surrogate, method or callable."""
+        """What is in kernel ``name``'s slot: original, original-through-python, original-by-chunk, surrogate, method or callable."""
 
         binding = self.kernels[name]
         if binding is None:
             return "original"
         if isinstance(binding, OriginalKernel):
             return "original-through-python"
+        if isinstance(binding, OriginalByChunk):
+            return "original-by-chunk"
         if isinstance(binding, MethodKernel):
             return "method"
         compiled = self.__dict__.get("_hook_compiled", {}).get(name)
@@ -1870,9 +1872,13 @@ class NativeStage:
             if kernel is None:
                 kernels[name] = None
             elif isinstance(kernel, OriginalByChunk):
-                # the batched path's gate: the original through Python, every waiting
-                # chunk handed over in one call and the answer split back by chunk
-                kernels[name] = ByChunk(self._owner_of(name).original_kernel_through_python(native, name))
+                # the batched path's gate: every waiting chunk handed over in one call and
+                # the answer split back by chunk, around the original -- at each chunk's own
+                # pause when the runner runs it there, else through Python chunk by chunk
+                if getattr(runner, "runs_original", False):
+                    kernels[name] = OriginalAtPauseByChunk()
+                else:
+                    kernels[name] = ByChunk(self._owner_of(name).original_kernel_through_python(native, name))
             elif isinstance(kernel, OriginalKernel):
                 owner = self._owner_of(name)
                 if getattr(runner, "runs_original", False):

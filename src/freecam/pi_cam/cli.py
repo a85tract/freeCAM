@@ -667,9 +667,9 @@ def main(argv: list[str] | None = None) -> int:
         "--segmented-original-by-chunk",
         action="store_true",
         help=(
-            "test only: with --segmented-original and --batch-chunks, answer the original kernels "
-            "through Python with every waiting chunk in one call, split back by chunk -- the batched "
-            "path's own gate -- instead of the original at each pause"
+            "test only: with --segmented-original and --batch-chunks, answer every waiting chunk in "
+            "one chunk-batch call, split back by chunk -- the batched path's own gate -- the original "
+            "running at each chunk's own pause after its stacked inputs are checked against its frame"
         ),
     )
     parser.add_argument(

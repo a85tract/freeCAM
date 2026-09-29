@@ -253,6 +253,28 @@ kernel's contract and binding; `docs/contracts.md` is the generated reference of
 every contract.  `examples/replace_kernel.ipynb` walks through the ways on a
 live run.
 
+A model answering at a pause is called once per chunk: a rank of 512 has two
+chunks of at most 16 columns, and a network pays its per-call cost twice a
+step.  A stage whose runner keeps every chunk in a slot of its own
+(`batch_chunks: true` in its spec under `native/pi_cam/pausable/`; shallow
+convection today) can answer all of the rank's chunks in one call instead:
+with `stage.batch_chunks = True` (`--batch-chunks shallow_convection`), every
+chunk runs from its entry to its pause first, a model with
+`takes_chunk_batches = True` is handed one `ChunkBatch` -- the live columns of
+every waiting chunk stacked in chunk order (`rows`, `lchnks`), an input with no
+column axis once when every chunk has the same and otherwise in `per_chunk` --
+and answers every output stacked the same way; the answer is split back by
+chunk and the chunks resume, each from where it stopped.  Any other model is
+still called once per chunk.  `ByChunk(f)` wraps a per-chunk function as a
+chunk-batch model.  `OriginalByChunk()` (`--segmented-original-by-chunk`) is the
+path's gate: one call for every waiting chunk, each chunk's original run at its
+own pause after its stacked inputs are checked against its frame bit for bit.
+At 512 ranks over 50 steps it answers 100 pauses in 50 calls, bit-for-bit
+(`validation/pi_cam_pausable_batch-shcu-stacked-p38_*`), as are the batched run
+answering each chunk on its own frame (`batch-shcu-original-p38`, every parked
+chunk's inputs checked when it is live again: `FREECAM_BATCH_VERIFY=1`) and the
+sequential run on the same image (`batch-seq-shcu-p38`).
+
 ## Parameters
 
 ### Namelist

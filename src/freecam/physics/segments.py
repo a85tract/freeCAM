@@ -146,11 +146,12 @@ class OriginalKernel:
 
 
 class OriginalByChunk:
-    """Put in a kernel slot: the original through Python, answering every waiting chunk in one call.
+    """Put in a kernel slot: the original, answering every waiting chunk in one call.
 
-    Resolved by the stage to :class:`ByChunk` around its original kernel through
-    Python: the batched mode's stacking and split, around arithmetic that is the
-    original routine chunk by chunk -- bit-for-bit is the proof of that path.
+    Resolved by the stage to :class:`OriginalAtPauseByChunk` when its runner runs
+    the original at a pause, and otherwise to :class:`ByChunk` around its original
+    kernel through Python: the batched mode's stacking and split, around arithmetic
+    that is the original routine chunk by chunk -- bit-for-bit is the proof of that path.
     """
 
     def __repr__(self) -> str:
@@ -185,6 +186,64 @@ class OriginalAtPause:
 
     def __repr__(self) -> str:
         return "OriginalAtPause()"
+
+
+class OriginalAtPauseByChunk:
+    """What :class:`OriginalByChunk` resolves to when the runner runs the original at a pause.
+
+    One chunk-batch call for every chunk waiting at the kernel, answered chunk by
+    chunk by the original call at that chunk's own pause: each waiting slot is made
+    live, its frame's inputs must be, bit for bit, what the batch stacked for it, and
+    the original runs on its storage as :class:`OriginalAtPause` runs it.  The
+    answers are stacked chunk after chunk, and the batch's split puts each back into
+    its own slot -- so bit-for-bit output proves the stacking, the split and the
+    write-back of the batched path, with the original's own arithmetic.
+    """
+
+    takes_chunk_batches = True
+    #: called with the runner, the context and the waiting slots, in the batch's order
+    takes_slots = True
+
+    def __call__(self, batch: "ChunkBatch", runner: "SegmentRunner", context: int,
+                 slots: Sequence[int]) -> dict[str, np.ndarray]:
+        answers: list[dict[str, np.ndarray]] = []
+        start = 0
+        for index, (slot, rows) in enumerate(zip(slots, batch.rows)):
+            runner.batch_select(context, slot)              # type: ignore[attr-defined]
+            frame = runner.frame(context)
+            _require_stacked(batch, index, start, frame)
+            answers.append(OriginalAtPause()(frame, runner, context))
+            start += rows
+        return {name: np.concatenate([answer[name] for answer in answers], axis=0) for name in answers[0]}
+
+    def __repr__(self) -> str:
+        return "OriginalAtPauseByChunk()"
+
+
+def _require_stacked(batch: "ChunkBatch", index: int, start: int, frame: KernelFrame) -> None:
+    """The ``index``-th chunk of ``batch`` is, bit for bit, what its live frame holds as inputs."""
+
+    rows = batch.rows[index]
+    changed = []
+    for argument in frame.arguments:
+        if not argument.is_input:
+            continue
+        if argument.name in batch.stacked:
+            given = batch.inputs[argument.name][start:start + rows]
+        elif argument.name in batch.inputs:
+            given = batch.inputs[argument.name]
+        elif argument.name in batch.per_chunk:
+            given = batch.per_chunk[argument.name][index]
+        else:
+            changed.append(f"{argument.name} is not in the batch")
+            continue
+        live = np.ascontiguousarray(_lanes(argument.array, frame.ncol))
+        given = np.ascontiguousarray(given)
+        if live.shape != given.shape or live.dtype != given.dtype or live.tobytes() != given.tobytes():
+            changed.append(f"{argument.name} (batch {given.dtype}{given.shape}, frame {live.dtype}{live.shape})")
+    if changed:
+        raise PhysicsError(f"kernel {batch.kernel!r}: chunk {index} of the batch (lchnk {frame.lchnk}) is not "
+                           f"what its frame holds: " + "; ".join(changed))
 
 
 class FrameCapture:
@@ -363,6 +422,8 @@ class _Waiting:
     ncol: int
     batch: dict[str, np.ndarray] | None
     lanes: frozenset[str]
+    #: the outputs the call has no storage for (an unassociated pointer, a zero-size field)
+    empty: frozenset[str]
     #: the frame's inputs as parked, when the stage verifies what comes back (verify_frames)
     parked: dict[str, np.ndarray] | None = None
 
@@ -570,8 +631,9 @@ class SegmentedStage:
                 counters.bytes_copied_in += sum(v.nbytes for v in batch.values())
             parked = ({a.name: np.array(_lanes(a.array, frame.ncol), copy=True) for a in frame.arguments if a.is_input}
                       if self.verify_frames else None)
+            empty = frozenset(a.name for a in frame.arguments if a.is_output and _lanes(a.array, frame.ncol).size == 0)
             waiting[slot] = _Waiting(kernel=frame.kernel, token=frame.token, lchnk=frame.lchnk, ncol=frame.ncol,
-                                     batch=batch, lanes=_lane_names(frame), parked=parked)
+                                     batch=batch, lanes=_lane_names(frame), empty=empty, parked=parked)
 
         try:
             for slot in range(slots):
@@ -599,10 +661,13 @@ class SegmentedStage:
                         raise PhysicsError(
                             f"{self.stage_name}: chunk slot {slot} came back paused on {frame.kernel!r} "
                             f"(token {frame.token}), not where it was parked ({parked.kernel!r}, {parked.token})")
-                    if parked.parked is not None:
+                    model = kernels[frame.kernel]
+                    # a slot-taking model checked the slot's inputs itself when it made
+                    # the slot live, before its original wrote the outputs
+                    checked = slot in answers and getattr(model, "takes_slots", False)
+                    if parked.parked is not None and not checked:
                         _verify_restored(self.stage_name, slot, frame, parked.parked)
                     self.paused_on = frame
-                    model = kernels[frame.kernel]
                     if slot in answers:
                         answer = answers[slot]
                     else:
@@ -647,11 +712,24 @@ class SegmentedStage:
                 per_chunk[name] = tuple(values)
         batch = ChunkBatch(kernel=kernel, inputs=inputs, rows=rows, lchnks=tuple(w.lchnk for w in parked),
                            per_chunk=per_chunk, stacked=frozenset(name for name in inputs if name in lanes))
-        answer = model(batch)
+        if getattr(model, "takes_slots", False):
+            answer = model(batch, self.runner, self.context, group)       # type: ignore[call-arg]
+        else:
+            answer = model(batch)
         total = batch.columns
+        empty = frozenset.intersection(*(w.empty for w in parked))
         split: dict[int, dict[str, np.ndarray]] = {slot: {} for slot in group}
         for name, value in answer.items():
             value = np.asarray(value)
+            if name in empty:
+                # no waiting chunk has storage for it: each is handed the empty answer
+                if value.size != 0:
+                    raise PhysicsError(
+                        f"{self.stage_name}: {kernel}'s chunk-batch answer {name} has shape {value.shape}; "
+                        f"no waiting chunk has storage for it")
+                for slot in group:
+                    split[slot][name] = value
+                continue
             if name not in lanes or value.ndim == 0 or value.shape[0] != total:
                 raise PhysicsError(
                     f"{self.stage_name}: {kernel}'s chunk-batch answer {name} has shape {value.shape}; "
@@ -683,5 +761,6 @@ class SegmentedStage:
             self.context = None
 
 
-__all__ = ["ByChunk", "ChunkBatch", "FrameArgument", "KernelFrame", "OriginalAtPause", "OriginalByChunk", "OriginalKernel", "SegmentCounters",
+__all__ = ["ByChunk", "ChunkBatch", "FrameArgument", "KernelFrame", "OriginalAtPause", "OriginalAtPauseByChunk",
+           "OriginalByChunk", "OriginalKernel", "SegmentCounters",
            "SegmentEvent", "SegmentRunner", "SegmentedStage"]

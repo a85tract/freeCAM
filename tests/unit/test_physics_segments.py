@@ -418,3 +418,97 @@ def test_a_faithful_store_passes_the_check(monkeypatch) -> None:
     runner = BatchedFakeRunner()
     SegmentedStage("s", runner).run({"a": StackedOriginal(), "b": None}, batched=True)
     assert all(np.array_equal(_whole().y[c], runner.y[c]) for c in (10, 11))
+
+
+class OriginalRunningFakeRunner(BatchedFakeRunner):
+    """The batched fake whose runner also runs the original call on the live slot's paused frame."""
+
+    runs_original = True
+
+    def run_original(self, cid, kernel):
+        ctx = self.contexts[cid]
+        chunk_i, _, paused = ctx["pc"]
+        assert paused == kernel == "a", (paused, kernel)
+        lchnk = (10, 11)[chunk_i]; n = self.ncol[lchnk]
+        self.y[lchnk][:n] = 2.0 * self.x[lchnk][:n]; self.z[lchnk][:n] += 1.0
+        self.log.append(("original", kernel, lchnk))
+
+
+def test_the_original_by_chunk_answers_every_chunk_in_one_call_at_each_chunk_s_own_pause() -> None:
+    from freecam.physics.segments import OriginalAtPauseByChunk
+
+    runner = OriginalRunningFakeRunner()
+    stage = SegmentedStage("s", runner)
+    stage.run({"a": OriginalAtPauseByChunk(), "b": None}, batched=True)
+    for c in (10, 11):
+        assert np.array_equal(_whole().y[c], runner.y[c]) and np.array_equal(_whole().z[c], runner.z[c])
+    # one call a round for both chunks, each chunk's original run on its own storage
+    assert stage.counters.model_calls == 2 and stage.counters.pauses == 4
+    assert [e for e in runner.log if e[0] == "original"] == [("original", "a", 10), ("original", "a", 11)] * 2
+
+
+def test_the_original_by_chunk_refuses_a_chunk_whose_frame_is_not_what_the_batch_stacked(monkeypatch) -> None:
+    from freecam.physics.segments import OriginalAtPauseByChunk
+
+    runner = OriginalRunningFakeRunner()
+    original_select = runner.batch_select
+
+    def select(cid, slot):
+        original_select(cid, slot)
+        if slot == 0 and ("frame", "a", 11, 0) in runner.log and ("original", "a", 10) not in runner.log:
+            runner.x[10][3, 2] += 1.0                         # the store lost a value of chunk 10
+    runner.batch_select = select
+    stage = SegmentedStage("s", runner)
+    with pytest.raises(PhysicsError, match=r"chunk 0 of the batch \(lchnk 10\) is not what its frame holds: x"):
+        stage.run({"a": OriginalAtPauseByChunk(), "b": None}, batched=True)
+    assert stage.tainted and not runner.contexts
+
+
+def test_the_original_by_chunk_passes_the_batch_verify_it_does_itself(monkeypatch) -> None:
+    from freecam.physics.segments import OriginalAtPauseByChunk
+
+    monkeypatch.setenv("FREECAM_BATCH_VERIFY", "1")
+    runner = OriginalRunningFakeRunner()
+    stage = SegmentedStage("s", runner)
+    assert stage.verify_frames
+    stage.run({"a": OriginalAtPauseByChunk(), "b": None}, batched=True)      # z is inout: written before resume
+    assert all(np.array_equal(_whole().z[c], runner.z[c]) for c in (10, 11))
+
+
+def test_an_output_no_waiting_chunk_has_storage_for_takes_an_empty_answer() -> None:
+    class WithEmpty(BatchedFakeRunner):
+        def frame(self, cid):
+            frame = super().frame(cid)
+            if frame.kernel == "a":
+                empty = FrameArgument("w", np.zeros((0, PVER), order="F"), "out")
+                frame = dataclasses.replace(frame, arguments=frame.arguments + (empty,))
+            return frame
+
+    class Stacked(StackedOriginal):
+        def __call__(self, batch):
+            return {**super().__call__(batch), "w": np.zeros((0,))}
+
+    runner = WithEmpty()
+    SegmentedStage("s", runner).run({"a": Stacked(), "b": None}, batched=True)
+    assert all(np.array_equal(_whole().y[c], runner.y[c]) for c in (10, 11))
+
+    class Filled(StackedOriginal):
+        def __call__(self, batch):
+            return {**super().__call__(batch), "w": np.zeros((batch.columns, PVER))}
+
+    stage = SegmentedStage("s", WithEmpty())
+    with pytest.raises(PhysicsError, match=r"answer w has shape \(11, 4\); no waiting chunk has storage for it"):
+        stage.run({"a": Filled(), "b": None}, batched=True)
+
+
+def test_a_stage_resolves_the_original_by_chunk_by_what_its_runner_can_do() -> None:
+    from types import SimpleNamespace
+
+    from freecam.physics.pausable import ShallowConvection
+    from freecam.physics.segments import OriginalAtPauseByChunk, OriginalByChunk
+
+    stage = ShallowConvection()
+    stage.kernels["compute_uwshcu_inv"] = OriginalByChunk()
+    resolved = stage._segment_kernels(native=None, runner=SimpleNamespace(runs_original=True))
+    assert isinstance(resolved["compute_uwshcu_inv"], OriginalAtPauseByChunk)
+    assert stage.binding_kind("compute_uwshcu_inv") == "original-by-chunk"
