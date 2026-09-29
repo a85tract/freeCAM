@@ -284,6 +284,39 @@ def test_exact_cesm_provider_is_pickle_safe_before_mpi_initialization(
     assert not restored.verify_shadow_atmosphere
 
 
+def _drv_in(path, **layout) -> None:
+    values = {"atm_ntasks": 512, "atm_rootpe": 0, "cpl_ntasks": 512, "cpl_rootpe": 0, "lnd_ntasks": 256,
+              "lnd_rootpe": 0, "ice_ntasks": 128, "ice_rootpe": 256, "ocn_ntasks": 32, "ocn_rootpe": 384,
+              "rof_ntasks": 128, "rof_rootpe": 0}
+    values.update(layout)
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "drv_in").write_text("&ccsm_pes\n" + "".join(f"  {k} = {v}\n" for k, v in values.items()) + "/\n")
+
+
+def test_exact_cesm_provider_runs_on_the_ranks_it_was_set_up_for(tmp_path) -> None:
+    library = tmp_path / "libcesm.so"
+    library.write_bytes(b"")
+    provider = CESMOnlineBoundaryProvider(library=library, run_dir=tmp_path / "run")
+    assert provider.ranks == 512                                       # the admitted layout by default
+    _drv_in(tmp_path / "run")
+    with pytest.raises(BoundaryReplayError, match="set up for 512 ranks"):
+        provider.initialize_before_cam(rank=0, size=256, config_fingerprint="")
+    # another count is declared, and its drv_in must lay every component out inside it
+    provider = CESMOnlineBoundaryProvider(library=library, run_dir=tmp_path / "run", ranks=256)
+    with pytest.raises(BoundaryReplayError, match="atm_ntasks 512"):
+        provider._check_layout(256)
+    _drv_in(tmp_path / "run", atm_ntasks=256, cpl_ntasks=256, lnd_ntasks=96, ice_rootpe=96, ocn_rootpe=384)
+    with pytest.raises(BoundaryReplayError, match="lays ocn out to rank 415"):
+        provider._check_layout(256)
+    _drv_in(tmp_path / "run", atm_ntasks=256, cpl_ntasks=256, lnd_ntasks=96, ice_ntasks=96)
+    with pytest.raises(BoundaryReplayError, match="compiled for 128 tasks"):
+        provider._check_layout(256)
+    _drv_in(tmp_path / "run", atm_ntasks=256, cpl_ntasks=256, lnd_ntasks=96, ice_rootpe=96, ocn_rootpe=224)
+    provider._check_layout(256)
+    with pytest.raises(BoundaryReplayError, match="oracle was captured on 512 ranks"):
+        CESMOnlineBoundaryProvider(library=library, run_dir=tmp_path / "run", ranks=256, oracle=tmp_path / "oracle")
+
+
 def test_exact_cesm_provider_rejects_reverse_allocator_callbacks(tmp_path) -> None:
     with pytest.raises(BoundaryReplayError, match="reverse Fortran-to-Python"):
         CESMOnlineBoundaryProvider(

@@ -193,6 +193,9 @@ def main() -> int:
     parser.add_argument("--root-label", default="", help="the root as the record names it (no site directory)")
     parser.add_argument("--pbs-job-id")
     parser.add_argument("--git-commit")
+    parser.add_argument("--steps", type=int, default=1488, help="the steps every leg ran (1488: the month)")
+    parser.add_argument("--ranks", type=int, default=512,
+                        help="the MPI ranks every leg ran on (512: the admitted layout; another count is a timing study)")
     parser.add_argument("--output", type=Path, required=True)
     arguments = parser.parse_args()
     unknown = sorted(set(arguments.legs) - set(LEGS))
@@ -207,12 +210,18 @@ def main() -> int:
         legs[name] = {"what": LEGS[name], "position": position, **leg}
     record = {
         "schema_version": 1,
-        "what": "One allocation's online PI-atm month (1488 steps, 512 ranks), legs back to back: the original "
+        "what": f"One allocation's online PI-atm {'month' if arguments.steps == 1488 else 'run'} ({arguments.steps} "
+                f"steps, {arguments.ranks} ranks), legs back to back: the original "
                 "Fortran, freeCAM with nothing replaced, and freeCAM with a model in the kernel's slot. Every "
                 "component is live in every leg (online coupling, not the offline replay). Times are the "
                 "coupling loop; the model legs are not bit-for-bit by construction, their drift and health "
                 "are recorded instead.",
         "boundary": "online",
+        "steps": arguments.steps,
+        "ranks": arguments.ranks,
+        **({} if arguments.ranks == 512 else {
+            "layout": "a timing study off the admitted 512-rank layout: every component inside the ranks, CICE on "
+                      "its compiled 128 tasks, no oracle and no bit-for-bit comparison at this count"}),
         "pbs_job_id": arguments.pbs_job_id,
         "git_commit": arguments.git_commit,
         "hardware": arguments.hardware,
