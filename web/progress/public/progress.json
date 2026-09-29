@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "c26d0fd8e0fd7456bbede6d1e64fa361f71f826a75007b575c015a7f31fc9b3d",
+ "content_hash": "2f261713a2944a9013e9560800cba83d3edb9c4d1cb81bd01a625e636ac18103",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -7655,7 +7655,7 @@
   }
  ],
  "inputs": {
-  "native/pi_cam/hooks.yaml": "42ae0aa3552db8dc0b960c9f2dea36b62f6d361071712b313eb116a28d52eb97",
+  "native/pi_cam/hooks.yaml": "a0c3d1a180d319aae6c2e3b990bdc2e826bac0ae851b497eff39c2072e3c2e03",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
   "native/pi_cam/kernel_work_items.yaml": "c92670beeae88b1fcf0bbe74525fe8489f425f9740b3f7dc6fe7eb4ea7496b44",
   "native/pi_cam/segment_runners.yaml": "37fa35306070f0b5eea12a76c44ea6798b1a7f17521659bdc4761ff32208b38a",
@@ -75301,8 +75301,8 @@
  ],
  "volatile": {
   "branch": "HEAD",
-  "commit": "bbbc2fd1b8c32dea94ec0f6b26498d5aedd5cf10",
-  "generated_at": "2026-09-28T19:44:13+00:00"
+  "commit": "6331ab63d7f96a57475b8ce1cfa7d8908286662c",
+  "generated_at": "2026-09-29T03:50:33+00:00"
  },
  "work_items": [
   {
