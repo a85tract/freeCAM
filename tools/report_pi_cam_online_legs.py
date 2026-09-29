@@ -79,6 +79,8 @@ def model_cost(hooks: dict[str, Any] | None, kernel: str) -> dict[str, Any]:
         cost.pop("ms_per_call_after_first", None)
         cost.pop("first_call_seconds_per_rank", None)
         cost.pop("first_call_seconds_slowest_rank", None)
+        # the slowest rank's take time alone says nothing of its model: the forwards are its cost
+        cost.pop("model_seconds_slowest_rank", None)
         cost["batch"] = {
             "forwards": forwards,
             "chunks_per_forward": batch["chunks"] / forwards,
