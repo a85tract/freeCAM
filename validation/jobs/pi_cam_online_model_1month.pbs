@@ -43,6 +43,7 @@
 #   PYCAM_LEGS             the legs in run order, from A C M G N H (default ACM)
 #   PYCAM_BATCH_STAGE      the stage N and H batch (default shallow_convection)
 #   PYCAM_STEPS            the steps each leg runs (default 1488, the month)
+#   PYCAM_TIMELINE         set: every freeCAM leg records its ranks' action timeline
 #   PYCAM_NTASKS           the MPI ranks every leg runs on, spread evenly over the job's nodes
 #                          (default 512, the admitted layout).  Another count is a timing study:
 #                          the seed's drv_in lays the components out over it (CICE keeps its
@@ -201,6 +202,10 @@ run_freecam() {
   esac
   if [[ "${leg}" == [NH] ]]; then
     flags+=(--batch-chunks "${batch_stage}")
+  fi
+  if [ -n "${PYCAM_TIMELINE:-}" ]; then
+    # every rank's action timeline, step by step, into the leg's directory (`freecam timeline`)
+    flags+=(--timeline-dir "${dir}/timeline" --timeline-flush-every "${PYCAM_TIMELINE_FLUSH:-100}")
   fi
   echo "=== ${leg}: freeCAM online month ($(date)) ==="
   ( source "${reference_case}/.env_mach_specific.sh" >/dev/null 2>&1
