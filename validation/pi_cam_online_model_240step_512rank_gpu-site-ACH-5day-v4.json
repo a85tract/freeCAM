@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "what": "One allocation's online PI-atm run (240 steps, 512 ranks), legs back to back: the original Fortran, freeCAM with nothing replaced, and freeCAM with a model in the kernel's slot. Every component is live in every leg (online coupling, not the offline replay). Times are the coupling loop; the model legs are not bit-for-bit by construction, their drift and health are recorded instead.",
+  "boundary": "online",
+  "steps": 240,
+  "ranks": 512,
+  "pbs_job_id": "7643163.desched1",
+  "git_commit": "46faa61594a9e18023515983bd10e31f2548db9e",
+  "hardware": "select=4:ncpus=64:mpiprocs=128:ompthreads=1:ngpus=4:gpu_type=a100:mem=400GB:mps=1 place=scatter:exclhost",
+  "gpu_mps": "site",
+  "root": "freeCAM/PI-cam/online-model-1month-gpu-site-ACH-5day-v4-7643163.desched1",
+  "order": "ACH",
+  "kernel": "compute_uwshcu_inv",
+  "legs": {
+    "A": {
+      "what": "the original Fortran model (the pyCESM case executable), every component live",
+      "position": 1,
+      "completed": true,
+      "coupling_loop_seconds": 81.505478,
+      "init_seconds": 18.54652,
+      "final_seconds": 0.003985,
+      "lifecycle_seconds": 100.055983,
+      "executable_sha256": "accd9860c1a29b32415d1fecd86d5728c8cd5c4204ad41e9d93e2db6b0077d7e",
+      "timing_source": "GPTL CPL:RUN_LOOP in timing/cesm_timing.000"
+    },
+    "C": {
+      "what": "freeCAM online (live CLM, CICE, DOCN, RTM and coupler), the stage classes installed, nothing replaced",
+      "position": 2,
+      "completed": true,
+      "steps": 240,
+      "coupling_loop_seconds": 80.73688233999974,
+      "init_seconds": 15.596686751000107,
+      "final_seconds": 0.4002276690002873,
+      "lifecycle_seconds": 96.80157683699963,
+      "sypd": 14.659491542556637,
+      "boundary_mode": "online",
+      "boundary_provider": "CESMOnlineBoundaryProvider",
+      "native_manifest": "build/pi_cam_promoted_p39g/native_cam_manifest.json",
+      "native_library_sha256": "80d581e4395447c5ac0221afd4d738a03ad4e7cd2e1d4d0b37ecdcd91ccd5d28",
+      "python_stages": [
+        "shallow_convection"
+      ],
+      "cloud_macro_micro_python": true,
+      "stage_execution_modes": {
+        "cloud_macro_microphysics_python": "native-whole",
+        "shallow_convection_python": "native-whole"
+      },
+      "kernel_models": null,
+      "model": {
+        "calls": 247808,
+        "modeled": 0,
+        "original": 247808,
+        "ranks": 512
+      },
+      "mps": null,
+      "bfb": false,
+      "bfb_files": 3,
+      "peak_rank_rss_bytes": 1221193728,
+      "total_rss_bytes": 432859705344,
+      "health": {
+        "big_error": 0,
+        "isotopic_mass_error": 0,
+        "qneg3_macro": 0,
+        "qneg3_total": 0,
+        "tracebacks": 0
+      },
+      "drift": null
+    },
+    "H": {
+      "what": "G with every chunk of a rank answered by one forward a step (--batch-chunks)",
+      "position": 3,
+      "completed": false
+    }
+  },
+  "ratios": {
+    "C/A": 0.9905700122389288
+  }
+}
