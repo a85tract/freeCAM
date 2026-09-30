@@ -1051,7 +1051,11 @@ class _NativeStateBridge:
             if context is None
             else len(tuple(context["chunk_ncols"]))
         )
-        if context is not None and chunks != estimated_chunks:
+        # The estimate gives the first `remainder` ranks the extra elements; HOMME's
+        # space-filling curve gives them to others, so it is exact only when the elements
+        # split evenly (every admitted layout).  There it checks the native count; otherwise
+        # the native count, which is the grid, stands alone.
+        if context is not None and remainder == 0 and chunks != estimated_chunks:
             raise NativeCAMError(
                 "native PI-CAM chunk count differs from Python grid estimate: "
                 f"{chunks} != {estimated_chunks}"
