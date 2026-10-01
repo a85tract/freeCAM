@@ -2525,7 +2525,16 @@ class PICAMDriver:
         return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        self.finalize()
+        if exc_type is None:
+            self.finalize()
+            return
+        # A failure may be this rank's alone.  Finalizing is collective -- CAM's final, the
+        # timing report's gather -- and a rank that waits in it for ranks still running
+        # hangs the job until the walltime with the failure unprinted (a 300-rank run whose
+        # ranks 36-74 failed while the rest waited in CAM's first read, 7648592).  Only what
+        # is this rank's own is closed; the exception goes on to the caller, which aborts.
+        if self.timeline is not None:
+            self.timeline.close()
 
     def _collective_boundary_call(
         self,

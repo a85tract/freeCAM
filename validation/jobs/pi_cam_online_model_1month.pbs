@@ -31,13 +31,24 @@
 #      image, on the host CPU;
 #   G  the same on the node's GPUs through MPS (GPU nodes, a CUDA FTorch image): one server of
 #      the job's own a GPU (PYCAM_GPU_MPS_MODE=own, the default), or the site's server of a
-#      node that PBS starts for :mps=1 in the select (PYCAM_GPU_MPS_MODE=site).
+#      node that PBS starts for :mps=1 in the select (PYCAM_GPU_MPS_MODE=site);
+#   N  M with every chunk of a rank answered by one forward a step (--batch-chunks
+#      PYCAM_BATCH_STAGE): the kernel's inputs gathered for every chunk before the stage runs;
+#   H  G, batched as N is.
 #
 # M and G are not bit-for-bit by construction: their drift from the oracle month and their
 # health (the log's repair counts) are recorded instead.  One record for the allocation:
 # validation/pi_cam_online_model_1month_<PYCAM_RUN_TAG>.json (tools/report_pi_cam_online_legs.py).
 #
-#   PYCAM_LEGS             the legs in run order, from A C M G (default ACM)
+#   PYCAM_LEGS             the legs in run order, from A C M G N H (default ACM)
+#   PYCAM_BATCH_STAGE      the stage N and H batch (default shallow_convection)
+#   PYCAM_STEPS            the steps each leg runs (default 1488, the month)
+#   PYCAM_TIMELINE         set: every freeCAM leg records its ranks' action timeline
+#   PYCAM_NTASKS           the MPI ranks every leg runs on, spread evenly over the job's nodes
+#                          (default 512, the admitted layout).  Another count is a timing study:
+#                          the seed's drv_in lays the components out over it (CICE keeps its
+#                          compiled 128 tasks), freeCAM runs a copy of the config with that
+#                          mpi_size, and the record is named for the steps and ranks
 #   PYCAM_MODEL            the TorchScript archive for M and G
 #   PYCAM_MODEL_KERNEL     the kernel slot it answers (default compute_uwshcu_inv)
 #   PYCAM_PYTHON_STAGES    the stage classes installed in every freeCAM leg (default
@@ -57,6 +68,7 @@ legs=${PYCAM_LEGS:-ACM}
 tag=${PYCAM_RUN_TAG:-${legs}}
 kernel=${PYCAM_MODEL_KERNEL:-compute_uwshcu_inv}
 stages=${PYCAM_PYTHON_STAGES:-shallow_convection}
+batch_stage=${PYCAM_BATCH_STAGE:-shallow_convection}
 policy=${PYCAM_STAGE_EXECUTION:-auto}
 mps_mode=${PYCAM_GPU_MPS_MODE:-own}
 case "${mps_mode}" in
@@ -64,9 +76,9 @@ case "${mps_mode}" in
   *) echo "PYCAM_GPU_MPS_MODE is own or site, not '${mps_mode}'" >&2; exit 2 ;;
 esac
 case "${legs}" in
-  *[!ACMG]*|"") echo "PYCAM_LEGS takes the letters A C M G, not '${legs}'" >&2; exit 2 ;;
+  *[!ACMGNH]*|"") echo "PYCAM_LEGS takes the letters A C M G N H, not '${legs}'" >&2; exit 2 ;;
 esac
-if [[ "${legs}" == *[MG]* ]]; then
+if [[ "${legs}" == *[MGNH]* ]]; then
   if [ -z "${PYCAM_MODEL:-}" ] || [ ! -f "${PYCAM_MODEL}" ]; then
     echo "legs ${legs} need PYCAM_MODEL, a TorchScript archive" >&2; exit 2
   fi
@@ -82,8 +94,18 @@ library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-co
 root=${FREECAM_SCRATCH}/freeCAM/PI-cam/online-model-1month-${tag}-${PBS_JOBID}
 seed=${root}/seed
 config=configs/pi_cam_icesm131_exact_online_1month.yaml
-record=validation/pi_cam_online_model_1month_${tag}.json
-steps=1488
+steps=${PYCAM_STEPS:-1488}
+ntasks=${PYCAM_NTASKS:-512}
+nodes=$(sort -u "${PBS_NODEFILE}" | wc -l)
+if (( ntasks % nodes )); then
+  echo "PYCAM_NTASKS=${ntasks} does not spread evenly over ${nodes} nodes" >&2; exit 2
+fi
+ppn=$(( ntasks / nodes ))
+if [ "${steps}" = 1488 ] && [ "${ntasks}" = 512 ]; then
+  record=validation/pi_cam_online_model_1month_${tag}.json
+else
+  record=validation/pi_cam_online_model_${steps}step_${ntasks}rank_${tag}.json
+fi
 
 common_env() {
   export OMP_NUM_THREADS=1
@@ -98,6 +120,34 @@ prepare_seed() {
   rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log*' \
     --exclude 'rpointer.*' --exclude 'timing/' "${oracle_run}/" "${seed}/"
   cp "${oracle_run}/SEMapping.nc" "${seed}/" 2>/dev/null || true
+  if [ "${steps}" != 1488 ] || [ "${ntasks}" != 512 ]; then
+    # the run's length and its layout: every component inside ntasks ranks, CICE on its
+    # compiled 128 tasks and DOCN on 32 after the land (the admitted layout at 512)
+    "${python}" - "${seed}/drv_in" "${ntasks}" "${steps}" "${repo}/${config}" "${root}/config.yaml" <<'PY'
+import re, sys
+drv_in, n, steps, config, derived = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4], sys.argv[5]
+if n >= 192:
+    lnd = min(n // 2, n - 160); ice_root = lnd; ocn_root = lnd + 128
+else:
+    lnd, ice_root, ocn_root = n, 0, 0
+other = min(128, lnd)
+values = {"atm_ntasks": n, "cpl_ntasks": n, "lnd_ntasks": lnd, "ice_ntasks": 128, "ice_rootpe": ice_root,
+          "ocn_ntasks": 32, "ocn_rootpe": ocn_root, "rof_ntasks": other, "glc_ntasks": other, "wav_ntasks": other,
+          "stop_n": steps, "restart_n": steps}
+text = open(drv_in).read()
+for name, value in values.items():
+    text, count = re.subn(rf"(\b{name}\s*=\s*)-?\d+", rf"\g<1>{value}", text)
+    assert count == 1, name
+open(drv_in, "w").write(text)
+text = open(config).read()
+for name, value in (("mpi_size", n), ("stop_n", steps)):
+    text, count = re.subn(rf"^{name}: \d+$", f"{name}: {value}", text, flags=re.M)
+    assert count == 1, name
+open(derived, "w").write(text)
+print("layout:", {k: v for k, v in values.items()})
+PY
+    config=${root}/config.yaml
+  fi
 }
 
 run_a() {
@@ -109,7 +159,7 @@ run_a() {
     rsync -a "${seed}/" "${a_run}/"
     mkdir -p "${a_run}/timing/checkpoints"
     cd "${a_run}"
-    mpiexec --label -n 512 "${executable}" > original-fortran.log 2>&1 ) || echo "A exited $?"
+    mpiexec --label -n "${ntasks}" --ppn "${ppn}" "${executable}" > original-fortran.log 2>&1 ) || echo "A exited $?"
   echo "A done ($(date))"
 }
 
@@ -142,14 +192,21 @@ run_freecam() {
     flags+=(--native-manifest "${PYCAM_NATIVE_MANIFEST}")
   fi
   case "${leg}" in
-    M) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cpu) ;;
-    G) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cuda)
+    M|N) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cpu) ;;
+    G|H) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cuda)
        # the job shell's CUDA_VISIBLE_DEVICES names the head node's GPUs and must not reach the
        # other nodes; every rank sees its own GPU only, through its GPU's server of the job's own
        # or through the site's server of the node (validation/jobs/gpu_rank_env.sh)
        launch=(env -u CUDA_VISIBLE_DEVICES mpiexec)
        rank_env=(bash "${repo}/validation/jobs/gpu_rank_env.sh") ;;
   esac
+  if [[ "${leg}" == [NH] ]]; then
+    flags+=(--batch-chunks "${batch_stage}")
+  fi
+  if [ -n "${PYCAM_TIMELINE:-}" ]; then
+    # every rank's action timeline, step by step, into the leg's directory (`freecam timeline`)
+    flags+=(--timeline-dir "${dir}/timeline" --timeline-flush-every "${PYCAM_TIMELINE_FLUSH:-100}")
+  fi
   echo "=== ${leg}: freeCAM online month ($(date)) ==="
   ( source "${reference_case}/.env_mach_specific.sh" >/dev/null 2>&1
     mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
@@ -167,14 +224,14 @@ run_freecam() {
 from pathlib import Path
 import cloudpickle
 from freecam import CESMOnlineBoundaryProvider
-provider = CESMOnlineBoundaryProvider(library=Path("${library}"), run_dir=Path("${cesm_run}"))
+provider = CESMOnlineBoundaryProvider(library=Path("${library}"), run_dir=Path("${cesm_run}"), ranks=${ntasks})
 Path("${cam_run}/.exact-cesm-provider.pkl").write_bytes(cloudpickle.dumps(provider, protocol=5))
 PY
     cd "${repo}"
-    if [ "${leg}" = G ] && [ "${mps_mode}" = own ]; then
+    if [[ "${leg}" == [GH] ]] && [ "${mps_mode}" = own ]; then
       "${launch[@]}" -ppn 1 -n 4 bash "${repo}/validation/jobs/gpu_mps_per_gpu.sh" start
     fi
-    "${launch[@]}" --label -n 512 "${rank_env[@]}" "${python}" -m freecam.pi_cam.cli \
+    "${launch[@]}" --label -n "${ntasks}" --ppn "${ppn}" "${rank_env[@]}" "${python}" -m freecam.pi_cam.cli \
       --config "${config}" \
       --boundary-provider "${cam_run}/.exact-cesm-provider.pkl" \
       --run-dir "${cam_run}" \
@@ -183,9 +240,9 @@ PY
       --memory-sample-every 0 \
       --summary "${dir}/summary.json" \
       > "${cam_run}/freecam.log" 2>&1 || echo "${leg} exited $?"
-    if [ "${leg}" = G ] && [ "${mps_mode}" = own ]; then
+    if [[ "${leg}" == [GH] ]] && [ "${mps_mode}" = own ]; then
       "${launch[@]}" -ppn 1 -n 4 bash "${repo}/validation/jobs/gpu_mps_per_gpu.sh" stop | tee "${dir}/mps.txt"
-    elif [ "${leg}" = G ]; then
+    elif [[ "${leg}" == [GH] ]]; then
       # the site's server: the GPUs in Exclusive_Process mode refuse any rank that missed MPS,
       # so a node's four GPUs in that mode and no refused rank show every rank went through it
       "${launch[@]}" -ppn 1 -n 4 bash -c 'echo "$(hostname): site MPS exclusive GPUs $(nvidia-smi --query-gpu=compute_mode --format=csv,noheader | grep -c Exclusive_Process) of $(nvidia-smi --query-gpu=index --format=csv,noheader | wc -l)"' | tee "${dir}/mps.txt" || true
@@ -225,5 +282,7 @@ print("select=" + job.get("select", "") + " place=" + job.get("place", ""))' || 
   --root-label "${root#${FREECAM_SCRATCH}/}" \
   --pbs-job-id "${PBS_JOBID}" \
   --git-commit "$(git rev-parse HEAD)" \
+  --steps "${steps}" \
+  --ranks "${ntasks}" \
   --output "${record}"
 echo "root: ${root}"

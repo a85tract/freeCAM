@@ -295,3 +295,20 @@ def test_site_relative_spells_paths_through_the_sites_variables(monkeypatch, tmp
     assert site_relative(str(tmp_path / "scratch")) == "${FREECAM_SCRATCH}"
     assert site_relative(tmp_path / "work" / "CESM_cases") == "${WORK}/CESM_cases"
     assert site_relative("/glade/campaign/shared/inputdata") == "/glade/campaign/shared/inputdata"
+
+
+def test_a_record_s_paths_are_spelled_where_they_stand(monkeypatch) -> None:
+    from freecam.site import repository_root, spell_site_paths
+
+    root = repository_root()
+    monkeypatch.setenv("FREECAM_SCRATCH", "/scratch/someone")
+    monkeypatch.setenv("FREECAM_CASES", "/work/someone/cases")
+    monkeypatch.setenv("WORK", "/work/someone")
+    record = {"library": f"{root}/build/x.so", "flags": [f"-I{root}", f"-I/work/someone/cases/c/SourceMods",
+                                                         "-I/scratch/someone/bld/atm/obj", "-I/work/someone/src"],
+              "count": 3, "note": "no path here"}
+    assert spell_site_paths(record) == {
+        "library": "build/x.so",
+        "flags": ["-I.", "-I${FREECAM_CASES}/c/SourceMods", "-I${FREECAM_SCRATCH}/bld/atm/obj", "-I${WORK}/src"],
+        "count": 3, "note": "no path here"}
+    assert spell_site_paths("/work/someone-else/x") == "/work/someone-else/x"   # a longer name is not the root

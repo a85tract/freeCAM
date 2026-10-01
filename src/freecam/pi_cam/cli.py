@@ -71,6 +71,8 @@ def _stage_executions(cam) -> dict[str, dict[str, object]]:
         execution = getattr(stage, "execution", None)
         if execution is not None and hasattr(execution, "describe"):
             described = execution.describe()
+            if getattr(stage, "batch_chunks", False):
+                described["batch_chunks"] = True
             describe_kernels = getattr(stage, "describe_kernels", None)
             if callable(describe_kernels):
                 described["kernels"] = list(describe_kernels())
@@ -315,7 +317,9 @@ def _load_kernel_plugin(kernel: str, spec: str, *, shadow: bool = False):
     return compile_kernel(kernel, function, shadow=shadow)
 
 
-def _pausable_stage(stage_name: str, policy: str, *, original_kernels, capture_kernels, kernel_models, capture_every: int = 1):
+def _pausable_stage(stage_name: str, policy: str, *, original_kernels, capture_kernels, kernel_models, capture_every: int = 1,
+                    batch_chunks: bool = False, original_by_chunk: bool = False, batched_original: bool = False,
+                    batch_check: bool = False):
     """A pausable stage class with every slot filled before its ``tend`` is installed.
 
     Installing pickles the bound method, so a slot filled afterwards never reaches
@@ -330,11 +334,16 @@ def _pausable_stage(stage_name: str, policy: str, *, original_kernels, capture_k
         raise SystemExit(f"--python-stages: {stage_name!r} is not one of {sorted(STAGES)}")
     stage = STAGES[stage_name]()
     stage.execution_policy = policy
+    stage.batch_chunks = bool(batch_chunks)
+    if batched_original:
+        stage.batch_original = True
+    if batch_check:
+        stage.batch_check = True
     if original_kernels:
-        from freecam.physics.segments import OriginalKernel
+        from freecam.physics.segments import OriginalByChunk, OriginalKernel
         for kernel_name in original_kernels:
             if kernel_name in stage.kernels:
-                stage.kernels[kernel_name] = OriginalKernel()
+                stage.kernels[kernel_name] = OriginalByChunk() if original_by_chunk else OriginalKernel()
     for kernel_name in capture_kernels:
         if kernel_name in stage.kernels:
             from freecam.physics.segments import FrameCapture
@@ -420,6 +429,16 @@ def _hook_summary(records) -> dict[str, object] | None:
                 if key in counts:           # summed over ranks (divide by ranks_called for a rank's mean),
                     entry[key] = entry.get(key, 0.0) + float(counts[key])   # and the slowest rank's own
                     entry[key + "_max"] = max(entry.get(key + "_max", 0.0), float(counts[key]))
+            if "batch" in counts:           # a hook batch: every chunk answered by one forward a step
+                batch = entry.setdefault("batch", {"ranks": 0})
+                batch["ranks"] += 1
+                for key in ("forwards", "chunks", "rows", "untaken", "pending"):
+                    batch[key] = batch.get(key, 0) + int(counts["batch"][key])
+                seconds = float(counts["batch"]["forward_seconds"])
+                batch["forward_seconds"] = batch.get("forward_seconds", 0.0) + seconds
+                batch["forward_seconds_max"] = max(batch.get("forward_seconds_max", 0.0), seconds)
+                batch["check_max_abs_diff"] = max(batch.get("check_max_abs_diff", 0.0),
+                                                  float(counts["batch"]["check_max_abs_diff"]))
     return totals or None
 
 
@@ -657,6 +676,41 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "test only: with --segmented-original, the kernels (comma-separated) put in "
             "the slots as ORIGINAL replacements; each must be one the image's runner pauses at"
+        ),
+    )
+    parser.add_argument(
+        "--segmented-original-by-chunk",
+        action="store_true",
+        help=(
+            "test only: with --segmented-original and --batch-chunks, answer every waiting chunk in "
+            "one chunk-batch call, split back by chunk -- the batched path's own gate -- the original "
+            "running at each chunk's own pause after its stacked inputs are checked against its frame"
+        ),
+    )
+    parser.add_argument(
+        "--batch-chunks",
+        default="",
+        help=(
+            "run these pausable stages (comma-separated, as --python-stages names them) with every "
+            "chunk of a rank answered at once: a TorchScript model at a kernel whose hook has a batch "
+            "block runs once over every chunk's live columns, gathered before the stage runs; a Python "
+            "model taking chunk batches answers every chunk waiting at the runner's pause in one call"
+        ),
+    )
+    parser.add_argument(
+        "--batch-check",
+        action="store_true",
+        help=(
+            "test only: with --batch-chunks and a TorchScript model, also run the model on every "
+            "call's own chunk and record the largest difference from the batch's answer"
+        ),
+    )
+    parser.add_argument(
+        "--batched-original",
+        action="store_true",
+        help=(
+            "test only: with --batch-chunks and nothing replaced, answer the batched kernel's calls "
+            "from the original run on each gathered chunk -- the gate of the gathering"
         ),
     )
     parser.add_argument(
@@ -1212,7 +1266,17 @@ def main(argv: list[str] | None = None) -> int:
         for qualified in [s.strip() for s in args.disable_actions.split(",") if s.strip()]:
             phase, _, action_name = qualified.partition(".")
             cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
-        for stage_name in [s.strip() for s in args.python_stages.split(",") if s.strip()]:
+        python_stage_names = [s.strip() for s in args.python_stages.split(",") if s.strip()]
+        batch_stage_names = [s.strip() for s in args.batch_chunks.split(",") if s.strip()]
+        strays = [name for name in batch_stage_names if name not in python_stage_names]
+        if strays:
+            raise SystemExit(f"--batch-chunks: {strays} are not installed by --python-stages")
+        if args.segmented_original_by_chunk and not (args.segmented_original and batch_stage_names):
+            raise SystemExit("--segmented-original-by-chunk answers batched chunks: it needs "
+                             "--segmented-original and --batch-chunks")
+        if (args.batched_original or args.batch_check) and not batch_stage_names:
+            raise SystemExit("--batched-original and --batch-check act on a hook batch: they need --batch-chunks")
+        for stage_name in python_stage_names:
             # a pausable stage class in its action's place: the original Fortran
             # whole, or the image's runner paused at a replaced kernel
             from freecam.model.python_processes import PythonProcessSpec
@@ -1221,7 +1285,11 @@ def main(argv: list[str] | None = None) -> int:
                 stage_name, args.stage_execution,
                 original_kernels=[k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]
                 if args.segmented_original else [],
-                capture_kernels=capture_kernels, kernel_models=kernel_models, capture_every=args.capture_every)
+                capture_kernels=capture_kernels, kernel_models=kernel_models, capture_every=args.capture_every,
+                batch_chunks=stage_name in batch_stage_names,
+                original_by_chunk=args.segmented_original_by_chunk and stage_name in batch_stage_names,
+                batched_original=args.batched_original and stage_name in batch_stage_names,
+                batch_check=args.batch_check and stage_name in batch_stage_names)
             phase, _, action_name = pausable_stage.STAGE.partition(".")
             cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
             cam.python_processes.install(
@@ -1576,6 +1644,8 @@ def main(argv: list[str] | None = None) -> int:
             "segmented_original": bool(args.segmented_original),
             "segmented_original_kernels": (args.segmented_original_kernels if args.segmented_original else None),
             "python_stages": [s.strip() for s in args.python_stages.split(",") if s.strip()],
+            "batch_chunks": [s.strip() for s in args.batch_chunks.split(",") if s.strip()],
+            "segmented_original_by_chunk": bool(args.segmented_original_by_chunk),
             "disabled_actions": [s.strip() for s in args.disable_actions.split(",") if s.strip()],
             "stage_execution": _stage_executions(cam),
             "frame_capture": _frame_capture_summary(records, args, native_evidence),

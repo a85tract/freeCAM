@@ -44,6 +44,10 @@ def function_sections() -> list[str]:
         axes = ", ".join(f"{k} is the `{v}` axis" for k, v in sorted(spec.public_axes.items()))
         lines.append(f"Contract `{rel}`; source `{spec.source}`; binding `{spec.binding}`, layout `{spec.layout}`.")
         lines.append(f"Extents: {dims or 'none'}.  Public axes: {axes or 'none'}.\n")
+        if spec.columns == "gathered":
+            lines.append(f"Columns are gathered: `{spec.gather_count}` counts the gathered positions, and "
+                         f"{', '.join(f'`{name}`' for name in spec.gathered)} are indexed by gathered position, "
+                         "not by column.  One column is not replayed alone; a captured call is replayed whole.\n")
         hook = hooks.get(rel)
         if hook is not None:
             callers = ", ".join(f"`{c.routine}` ({c.object})" for c in hook.callers)
@@ -56,9 +60,13 @@ def function_sections() -> list[str]:
                 subsets = ("  Returned only at these 1-based indices of their last axis, the rest zeroed by the hook: "
                            + "; ".join(f"{name} {list(indices)}" for name, indices in hook.model_subsets) + "."
                            if hook.model_subsets else "")
+                batch = (f"  Batched (`--batch-chunks`): every chunk's inputs gathered before the stage runs, one "
+                         f"forward over their live columns, each call taking its chunk's rows (`{hook.batch_columns}` "
+                         f"live columns, `{hook.batch_chunk}` the chunk) once its inputs match what was gathered."
+                         if hook.batches else "")
                 lines.append(f"Model block: {len(hook.model_inputs)} inputs "
                              f"({', '.join(hook.model_inputs)}), {len(hook.model_outputs)} outputs{shape} "
-                             f"({', '.join(hook.model_outputs)}).{zeroed}{subsets}\n")
+                             f"({', '.join(hook.model_outputs)}).{zeroed}{subsets}{batch}\n")
             else:
                 lines.append("No model block: the hook counts and pauses only.\n")
         else:
@@ -75,6 +83,8 @@ def function_sections() -> list[str]:
                 notes.append("optional")
             if a.carrier:
                 notes.append(f"{a.carrier} carrier")
+            if a.overwritten_on_entry is not None:
+                notes.append(f"overwritten at source line {a.overwritten_on_entry} before any read; the value in is unused")
             if a.lower_bounds and any(b != 1 for b in a.lower_bounds):
                 notes.append(f"lower bounds {','.join(str(b) for b in a.lower_bounds)}")
             if a.description:

@@ -400,8 +400,8 @@ def test_the_inspected_records_produce_the_known_counts() -> None:
     assert totals["tracked_kernels"] == 21 and ledger["summary"]["kernels"] == 22
     # per kernel a status is complete only when every stage context is; fice
     # closed both of its contexts, so the counts differ only by its shared row
-    assert totals["tracked_by_status"] == {"complete": 5, "open": 16}
-    assert ledger["summary"]["kernels_by_status"] == {"complete": 6, "open": 16}
+    assert totals["tracked_by_status"] == {"complete": 11, "open": 10}
+    assert ledger["summary"]["kernels_by_status"] == {"complete": 12, "open": 10}
     assert totals["unmapped_kernels"] == len(snapshot["unmapped_kernels"]) == 6
     assert totals["processes"] == ledger["summary"]["actions"] == 58
     # complete tracked records do not mean a kernel is replaceable in every caller:

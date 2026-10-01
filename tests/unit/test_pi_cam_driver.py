@@ -1180,3 +1180,28 @@ def test_a_clean_boundary_collective_is_one_reduction_and_gathers_nothing() -> N
     with pytest.raises(BoundaryReplayError, match="rank-local import failure"):
         driver.step()
     assert len(comm.gathers) == 1
+
+
+def test_a_failure_leaves_the_driver_without_its_collective_finalize() -> None:
+    """A rank that fails alone must reach the caller's abort, not wait in CAM's final or the
+    timing report's gather for ranks that are still running (7648592)."""
+
+    from freecam.pi_cam.driver import PICAMDriver
+
+    class Timeline:
+        closed = 0
+
+        def close(self) -> None:
+            Timeline.closed += 1
+
+    calls = []
+    driver = object.__new__(PICAMDriver)
+    driver.timeline = Timeline()
+    driver.finalize = lambda: calls.append("finalize")
+    with pytest.raises(RuntimeError, match="this rank alone"):
+        with driver:
+            raise RuntimeError("this rank alone")
+    assert calls == [] and Timeline.closed == 1          # its own timeline closed, nothing collective
+    with driver:
+        pass
+    assert calls == ["finalize"]                         # a run that ends normally finalizes

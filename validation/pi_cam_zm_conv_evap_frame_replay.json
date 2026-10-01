@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "what": "every frame captured at the kernel's pause replayed through the standalone function; bit-for-bit or not",
+  "mode": "lane",
+  "function": "zm_conv::zm_conv_evap",
+  "kernel": "zm_conv_evap",
+  "layout": "column",
+  "columns": "independent",
+  "structural_from_capture": [],
+  "binding": "module",
+  "capture": {
+    "pbs_job_id": "7622015.desched1",
+    "run_tag": "pi_cam_pausable_kernels-a-capture_50step",
+    "native_library_sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708",
+    "kernels": [
+      "micro_mg_tend",
+      "compute_uwshcu_inv",
+      "zm_convr",
+      "zm_conv_evap",
+      "momtran",
+      "compute_tms",
+      "compute_eddy_diff"
+    ],
+    "bfb_record": "pi_cam_pausable_kernels-a-capture_vs_oracle_50step_bfb.json"
+  },
+  "rank_files": 512,
+  "calls": 10240,
+  "samples": 138260,
+  "compared_values": 41455366,
+  "steps_covered": [
+    1,
+    3,
+    6,
+    8,
+    11,
+    13,
+    16,
+    18,
+    21,
+    23,
+    26,
+    28,
+    31,
+    33,
+    36,
+    38,
+    41,
+    43,
+    46,
+    48
+  ],
+  "statuses": {
+    "ok": 138260
+  },
+  "mismatches": [
+    {
+      "file": "zm_conv_evap.rank-0032.npz",
+      "call": 21,
+      "argument": "tend_s",
+      "index": 19,
+      "model": -0.007872171608480943,
+      "model_bits": "0xbf801f48fcdafbb0",
+      "standalone": -0.007872171608480942,
+      "standalone_bits": "0xbf801f48fcdafbaf"
+    },
+    {
+      "file": "zm_conv_evap.rank-0064.npz",
+      "call": 42,
+      "argument": "tend_s",
+      "index": 22,
+      "model": 0.0002747685185631931,
+      "model_bits": "0x3f3201d9cd1b656f",
+      "standalone": 0.00027476851856319314,
+      "standalone_bits": "0x3f3201d9cd1b6570"
+    },
+    {
+      "file": "zm_conv_evap.rank-0064.npz",
+      "call": 44,
+      "argument": "tend_s",
+      "index": 24,
+      "model": -8.251499488841098e-05,
+      "model_bits": "0xbf15a17cd161fb45",
+      "standalone": -8.251499488841097e-05,
+      "standalone_bits": "0xbf15a17cd161fb44"
+    },
+    {
+      "file": "zm_conv_evap.rank-0064.npz",
+      "call": 50,
+      "argument": "tend_s",
+      "index": 23,
+      "model": -0.0004116426238321165,
+      "model_bits": "0xbf3afa379b644221",
+      "standalone": -0.00041164262383211643,
+      "standalone_bits": "0xbf3afa379b644220"
+    },
+    {
+      "file": "zm_conv_evap.rank-0096.npz",
+      "call": 67,
+      "argument": "tend_s",
+      "index": 19,
+      "model": -0.0135148447600801,
+      "model_bits": "0xbf8badabc20a5d6b",
+      "standalone": -0.013514844760080101,
+      "standalone_bits": "0xbf8badabc20a5d6c"
+    },
+    {
+      "file": "zm_conv_evap.rank-0096.npz",
+      "call": 69,
+      "argument": "tend_s",
+      "index": 16,
+      "model": -0.0016156823990131728,
+      "model_bits": "0xbf5a78a9c420832d",
+      "standalone": -0.0016156823990131721,
+      "standalone_bits": "0xbf5a78a9c420832a"
+    },
+    {
+      "file": "zm_conv_evap.rank-0096.npz",
+      "call": 73,
+      "argument": "tend_s",
+      "index": 19,
+      "model": -0.01875051501184586,
+      "model_bits": "0xbf933355c309407a",
+      "standalone": -0.018750515011845856,
+      "standalone_bits": "0xbf933355c3094079"
+    },
+    {
+      "file": "zm_conv_evap.rank-0128.npz",
+      "call": 81,
+      "argument": "tend_s",
+      "index": 28,
+      "model": -0.0018972896103244229,
+      "model_bits": "0xbf5f15cf34f3dbf0",
+      "standalone": -0.0018972896103244226,
+      "standalone_bits": "0xbf5f15cf34f3dbef"
+    }
+  ],
+  "mismatches_truncated": true,
+  "bfb": false,
+  "image_sha256": "e580cb59c7a3fd7915c19cca522b11d912e4652aaf9fc9039297bbaaa8240a93",
+  "module_state_digest": "ec60eb1ce0de042955b66537d71bcd715fc357b12080025714e7fc4c78e61c93",
+  "seconds": 167.1,
+  "pbs_job_id": "7630947.desched1",
+  "shards": 32
+}

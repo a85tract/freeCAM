@@ -130,6 +130,8 @@ SUPPORT_SOURCES = (
      "src/physics/cam/pycam_chem_runner.F90"),
     ("native/pi_cam/support/pycam_hooks.F90",
      "src/physics/cam/pycam_hooks.F90"),
+    ("native/pi_cam/support/pycam_shcu_batch.F90",
+     "src/physics/cam/pycam_shcu_batch.F90"),
 )
 
 

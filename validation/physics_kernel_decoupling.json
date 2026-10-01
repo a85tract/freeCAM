@@ -37,15 +37,15 @@
     "numeric_schemes_active": 12,
     "numeric_scheme_coverage": {
       "alternate": 9,
-      "complete": 1,
+      "complete": 3,
       "gap": 1,
       "not-required-in-this-configuration": 11,
-      "partial": 10
+      "partial": 8
     },
     "kernels": 22,
     "kernels_by_status": {
-      "complete": 6,
-      "open": 16
+      "complete": 12,
+      "open": 10
     },
     "kernels_bindable": 22,
     "kernels_validated_through_runner": 22,
@@ -3000,7 +3000,7 @@
       "performance": [
         "pi_cam_faster_than_fortran.json"
       ],
-      "coverage": "partial",
+      "coverage": "complete",
       "note": null
     },
     {
@@ -3076,7 +3076,7 @@
         "pi_cam_native_whole_1month_median.json",
         "pi_cam_faster_than_fortran.json"
       ],
-      "coverage": "partial",
+      "coverage": "complete",
       "note": null
     },
     {
@@ -4862,6 +4862,7 @@
       ],
       "status": "complete",
       "missing": [],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -4905,6 +4906,7 @@
       ],
       "status": "complete",
       "missing": [],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -4917,12 +4919,25 @@
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
-        "capture": [],
-        "standalone_build": [],
-        "replay_full_chunk": [],
-        "replay_single_column": [],
-        "replay_public_api": [],
-        "module_state": []
+        "capture": [
+          "pi_cam_pausable_instratus_condensate-capture_50step.json"
+        ],
+        "standalone_build": [
+          "pi_cam_instratus_condensate_standalone_build.json"
+        ],
+        "replay_full_chunk": [
+          "pi_cam_instratus_condensate_frame_replay.json",
+          "pi_cam_instratus_condensate_frame_replay_chunk.json"
+        ],
+        "replay_single_column": [
+          "pi_cam_instratus_condensate_frame_replay.json"
+        ],
+        "replay_public_api": [
+          "pi_cam_instratus_condensate_frame_replay.json"
+        ],
+        "module_state": [
+          "pi_cam_instratus_condensate_module_state.json"
+        ]
       },
       "in_model_gates": [
         {
@@ -4942,14 +4957,9 @@
           "compared_files": 4
         }
       ],
-      "status": "open",
-      "missing": [
-        "capture",
-        "standalone_build",
-        "replay_full_chunk",
-        "replay_single_column",
-        "replay_public_api"
-      ],
+      "status": "complete",
+      "missing": [],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -4962,13 +4972,22 @@
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
-        "capture": [],
+        "capture": [
+          "pi_cam_pausable_kernels-a-capture_50step.json"
+        ],
         "standalone_build": [
           "pi_cam_micro_mg_tend_standalone_manifest.json"
         ],
-        "replay_full_chunk": [],
-        "replay_single_column": [],
-        "replay_public_api": [],
+        "replay_full_chunk": [
+          "pi_cam_micro_mg_tend_frame_replay.json",
+          "pi_cam_micro_mg_tend_frame_replay_chunk.json"
+        ],
+        "replay_single_column": [
+          "pi_cam_micro_mg_tend_frame_replay.json"
+        ],
+        "replay_public_api": [
+          "pi_cam_micro_mg_tend_frame_replay.json"
+        ],
         "module_state": [
           "pi_cam_micro_mg_tend_module_state.json"
         ]
@@ -5007,13 +5026,9 @@
           "compared_files": 4
         }
       ],
-      "status": "open",
-      "missing": [
-        "capture",
-        "replay_full_chunk",
-        "replay_single_column",
-        "replay_public_api"
-      ],
+      "status": "complete",
+      "missing": [],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5083,6 +5098,7 @@
         "replay_single_column",
         "replay_public_api"
       ],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5152,6 +5168,7 @@
         "replay_single_column",
         "replay_public_api"
       ],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5219,6 +5236,7 @@
       ],
       "status": "complete",
       "missing": [],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5231,12 +5249,29 @@
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
-        "capture": [],
-        "standalone_build": [],
-        "replay_full_chunk": [],
-        "replay_single_column": [],
-        "replay_public_api": [],
-        "module_state": []
+        "capture": [
+          "pi_cam_pausable_kernels-a-capture_50step.json",
+          "pi_cam_pausable_p29-uwshcu-capture_50step.json"
+        ],
+        "standalone_build": [
+          "pi_cam_uwshcu_standalone_build.json"
+        ],
+        "replay_full_chunk": [
+          "pi_cam_compute_uwshcu_inv_frame_replay.json",
+          "pi_cam_compute_uwshcu_inv_frame_replay_chunk.json",
+          "pi_cam_uwshcu_frame_replay.json"
+        ],
+        "replay_single_column": [
+          "pi_cam_compute_uwshcu_inv_frame_replay.json",
+          "pi_cam_uwshcu_frame_replay.json"
+        ],
+        "replay_public_api": [
+          "pi_cam_compute_uwshcu_inv_frame_replay.json",
+          "pi_cam_uwshcu_frame_replay.json"
+        ],
+        "module_state": [
+          "pi_cam_uwshcu_module_state.json"
+        ]
       },
       "in_model_gates": [
         {
@@ -5272,14 +5307,9 @@
           "compared_files": 4
         }
       ],
-      "status": "open",
-      "missing": [
-        "capture",
-        "standalone_build",
-        "replay_full_chunk",
-        "replay_single_column",
-        "replay_public_api"
-      ],
+      "status": "complete",
+      "missing": [],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5339,6 +5369,7 @@
       ],
       "status": "complete",
       "missing": [],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5351,12 +5382,20 @@
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
-        "capture": [],
-        "standalone_build": [],
-        "replay_full_chunk": [],
+        "capture": [
+          "pi_cam_pausable_kernels-a-capture_50step.json"
+        ],
+        "standalone_build": [
+          "pi_cam_zm_convr_standalone_build.json"
+        ],
+        "replay_full_chunk": [
+          "pi_cam_zm_convr_frame_replay_chunk.json"
+        ],
         "replay_single_column": [],
         "replay_public_api": [],
-        "module_state": []
+        "module_state": [
+          "pi_cam_zm_convr_module_state.json"
+        ]
       },
       "in_model_gates": [
         {
@@ -5392,14 +5431,12 @@
           "compared_files": 4
         }
       ],
-      "status": "open",
-      "missing": [
-        "capture",
-        "standalone_build",
-        "replay_full_chunk",
-        "replay_single_column",
-        "replay_public_api"
-      ],
+      "status": "complete",
+      "missing": [],
+      "not_applicable": {
+        "replay_single_column": "columns gathered (native/pi_cam/functions/zm_convr.yaml): one column is not replayed alone; the whole-call replay is the proof",
+        "replay_public_api": "columns gathered (native/pi_cam/functions/zm_convr.yaml): one column is not replayed alone; the whole-call replay is the proof"
+      },
       "note": null
     },
     {
@@ -5412,12 +5449,20 @@
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
-        "capture": [],
-        "standalone_build": [],
-        "replay_full_chunk": [],
+        "capture": [
+          "pi_cam_pausable_kernels-a-capture_50step.json"
+        ],
+        "standalone_build": [
+          "pi_cam_zm_conv_evap_standalone_build.json"
+        ],
+        "replay_full_chunk": [
+          "pi_cam_zm_conv_evap_frame_replay_chunk.json"
+        ],
         "replay_single_column": [],
         "replay_public_api": [],
-        "module_state": []
+        "module_state": [
+          "pi_cam_zm_conv_evap_module_state.json"
+        ]
       },
       "in_model_gates": [
         {
@@ -5455,12 +5500,10 @@
       ],
       "status": "open",
       "missing": [
-        "capture",
-        "standalone_build",
-        "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
       ],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5473,9 +5516,15 @@
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
-        "capture": [],
-        "standalone_build": [],
-        "replay_full_chunk": [],
+        "capture": [
+          "pi_cam_pausable_kernels-a-capture_50step.json"
+        ],
+        "standalone_build": [
+          "pi_cam_momtran_standalone_build.json"
+        ],
+        "replay_full_chunk": [
+          "pi_cam_momtran_frame_replay_chunk.json"
+        ],
         "replay_single_column": [],
         "replay_public_api": [],
         "module_state": []
@@ -5514,14 +5563,12 @@
           "compared_files": 4
         }
       ],
-      "status": "open",
-      "missing": [
-        "capture",
-        "standalone_build",
-        "replay_full_chunk",
-        "replay_single_column",
-        "replay_public_api"
-      ],
+      "status": "complete",
+      "missing": [],
+      "not_applicable": {
+        "replay_single_column": "columns gathered (native/pi_cam/functions/momtran.yaml): one column is not replayed alone; the whole-call replay is the proof",
+        "replay_public_api": "columns gathered (native/pi_cam/functions/momtran.yaml): one column is not replayed alone; the whole-call replay is the proof"
+      },
       "note": null
     },
     {
@@ -5581,6 +5628,7 @@
       ],
       "status": "complete",
       "missing": [],
+      "not_applicable": {},
       "note": "The first attempt, a pause inside a hoisted copy of zm_conv_evap, was not bit-for-bit (gate 7343258, validation/pi_cam_pausable_fice-pause_50step_failure.json): a recompiled copy of a numerical routine does not reproduce the oracle object's rounding. The hook leaves zm_conv.o's machine code untouched. Its first gate (7343594, validation/pi_cam_pausable_fice-hook_50step_failure.json) failed on a duplicate global symbol shared by two runners' fiber bodies; renamed, the gate is bit-for-bit."
     },
     {
@@ -5634,6 +5682,7 @@
         "replay_single_column",
         "replay_public_api"
       ],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5646,12 +5695,25 @@
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
-        "capture": [],
-        "standalone_build": [],
-        "replay_full_chunk": [],
-        "replay_single_column": [],
-        "replay_public_api": [],
-        "module_state": []
+        "capture": [
+          "pi_cam_pausable_kernels-a-capture_50step.json"
+        ],
+        "standalone_build": [
+          "pi_cam_compute_tms_standalone_build.json"
+        ],
+        "replay_full_chunk": [
+          "pi_cam_compute_tms_frame_replay.json",
+          "pi_cam_compute_tms_frame_replay_chunk.json"
+        ],
+        "replay_single_column": [
+          "pi_cam_compute_tms_frame_replay.json"
+        ],
+        "replay_public_api": [
+          "pi_cam_compute_tms_frame_replay.json"
+        ],
+        "module_state": [
+          "pi_cam_compute_tms_module_state.json"
+        ]
       },
       "in_model_gates": [
         {
@@ -5679,14 +5741,9 @@
           "compared_files": 4
         }
       ],
-      "status": "open",
-      "missing": [
-        "capture",
-        "standalone_build",
-        "replay_full_chunk",
-        "replay_single_column",
-        "replay_public_api"
-      ],
+      "status": "complete",
+      "missing": [],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5740,6 +5797,7 @@
         "replay_single_column",
         "replay_public_api"
       ],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5793,6 +5851,7 @@
         "replay_single_column",
         "replay_public_api"
       ],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5844,6 +5903,7 @@
       ],
       "status": "complete",
       "missing": [],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5889,6 +5949,7 @@
         "replay_single_column",
         "replay_public_api"
       ],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5934,6 +5995,7 @@
         "replay_single_column",
         "replay_public_api"
       ],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -5979,6 +6041,7 @@
         "replay_single_column",
         "replay_public_api"
       ],
+      "not_applicable": {},
       "note": null
     },
     {
@@ -6024,46 +6087,11 @@
         "replay_single_column",
         "replay_public_api"
       ],
+      "not_applicable": {},
       "note": null
     }
   ],
   "unresolved": [
-    {
-      "what": "instratus_condensate: capture",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "instratus_condensate: standalone_build",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "instratus_condensate: replay_full_chunk",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "instratus_condensate: replay_single_column",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "instratus_condensate: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "micro_mg_tend: capture",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "micro_mg_tend: replay_full_chunk",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "micro_mg_tend: replay_single_column",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "micro_mg_tend: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
     {
       "what": "rad_rrtmg_sw: capture",
       "why": "no record in validation/ for this step of the loop"
@@ -6105,83 +6133,11 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "compute_uwshcu_inv: capture",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "compute_uwshcu_inv: standalone_build",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "compute_uwshcu_inv: replay_full_chunk",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "compute_uwshcu_inv: replay_single_column",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "compute_uwshcu_inv: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "zm_convr: capture",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "zm_convr: standalone_build",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "zm_convr: replay_full_chunk",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "zm_convr: replay_single_column",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "zm_convr: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "zm_conv_evap: capture",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "zm_conv_evap: standalone_build",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "zm_conv_evap: replay_full_chunk",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "zm_conv_evap: replay_single_column",
       "why": "no record in validation/ for this step of the loop"
     },
     {
       "what": "zm_conv_evap: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "momtran: capture",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "momtran: standalone_build",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "momtran: replay_full_chunk",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "momtran: replay_single_column",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "momtran: replay_public_api",
       "why": "no record in validation/ for this step of the loop"
     },
     {
@@ -6202,26 +6158,6 @@
     },
     {
       "what": "convtran: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "compute_tms: capture",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "compute_tms: standalone_build",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "compute_tms: replay_full_chunk",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "compute_tms: replay_single_column",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "compute_tms: replay_public_api",
       "why": "no record in validation/ for this step of the loop"
     },
     {
@@ -6345,5 +6281,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "94108f4a1b1f6e120eaa62c2cda37690ca919f049bacb7ee6bc1ae45a9ec1ab7"
+  "coverage_hash": "e97bfae36dc1000538da97fa0c9f726840c82efdea9d2279cc66cccb5f6a10b1"
 }

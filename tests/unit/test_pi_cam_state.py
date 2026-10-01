@@ -128,6 +128,33 @@ def test_generated_native_contract_preallocates_rank_local_arrays() -> None:
     assert "cam_in.optional" not in pool
 
 
+def _bridge_with_native_chunks(chunk_ncols):
+    bridge = object.__new__(_NativeStateBridge)
+    bridge.dimension_defaults = {"pcnst": 57, "physics_columns_per_element": 9}
+    bridge.derived_shell = False
+    bridge.initializers = {}
+    bridge.fields = ({"name": "phys_state.t", "dtype": "float64", "dimensions": ["pcols", "pver", "chunks"],
+                      "active_by_default": True},)
+    inf = int(np.asarray(np.inf, dtype=np.float64).view(np.int64))
+    bridge._initialization_context = {"chunk_begin": 1, "chunk_end": len(chunk_ncols), "chunk_ncols": chunk_ncols,
+                                      "inf_bits": inf, "posinf_bits": inf}
+    return bridge
+
+
+def test_the_native_chunk_count_stands_where_the_elements_do_not_split_evenly() -> None:
+    from freecam.pi_cam.errors import NativeCAMError
+
+    config = SimpleNamespace(pcols=16, pver=30, resolution="ne16")
+    # 300 ranks: 1536 elements leave 36 over, and HOMME's curve does not hand them to ranks 0-35,
+    # so rank 40 -- five elements by the estimate, 45 columns, 3 chunks -- has the 4 CAM gave it
+    pool = PICAMStatePool({})
+    _bridge_with_native_chunks((16, 16, 16, 2)).preallocate(pool, config, rank=40, size=300)
+    assert pool["phys_state.t"].shape == (16, 30, 4) and pool.dimensions["nphys_local"] == 50
+    # 512 ranks split them evenly, the estimate is exact, and a native count that differs is refused
+    with pytest.raises(NativeCAMError, match="chunk count differs from Python grid estimate: 4 != 2"):
+        _bridge_with_native_chunks((16, 16, 16, 2)).preallocate(PICAMStatePool({}), config, rank=0, size=512)
+
+
 def test_inline_native_field_can_be_a_strided_view_without_double_counting() -> None:
     pool = PICAMStatePool({"column": 2, "chunks": 3, "owner_bytes": 96})
     raw = np.zeros(96, dtype=np.uint8)

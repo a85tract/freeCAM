@@ -160,11 +160,34 @@ arguments:
   units: fraction
   description: Land fraction
 parameters: {}
-module_state: []
+module_state:
+- symbol: trb_mtn_stress_mp_gravit_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: trb_mtn_stress_mp_karman_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: trb_mtn_stress_mp_orocnst_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: trb_mtn_stress_mp_rair_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: trb_mtn_stress_mp_z0fac_
+  dtype: float64
+  shape: []
+  write: snapshot
+initializers: []
 image:
-  archive_members: [trb_mtn_stress.o, physconst.o, ppgrid.o]
+  archive_members:
+  - trb_mtn_stress.o
   stubs:
     inert: []
     fail_closed: []
-    abort: []
+    abort:
+    - shr_sys_mod_mp_shr_sys_abort_
   base_address: 1342177280

@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "what": "One allocation's online PI-atm month (1488 steps, 512 ranks), legs back to back: the original Fortran, freeCAM with nothing replaced, and freeCAM with a model in the kernel's slot. Every component is live in every leg (online coupling, not the offline replay). Times are the coupling loop; the model legs are not bit-for-bit by construction, their drift and health are recorded instead.",
+  "boundary": "online",
+  "pbs_job_id": "7637090.desched1",
+  "git_commit": "f9e855c5806c8f2d647c817b6eacf22a06aa6b9b",
+  "hardware": "select=4:ncpus=64:mpiprocs=128:ompthreads=1:ngpus=4:gpu_type=a100:mem=400GB:mps=1 place=scatter:exclhost",
+  "gpu_mps": "site",
+  "root": "freeCAM/PI-cam/online-model-1month-gpu-site-AHG-batch-v4-7637090.desched1",
+  "order": "AHG",
+  "kernel": "compute_uwshcu_inv",
+  "legs": {
+    "A": {
+      "what": "the original Fortran model (the pyCESM case executable), every component live",
+      "position": 1,
+      "completed": true,
+      "coupling_loop_seconds": 467.808594,
+      "init_seconds": 17.351053,
+      "final_seconds": 0.01122,
+      "lifecycle_seconds": 485.170867,
+      "executable_sha256": "accd9860c1a29b32415d1fecd86d5728c8cd5c4204ad41e9d93e2db6b0077d7e",
+      "timing_source": "GPTL CPL:RUN_LOOP in timing/cesm_timing.000"
+    },
+    "H": {
+      "what": "G with every chunk of a rank answered by one forward a step (--batch-chunks)",
+      "position": 2,
+      "completed": true,
+      "steps": 1488,
+      "coupling_loop_seconds": 573.250625309,
+      "init_seconds": 16.19409779099999,
+      "final_seconds": 0.37493008199999167,
+      "lifecycle_seconds": 589.8649670669998,
+      "sypd": 12.80082719111796,
+      "boundary_mode": "online",
+      "boundary_provider": "CESMOnlineBoundaryProvider",
+      "native_manifest": "build/pi_cam_promoted_p39g/native_cam_manifest.json",
+      "native_library_sha256": "80d581e4395447c5ac0221afd4d738a03ad4e7cd2e1d4d0b37ecdcd91ccd5d28",
+      "python_stages": [
+        "shallow_convection"
+      ],
+      "cloud_macro_micro_python": true,
+      "stage_execution_modes": {
+        "cloud_macro_microphysics_python": "native-whole",
+        "shallow_convection_python": "native-model"
+      },
+      "kernel_models": {
+        "compute_uwshcu_inv": {
+          "binding": "torchscript",
+          "device": "cuda",
+          "file": "uwshcu_trigger_gated_r5_v4.pt",
+          "sha256": "fd64c5a9dbb9b14e590b7883a6fabc142ee8af9f37b78e4dcf2dca2da6011a5b"
+        }
+      },
+      "model": {
+        "calls": 1525760,
+        "modeled": 1523712,
+        "original": 2048,
+        "ranks": 512,
+        "warm_up_seconds_per_rank": 10.58975249414063,
+        "model_seconds_per_rank": 78.94049632812504,
+        "batch": {
+          "forwards": 761856,
+          "chunks_per_forward": 2.0,
+          "columns_per_forward": 27.00390625,
+          "ms_per_forward": 50.61034961725052,
+          "forward_seconds_per_rank": 75.30820023046878,
+          "forward_seconds_slowest_rank": 81.71305,
+          "take_seconds_per_rank": 3.632296097656247,
+          "untaken_chunks": 0
+        }
+      },
+      "mps": {
+        "server": "site",
+        "nodes": 4,
+        "gpus": 16,
+        "exclusive_process_gpus": 16,
+        "refused_ranks": 0
+      },
+      "bfb": null,
+      "bfb_files": null,
+      "peak_rank_rss_bytes": 2041176064,
+      "total_rss_bytes": 839582580736,
+      "health": {
+        "big_error": 1,
+        "isotopic_mass_error": 0,
+        "qneg3_macro": 0,
+        "qneg3_total": 0,
+        "tracebacks": 0
+      },
+      "drift": {
+        "fields_compared": 2838,
+        "fields_identical": 332,
+        "fields_with_non_finite_values": [],
+        "relative_rms": {
+          "median": 0.4124165053307548,
+          "p90": 1.0435981899738318,
+          "max": 1.5876630879229556
+        }
+      }
+    },
+    "G": {
+      "what": "freeCAM online, the kernel answered by the TorchScript model inside the image on the node's GPUs through MPS",
+      "position": 3,
+      "completed": true,
+      "steps": 1488,
+      "coupling_loop_seconds": 603.5392874920001,
+      "init_seconds": 14.298706688000038,
+      "final_seconds": 0.3899828960002196,
+      "lifecycle_seconds": 618.2745009209998,
+      "sypd": 12.15841676566596,
+      "boundary_mode": "online",
+      "boundary_provider": "CESMOnlineBoundaryProvider",
+      "native_manifest": "build/pi_cam_promoted_p39g/native_cam_manifest.json",
+      "native_library_sha256": "80d581e4395447c5ac0221afd4d738a03ad4e7cd2e1d4d0b37ecdcd91ccd5d28",
+      "python_stages": [
+        "shallow_convection"
+      ],
+      "cloud_macro_micro_python": true,
+      "stage_execution_modes": {
+        "cloud_macro_microphysics_python": "native-whole",
+        "shallow_convection_python": "native-model"
+      },
+      "kernel_models": {
+        "compute_uwshcu_inv": {
+          "binding": "torchscript",
+          "device": "cuda",
+          "file": "uwshcu_trigger_gated_r5_v4.pt",
+          "sha256": "fd64c5a9dbb9b14e590b7883a6fabc142ee8af9f37b78e4dcf2dca2da6011a5b"
+        }
+      },
+      "model": {
+        "calls": 1525760,
+        "modeled": 1523712,
+        "original": 2048,
+        "ranks": 512,
+        "ms_per_call_after_first": 39.758859531906516,
+        "first_call_seconds_per_rank": 0.6325563984374998,
+        "first_call_seconds_slowest_rank": 1.269423,
+        "warm_up_seconds_per_rank": 1.8942238242187488,
+        "model_seconds_per_rank": 118.91516350585938,
+        "model_seconds_slowest_rank": 120.735825
+      },
+      "mps": {
+        "server": "site",
+        "nodes": 4,
+        "gpus": 16,
+        "exclusive_process_gpus": 16,
+        "refused_ranks": 0
+      },
+      "bfb": null,
+      "bfb_files": null,
+      "peak_rank_rss_bytes": 2037440512,
+      "total_rss_bytes": 837546078208,
+      "health": {
+        "big_error": 0,
+        "isotopic_mass_error": 0,
+        "qneg3_macro": 0,
+        "qneg3_total": 0,
+        "tracebacks": 0
+      },
+      "drift": {
+        "fields_compared": 2838,
+        "fields_identical": 332,
+        "fields_with_non_finite_values": [],
+        "relative_rms": {
+          "median": 0.41320249174880463,
+          "p90": 1.0368086606796911,
+          "max": 1.6007050354418246
+        }
+      }
+    }
+  },
+  "ratios": {
+    "G/A": 1.2901415135011394,
+    "H/A": 1.225395669642187,
+    "H/G": 0.9498149286869721
+  }
+}

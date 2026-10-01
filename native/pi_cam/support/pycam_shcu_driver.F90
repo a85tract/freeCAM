@@ -35,7 +35,7 @@ module pycam_shcu_driver
   use convect_shallow, only: convect_shallow_use_shfrc
   implicit none
   private
-  public :: driver_piece_1, driver_piece_2, driver_piece_3, driver_piece_4, compute_uwshcu_inv_frame, compute_uwshcu_inv_original, driver_bind, driver_resolve_indices, driver_configure
+  public :: driver_piece_1, driver_piece_2, driver_piece_3, driver_piece_4, compute_uwshcu_inv_frame, compute_uwshcu_inv_original, driver_bind, driver_resolve_indices, driver_configure, driver_chunk_slots, driver_store_chunk, driver_load_chunk
 
   integer(c_int64_t), parameter :: zero_shape(1) = (/ 0_c_int64_t /)
 
@@ -160,6 +160,100 @@ module pycam_shcu_driver
   integer, save, public :: snow_sh_idx = -1
   integer, save, public :: tke_idx = -1
   integer, save, public :: ttend_sh_idx = -1
+
+  ! batched mode: a chunk's state, kept in its slot while another chunk runs
+  type :: chunk_state_t
+    real(r8) :: ztodt
+    real(r8), pointer :: cmfmc(:,:) => null()
+    real(r8), pointer :: cmfmc2(:,:) => null()
+    real(r8), pointer :: qc(:,:) => null()
+    real(r8), pointer :: qc2(:,:) => null()
+    real(r8), pointer :: rliq(:) => null()
+    real(r8), pointer :: rliq2(:) => null()
+    type(physics_state), pointer :: state => null()
+    type(physics_ptend), pointer :: ptend_all => null()
+    type(physics_buffer_desc), pointer :: pbuf(:) => null()
+    real(r8), pointer :: sgh30(:) => null()
+    type(cam_in_t), pointer :: cam_in => null()
+    real(r8), pointer :: wtdlf(:,:,:) => null()
+    integer :: flow
+    real(r8) :: cbmf(pcols)
+    real(r8), pointer :: cld(:,:) => null()
+    real(r8) :: cmfdqs(pcols,pver)
+    real(r8) :: cmflq(pcols,pverp)
+    real(r8) :: cmfsl(pcols,pverp)
+    real(r8), pointer :: cnb(:) => null()
+    real(r8) :: cnb2(pcols)
+    real(r8), pointer :: cnt(:) => null()
+    real(r8) :: cnt2(pcols)
+    real(r8), pointer :: concld(:,:) => null()
+    real(r8), pointer :: cush(:) => null()
+    real(r8), pointer :: evapcsh(:,:) => null()
+    real(r8) :: evpstore(pcols,pver)
+    real(r8), pointer :: flxprec(:,:) => null()
+    real(r8), pointer :: flxsnow(:,:) => null()
+    real(r8) :: freqsh(pcols)
+    real(r8) :: ftem(pcols,pver)
+    real(r8) :: ftem_precu(pcols,pver)
+    integer :: i
+    real(r8) :: iccmr_uw(pcols,pver)
+    real(r8) :: icimr_uw(pcols,pver)
+    real(r8), pointer :: icwmr(:,:) => null()
+    real(r8) :: icwmr_uw(pcols,pver)
+    logical :: isok
+    integer :: itim_old
+    integer :: ixcldice
+    integer :: ixcldliq
+    integer :: ixnumice
+    integer :: ixnumliq
+    real(r8) :: landfracdum(pcols)
+    integer :: lchnk
+    logical :: lq(pcnst)
+    integer :: m
+    integer :: ncol
+    integer :: nstep
+    real(r8) :: ntprprd(pcols,pver)
+    real(r8) :: ntsnprd(pcols,pver)
+    real(r8), pointer :: pblh(:) => null()
+    real(r8) :: pcnb(pcols)
+    real(r8) :: pcnt(pcols)
+    real(r8), pointer :: precc(:) => null()
+    type(physics_ptend) :: ptend_loc
+    real(r8) :: ptend_tracer(pcols,pver,pcnst)
+    real(r8), pointer :: qpert(:,:) => null()
+    real(r8) :: qt(pcols,pver)
+    real(r8) :: qt_precu(pcols,pver)
+    real(r8) :: qtflx(pcols,pverp)
+    real(r8) :: rhten(pcols,pver)
+    real(r8), pointer :: rprddp(:,:) => null()
+    real(r8), pointer :: rprdsh(:,:) => null()
+    real(r8), pointer :: sh_cldice(:,:) => null()
+    real(r8), pointer :: sh_cldliq(:,:) => null()
+    real(r8), pointer :: shfrc(:,:) => null()
+    real(r8) :: sl(pcols,pver)
+    real(r8) :: sl_precu(pcols,pver)
+    real(r8) :: slflx(pcols,pverp)
+    real(r8) :: slv(pcols,pver)
+    real(r8) :: slv_precu(pcols,pver)
+    real(r8), pointer :: snow(:) => null()
+    type(physics_state) :: state1
+    real(r8) :: substore(pcols,pver)
+    real(r8) :: t_precu(pcols,pver)
+    real(r8) :: tem2(pcols,pver)
+    real(r8) :: tend_s_snwevmlt(pcols,pver)
+    real(r8) :: tend_s_snwprd(pcols,pver)
+    real(r8), pointer :: tke(:,:) => null()
+    real(r8) :: tpert(pcols)
+    real(r8) :: tten(pcols,pver)
+    real(r8), pointer :: ttend_sh(:,:) => null()
+    type(unicon_out_t) :: unicon_out
+    real(r8), pointer :: wtprec(:) => null()
+    real(r8) :: wtprect(pcols,pcnst)
+    real(r8) :: wtqc(pcols,pver,pcnst)
+    real(r8), pointer :: wtsnow(:) => null()
+    real(r8) :: wtsnowt(pcols,pcnst)
+  end type chunk_state_t
+  type(chunk_state_t), allocatable, save :: chunk_store(:)
 
 contains
 
@@ -769,6 +863,204 @@ contains
                                    cnt2                , cnb2           , lchnk         , state%pdeldry ,                   &
                                    wtprect             , wtsnowt        , wtqc )
   end subroutine compute_uwshcu_inv_original
+
+  subroutine driver_chunk_slots(slots)
+    ! room for every chunk's state; zero releases it
+    integer, intent(in) :: slots
+    if (allocated(chunk_store)) then
+      if (size(chunk_store) == slots) return
+      deallocate(chunk_store)
+    end if
+    if (slots > 0) allocate(chunk_store(slots))
+  end subroutine driver_chunk_slots
+
+  subroutine driver_store_chunk(slot)
+    ! the chunk in flight's state into its slot
+    integer, intent(in) :: slot
+    chunk_store(slot)%ztodt = ztodt
+    chunk_store(slot)%cmfmc => cmfmc
+    chunk_store(slot)%cmfmc2 => cmfmc2
+    chunk_store(slot)%qc => qc
+    chunk_store(slot)%qc2 => qc2
+    chunk_store(slot)%rliq => rliq
+    chunk_store(slot)%rliq2 => rliq2
+    chunk_store(slot)%state => state
+    chunk_store(slot)%ptend_all => ptend_all
+    chunk_store(slot)%pbuf => pbuf
+    chunk_store(slot)%sgh30 => sgh30
+    chunk_store(slot)%cam_in => cam_in
+    chunk_store(slot)%wtdlf => wtdlf
+    chunk_store(slot)%flow = flow
+    chunk_store(slot)%cbmf = cbmf
+    chunk_store(slot)%cld => cld
+    chunk_store(slot)%cmfdqs = cmfdqs
+    chunk_store(slot)%cmflq = cmflq
+    chunk_store(slot)%cmfsl = cmfsl
+    chunk_store(slot)%cnb => cnb
+    chunk_store(slot)%cnb2 = cnb2
+    chunk_store(slot)%cnt => cnt
+    chunk_store(slot)%cnt2 = cnt2
+    chunk_store(slot)%concld => concld
+    chunk_store(slot)%cush => cush
+    chunk_store(slot)%evapcsh => evapcsh
+    chunk_store(slot)%evpstore = evpstore
+    chunk_store(slot)%flxprec => flxprec
+    chunk_store(slot)%flxsnow => flxsnow
+    chunk_store(slot)%freqsh = freqsh
+    chunk_store(slot)%ftem = ftem
+    chunk_store(slot)%ftem_precu = ftem_precu
+    chunk_store(slot)%i = i
+    chunk_store(slot)%iccmr_uw = iccmr_uw
+    chunk_store(slot)%icimr_uw = icimr_uw
+    chunk_store(slot)%icwmr => icwmr
+    chunk_store(slot)%icwmr_uw = icwmr_uw
+    chunk_store(slot)%isok = isok
+    chunk_store(slot)%itim_old = itim_old
+    chunk_store(slot)%ixcldice = ixcldice
+    chunk_store(slot)%ixcldliq = ixcldliq
+    chunk_store(slot)%ixnumice = ixnumice
+    chunk_store(slot)%ixnumliq = ixnumliq
+    chunk_store(slot)%landfracdum = landfracdum
+    chunk_store(slot)%lchnk = lchnk
+    chunk_store(slot)%lq = lq
+    chunk_store(slot)%m = m
+    chunk_store(slot)%ncol = ncol
+    chunk_store(slot)%nstep = nstep
+    chunk_store(slot)%ntprprd = ntprprd
+    chunk_store(slot)%ntsnprd = ntsnprd
+    chunk_store(slot)%pblh => pblh
+    chunk_store(slot)%pcnb = pcnb
+    chunk_store(slot)%pcnt = pcnt
+    chunk_store(slot)%precc => precc
+    chunk_store(slot)%ptend_loc = ptend_loc
+    chunk_store(slot)%ptend_tracer = ptend_tracer
+    chunk_store(slot)%qpert => qpert
+    chunk_store(slot)%qt = qt
+    chunk_store(slot)%qt_precu = qt_precu
+    chunk_store(slot)%qtflx = qtflx
+    chunk_store(slot)%rhten = rhten
+    chunk_store(slot)%rprddp => rprddp
+    chunk_store(slot)%rprdsh => rprdsh
+    chunk_store(slot)%sh_cldice => sh_cldice
+    chunk_store(slot)%sh_cldliq => sh_cldliq
+    chunk_store(slot)%shfrc => shfrc
+    chunk_store(slot)%sl = sl
+    chunk_store(slot)%sl_precu = sl_precu
+    chunk_store(slot)%slflx = slflx
+    chunk_store(slot)%slv = slv
+    chunk_store(slot)%slv_precu = slv_precu
+    chunk_store(slot)%snow => snow
+    chunk_store(slot)%state1 = state1
+    chunk_store(slot)%substore = substore
+    chunk_store(slot)%t_precu = t_precu
+    chunk_store(slot)%tem2 = tem2
+    chunk_store(slot)%tend_s_snwevmlt = tend_s_snwevmlt
+    chunk_store(slot)%tend_s_snwprd = tend_s_snwprd
+    chunk_store(slot)%tke => tke
+    chunk_store(slot)%tpert = tpert
+    chunk_store(slot)%tten = tten
+    chunk_store(slot)%ttend_sh => ttend_sh
+    chunk_store(slot)%unicon_out = unicon_out
+    chunk_store(slot)%wtprec => wtprec
+    chunk_store(slot)%wtprect = wtprect
+    chunk_store(slot)%wtqc = wtqc
+    chunk_store(slot)%wtsnow => wtsnow
+    chunk_store(slot)%wtsnowt = wtsnowt
+  end subroutine driver_store_chunk
+
+  subroutine driver_load_chunk(slot)
+    ! a slot's chunk back in flight
+    integer, intent(in) :: slot
+    ztodt = chunk_store(slot)%ztodt
+    cmfmc => chunk_store(slot)%cmfmc
+    cmfmc2 => chunk_store(slot)%cmfmc2
+    qc => chunk_store(slot)%qc
+    qc2 => chunk_store(slot)%qc2
+    rliq => chunk_store(slot)%rliq
+    rliq2 => chunk_store(slot)%rliq2
+    state => chunk_store(slot)%state
+    ptend_all => chunk_store(slot)%ptend_all
+    pbuf => chunk_store(slot)%pbuf
+    sgh30 => chunk_store(slot)%sgh30
+    cam_in => chunk_store(slot)%cam_in
+    wtdlf => chunk_store(slot)%wtdlf
+    flow = chunk_store(slot)%flow
+    cbmf = chunk_store(slot)%cbmf
+    cld => chunk_store(slot)%cld
+    cmfdqs = chunk_store(slot)%cmfdqs
+    cmflq = chunk_store(slot)%cmflq
+    cmfsl = chunk_store(slot)%cmfsl
+    cnb => chunk_store(slot)%cnb
+    cnb2 = chunk_store(slot)%cnb2
+    cnt => chunk_store(slot)%cnt
+    cnt2 = chunk_store(slot)%cnt2
+    concld => chunk_store(slot)%concld
+    cush => chunk_store(slot)%cush
+    evapcsh => chunk_store(slot)%evapcsh
+    evpstore = chunk_store(slot)%evpstore
+    flxprec => chunk_store(slot)%flxprec
+    flxsnow => chunk_store(slot)%flxsnow
+    freqsh = chunk_store(slot)%freqsh
+    ftem = chunk_store(slot)%ftem
+    ftem_precu = chunk_store(slot)%ftem_precu
+    i = chunk_store(slot)%i
+    iccmr_uw = chunk_store(slot)%iccmr_uw
+    icimr_uw = chunk_store(slot)%icimr_uw
+    icwmr => chunk_store(slot)%icwmr
+    icwmr_uw = chunk_store(slot)%icwmr_uw
+    isok = chunk_store(slot)%isok
+    itim_old = chunk_store(slot)%itim_old
+    ixcldice = chunk_store(slot)%ixcldice
+    ixcldliq = chunk_store(slot)%ixcldliq
+    ixnumice = chunk_store(slot)%ixnumice
+    ixnumliq = chunk_store(slot)%ixnumliq
+    landfracdum = chunk_store(slot)%landfracdum
+    lchnk = chunk_store(slot)%lchnk
+    lq = chunk_store(slot)%lq
+    m = chunk_store(slot)%m
+    ncol = chunk_store(slot)%ncol
+    nstep = chunk_store(slot)%nstep
+    ntprprd = chunk_store(slot)%ntprprd
+    ntsnprd = chunk_store(slot)%ntsnprd
+    pblh => chunk_store(slot)%pblh
+    pcnb = chunk_store(slot)%pcnb
+    pcnt = chunk_store(slot)%pcnt
+    precc => chunk_store(slot)%precc
+    ptend_loc = chunk_store(slot)%ptend_loc
+    ptend_tracer = chunk_store(slot)%ptend_tracer
+    qpert => chunk_store(slot)%qpert
+    qt = chunk_store(slot)%qt
+    qt_precu = chunk_store(slot)%qt_precu
+    qtflx = chunk_store(slot)%qtflx
+    rhten = chunk_store(slot)%rhten
+    rprddp => chunk_store(slot)%rprddp
+    rprdsh => chunk_store(slot)%rprdsh
+    sh_cldice => chunk_store(slot)%sh_cldice
+    sh_cldliq => chunk_store(slot)%sh_cldliq
+    shfrc => chunk_store(slot)%shfrc
+    sl = chunk_store(slot)%sl
+    sl_precu = chunk_store(slot)%sl_precu
+    slflx = chunk_store(slot)%slflx
+    slv = chunk_store(slot)%slv
+    slv_precu = chunk_store(slot)%slv_precu
+    snow => chunk_store(slot)%snow
+    state1 = chunk_store(slot)%state1
+    substore = chunk_store(slot)%substore
+    t_precu = chunk_store(slot)%t_precu
+    tem2 = chunk_store(slot)%tem2
+    tend_s_snwevmlt = chunk_store(slot)%tend_s_snwevmlt
+    tend_s_snwprd = chunk_store(slot)%tend_s_snwprd
+    tke => chunk_store(slot)%tke
+    tpert = chunk_store(slot)%tpert
+    tten = chunk_store(slot)%tten
+    ttend_sh => chunk_store(slot)%ttend_sh
+    unicon_out = chunk_store(slot)%unicon_out
+    wtprec => chunk_store(slot)%wtprec
+    wtprect = chunk_store(slot)%wtprect
+    wtqc = chunk_store(slot)%wtqc
+    wtsnow => chunk_store(slot)%wtsnow
+    wtsnowt = chunk_store(slot)%wtsnowt
+  end subroutine driver_load_chunk
 
   subroutine put_slot(index, address, rank, shape, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
     integer, intent(in) :: index, rank, dtype, intent

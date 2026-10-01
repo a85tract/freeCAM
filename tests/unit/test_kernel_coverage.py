@@ -34,7 +34,9 @@ def test_the_inventory_closes_over_the_step_plan_and_the_catalog() -> None:
     stage7 = by_id["cam_run1.cloud_macro_microphysics"]
     assert stage7["python_class"].endswith("CloudMacroMicrophysics")
     assert stage7["kernels"] == ["mmacro_pcond", "cldfrc_fice", "instratus_condensate", "micro_mg_tend"]
-    assert stage7["coverage"] == "partial"
+    # every kernel of the cloud stage is captured and replayed bit-for-bit through its image
+    # (instratus_condensate and micro_mg_tend closed by 7630946-7630955)
+    assert stage7["coverage"] == "complete"
     assert stage7["performance"] == ["performance_overhead.md", "pi_cam_native_whole_1month_median.json",
                                      "pi_cam_faster_than_fortran.json"]
     # every class-owned action points at the all-class pairs; an action without a class has no performance record
@@ -114,10 +116,12 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     assert all(pcond["evidence"][step] for step in kernel_coverage.EVIDENCE_PATTERNS)
     assert pcond["in_model_gates"][0]["bfb"] is True and pcond["in_model_gates"][0]["path"] == "segmented"
     micro = rows["micro_mg_tend"]
-    assert micro["status"] == "open" and micro["contract"] == "reviewed" and micro["bindable"]
+    assert micro["contract"] == "reviewed" and micro["bindable"]
     assert micro["validated_through_runner"]                    # gate 7331040
-    assert "segment_runner" not in micro["missing"] and "in_model_replacement_bfb" not in micro["missing"]
-    assert "capture" in micro["missing"]                        # no captured calls replayed through its image yet
+    # captured at its pause (7622015, kernels-a-capture) and every frame replayed bit-for-bit through its
+    # image, lane by lane (7630946) and a call at a time (7630949)
+    assert micro["status"] == "complete" and micro["missing"] == []
+    assert micro["evidence"]["capture"] == ["pi_cam_pausable_kernels-a-capture_50step.json"]
     assert record["summary"]["kernels_validated_through_runner"] == 22     # every exposed row; fice in both its contexts, instratus at its hook
     assert micro["in_model_gates"][0]["bfb"] is True          # the walk with the core through its image
     # the pause gates the manifest names are in-model evidence too (7331040, 7331041)
@@ -129,8 +133,10 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     assert dadadj["status"] == "complete" and dadadj["validated_through_runner"]
     assert all(g["bfb"] is True and g["path"].startswith("segmented") for g in dadadj["in_model_gates"])
     uwshcu = rows["compute_uwshcu_inv"]
-    assert uwshcu["status"] == "open" and uwshcu["validated_through_runner"]
-    assert "in_model_replacement_bfb" not in uwshcu["missing"] and "capture" in uwshcu["missing"]
+    assert uwshcu["status"] == "complete" and uwshcu["validated_through_runner"]
+    # its spec, image and snapshot are named uwshcu: the rows find records by either name
+    assert uwshcu["evidence"]["standalone_build"] == ["pi_cam_uwshcu_standalone_build.json"]
+    assert uwshcu["evidence"]["module_state"] == ["pi_cam_uwshcu_module_state.json"]
     for name in ("rad_rrtmg_sw", "rad_rrtmg_lw"):
         # the frame descriptor is the contract of a kernel taking derived types, and the
         # radt runner pauses at both cores; the in-model gate is the walk's until the pause gates run
@@ -139,9 +145,33 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
         assert "reviewed_contract" not in rows[name]["missing"] and "segment_runner" not in rows[name]["missing"]
         assert "in_model_replacement_bfb" not in rows[name]["missing"]
         assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_everything_50step.json"
+    # the ZM routines gather the columns that convect: one column is not replayed alone, and the
+    # whole-call replays (7630951, 7630952) are the proof; the steps that replay a column are
+    # not applicable, and say why
+    for name in ("zm_convr", "momtran"):
+        assert rows[name]["status"] == "complete" and rows[name]["missing"] == [], (name, rows[name]["missing"])
+        assert set(rows[name]["not_applicable"]) == {"replay_single_column", "replay_public_api"}
+        assert rows[name]["evidence"]["replay_full_chunk"] == [f"pi_cam_{name}_frame_replay_chunk.json"]
+    # zm_conv_evap's columns stand alone but round by lane: its lane replay (7630947) is not
+    # bit-for-bit and is no evidence, so the column steps stay open
+    evap = rows["zm_conv_evap"]
+    assert evap["status"] == "open" and evap["missing"] == ["replay_single_column", "replay_public_api"]
+    assert evap["evidence"]["replay_full_chunk"] == ["pi_cam_zm_conv_evap_frame_replay_chunk.json"]
+    assert rows["instratus_condensate"]["status"] == "complete" and rows["compute_tms"]["status"] == "complete"
     # the P3-P5 kernels await capture and replay; cldfrc_fice is complete in
     # both of its stage contexts
-    assert record["summary"]["kernels_by_status"] == {"complete": 6, "open": 16}
+    assert record["summary"]["kernels_by_status"] == {"complete": 12, "open": 10}
+
+
+def test_a_replay_record_that_did_not_pass_is_no_evidence(monkeypatch, tmp_path: Path) -> None:
+    for name, payload in (("pi_cam_k_frame_replay.json", {"bfb": False}), ("pi_cam_k_frame_replay_chunk.json", {"bfb": True}),
+                          ("pi_cam_k_full_chunk_vs_capture.json", {"passed": True})):
+        (tmp_path / name).write_text(json.dumps(payload))
+    monkeypatch.setattr(kernel_coverage, "VALIDATION", tmp_path)
+    assert not kernel_coverage._passed("pi_cam_k_frame_replay.json")
+    assert kernel_coverage._passed("pi_cam_k_frame_replay_chunk.json")
+    assert kernel_coverage._passed("pi_cam_k_full_chunk_vs_capture.json")
+    assert not kernel_coverage._passed("pi_cam_k_absent.json")
 
 
 def test_the_committed_record_is_what_the_builder_writes_now() -> None:

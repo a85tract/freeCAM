@@ -522,3 +522,41 @@ def test_every_c_bound_procedure_of_a_generated_support_module_carries_its_own_n
     assert shared == {}, shared
     assert names["pycam_zmdeep_fiber_body_v1"] == ["pycam_zmdeep_runner.F90"]
     assert names["pycam_shcu_fiber_body_v1"] == ["pycam_shcu_runner.F90"]
+
+
+def test_a_batched_runner_keeps_a_slot_per_chunk_and_its_units_store_every_chunk_variable() -> None:
+    spec = pausable.load_spec(pausable.SPECS / "shallow_convection.yaml")
+    assert spec.batch_chunks
+    runner = (pausable.SUPPORT / "pycam_shcu_runner.F90").read_text()
+    for suffix in ("batch_begin", "batch_select", "batch_advance", "batch_end"):
+        assert f"bind(C, name='pycam_shcu_{suffix}_v1')" in runner, suffix
+    # a slot runs its own chunk only, and a replaced kernel inside compiled code is refused:
+    # its pause lives on the fiber's stack, one per run
+    assert "if (batched) then\n          ! a slot runs its own chunk only" in runner
+    assert "which batched mode" in runner and "hook_of(k) /= 0 .and. replace(k)" in runner
+    for unit in spec.units.values():
+        module = (pausable.SUPPORT / f"pycam_shcu_{unit.key}.F90").read_text()
+        for routine in ("chunk_slots", "store_chunk", "load_chunk"):
+            assert f"subroutine {unit.key}_{routine}(" in module, (unit.key, routine)
+            assert f"call {unit.key}_{routine}(" in runner, (unit.key, routine)
+        state = pausable._chunk_state(unit)
+        # every per-chunk module variable is kept, and nothing shared or constant
+        declared = {var.name for var in state}
+        assert "flow" in declared and not any(name.endswith("_idx") for name in declared)
+        for var in state:
+            assert "save" not in var.component and "target" not in var.component and "public" not in var.component
+            keep = {"pointer": f"chunk_store(slot)%{var.name} => {var.name}",
+                    "value": f"chunk_store(slot)%{var.name} = {var.name}",
+                    "allocatable": f"allocate(chunk_store(slot)%{var.name}, mold={var.name})"}[var.mode]
+            assert keep in module, (unit.key, var.name)
+    driver = {v.name: v for v in pausable._chunk_state(spec.units["driver"])}
+    assert driver["ptend_loc"].mode == "value" and driver["state"].mode == "pointer"
+    assert driver["cbmf"].component == "real(r8) :: cbmf(pcols)"
+
+
+def test_a_runner_without_batch_chunks_has_no_batched_mode() -> None:
+    spec = pausable.load_spec(pausable.SPECS / "dry_adjustment.yaml")
+    assert not spec.batch_chunks
+    runner = (pausable.SUPPORT / "pycam_dadadj_runner.F90").read_text()
+    assert "batch_begin" not in runner and "batched" not in runner
+    assert "chunk_store" not in (pausable.SUPPORT / "pycam_dadadj_glue.F90").read_text()

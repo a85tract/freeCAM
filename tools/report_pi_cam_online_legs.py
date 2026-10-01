@@ -39,6 +39,9 @@ LEGS = {
     "M": "freeCAM online, the kernel answered by the TorchScript model inside the image on the host CPU",
     "G": "freeCAM online, the kernel answered by the TorchScript model inside the image on the node's GPUs "
          "through MPS",
+    "N": "M with every chunk of a rank answered by one forward a step (--batch-chunks): the kernel's inputs "
+         "gathered for every chunk before the stage runs, each call taking its chunk's rows",
+    "H": "G with every chunk of a rank answered by one forward a step (--batch-chunks)",
 }
 _MPS_LINE = re.compile(r"GPU (?P<gpu>\d+) servers \[(?P<servers>[^\]]*)\] client disconnects (?P<clients>\d+) "
                        r"log faults (?P<faults>\d+)")
@@ -68,6 +71,28 @@ def model_cost(hooks: dict[str, Any] | None, kernel: str) -> dict[str, Any]:
     if ranks and total is not None:
         cost["model_seconds_per_rank"] = total / ranks
         cost["model_seconds_slowest_rank"] = row.get("call_seconds_max")
+    batch = row.get("batch")
+    if batch and batch.get("forwards"):
+        # the hook batch: a call only takes its chunk's rows (call_seconds); the model's work is
+        # the forwards, one a step, timed apart -- the model's cost a rank is both together
+        forwards, brank = int(batch["forwards"]), int(batch.get("ranks") or ranks or 1)
+        cost.pop("ms_per_call_after_first", None)
+        cost.pop("first_call_seconds_per_rank", None)
+        cost.pop("first_call_seconds_slowest_rank", None)
+        # the slowest rank's take time alone says nothing of its model: the forwards are its cost
+        cost.pop("model_seconds_slowest_rank", None)
+        cost["batch"] = {
+            "forwards": forwards,
+            "chunks_per_forward": batch["chunks"] / forwards,
+            "columns_per_forward": batch["rows"] / forwards,
+            "ms_per_forward": 1e3 * batch["forward_seconds"] / forwards,
+            "forward_seconds_per_rank": batch["forward_seconds"] / brank,
+            "forward_seconds_slowest_rank": batch.get("forward_seconds_max"),
+            "take_seconds_per_rank": None if total is None or not ranks else total / ranks,
+            "untaken_chunks": batch.get("untaken", 0) + batch.get("pending", 0),
+        }
+        if total is not None and ranks:
+            cost["model_seconds_per_rank"] = (total + batch["forward_seconds"]) / ranks
     return cost
 
 
@@ -152,7 +177,7 @@ def freecam_leg(directory: Path, kernel: str) -> dict[str, Any]:
 
 def ratios(legs: dict[str, dict[str, Any]]) -> dict[str, float]:
     loops = {name: leg.get("coupling_loop_seconds") for name, leg in legs.items() if leg.get("completed")}
-    pairs = [(x, "A") for x in "CMG"] + [("M", "C"), ("G", "C"), ("G", "M")]
+    pairs = [(x, "A") for x in "CMGNH"] + [("M", "C"), ("G", "C"), ("G", "M"), ("N", "M"), ("H", "G"), ("H", "N")]
     return {f"{x}/{y}": loops[x] / loops[y] for x, y in pairs if loops.get(x) and loops.get(y)}
 
 
@@ -168,6 +193,9 @@ def main() -> int:
     parser.add_argument("--root-label", default="", help="the root as the record names it (no site directory)")
     parser.add_argument("--pbs-job-id")
     parser.add_argument("--git-commit")
+    parser.add_argument("--steps", type=int, default=1488, help="the steps every leg ran (1488: the month)")
+    parser.add_argument("--ranks", type=int, default=512,
+                        help="the MPI ranks every leg ran on (512: the admitted layout; another count is a timing study)")
     parser.add_argument("--output", type=Path, required=True)
     arguments = parser.parse_args()
     unknown = sorted(set(arguments.legs) - set(LEGS))
@@ -182,16 +210,22 @@ def main() -> int:
         legs[name] = {"what": LEGS[name], "position": position, **leg}
     record = {
         "schema_version": 1,
-        "what": "One allocation's online PI-atm month (1488 steps, 512 ranks), legs back to back: the original "
+        "what": f"One allocation's online PI-atm {'month' if arguments.steps == 1488 else 'run'} ({arguments.steps} "
+                f"steps, {arguments.ranks} ranks), legs back to back: the original "
                 "Fortran, freeCAM with nothing replaced, and freeCAM with a model in the kernel's slot. Every "
                 "component is live in every leg (online coupling, not the offline replay). Times are the "
                 "coupling loop; the model legs are not bit-for-bit by construction, their drift and health "
                 "are recorded instead.",
         "boundary": "online",
+        "steps": arguments.steps,
+        "ranks": arguments.ranks,
+        **({} if arguments.ranks == 512 else {
+            "layout": "a timing study off the admitted 512-rank layout: every component inside the ranks, CICE on "
+                      "its compiled 128 tasks, no oracle and no bit-for-bit comparison at this count"}),
         "pbs_job_id": arguments.pbs_job_id,
         "git_commit": arguments.git_commit,
         "hardware": arguments.hardware,
-        "gpu_mps": arguments.gpu_mps if "G" in arguments.legs else None,
+        "gpu_mps": arguments.gpu_mps if set("GH") & set(arguments.legs) else None,
         "root": arguments.root_label or None,
         "order": arguments.legs,
         "kernel": arguments.kernel,

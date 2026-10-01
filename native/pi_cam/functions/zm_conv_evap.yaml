@@ -15,6 +15,11 @@ source: components/cam/src/physics/cam/zm_conv.F90
 module: zm_conv
 binding: module
 layout: column
+# A column's answer can differ in the last bit with its lane in the chunk: the
+# compiled column loop rounds lanes by position.  Replayed alone (lane 0, ncol 1)
+# 106 of the 2240 columns captured on ranks 0-7 differ in tend_s; replayed at
+# their own lane with the call's ncol and every other lane zero, none does.
+# The captured frame is complete; bit-for-bit replay is a whole call at a time.
 dimensions: {pcols: 16, pver: 30, pverp: 31, pcnst: 57}
 public_axes: {pver: lev, pverp: ilev}
 arguments:
@@ -216,11 +221,118 @@ arguments:
   public_shape: [pverp]
   description: Convective-scale flux of snow   at interfaces (kg/m2/s)
 parameters: {}
-module_state: []
+module_state:
+- symbol: zm_conv_mp_ke_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: zm_conv_mp_ke_lnd_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: zm_conv_mp_zm_org_
+  dtype: int32
+  shape: []
+  write: snapshot
+  note: A Fortran logical, copied bitwise as its 4-byte storage.
+- symbol: physconst_mp_gravit_
+  dtype: float64
+  shape: []
+  write: verify
+- symbol: physconst_mp_tmelt_
+  dtype: float64
+  shape: []
+  write: verify
+- symbol: cam_logfile_mp_iulog_
+  dtype: int32
+  shape: []
+  write: verify
+  expected: 6
+- symbol: wv_saturation_mp_c3_
+  dtype: float64
+  shape: []
+  write: initializer
+- symbol: wv_saturation_mp_omeps_
+  dtype: float64
+  shape: []
+  write: initializer
+- symbol: wv_saturation_mp_plenest_
+  dtype: int32
+  shape: []
+  write: initializer
+- symbol: wv_sat_methods_mp_epsilo_
+  dtype: float64
+  shape: []
+  write: initializer
+- symbol: wv_sat_methods_mp_omeps_
+  dtype: float64
+  shape: []
+  write: initializer
+- symbol: wv_sat_methods_mp_tboil_
+  dtype: float64
+  shape: []
+  write: initializer
+- symbol: wv_sat_methods_mp_tmelt_
+  dtype: float64
+  shape: []
+  write: initializer
+- symbol: wv_sat_methods_mp_h2otrip_
+  dtype: float64
+  shape: []
+  write: initializer
+- symbol: wv_sat_methods_mp_ttrice_
+  dtype: float64
+  shape: []
+  write: initializer
+- symbol: wv_sat_methods_mp_default_idx_
+  dtype: int32
+  shape: []
+  write: verify
+initializers: [wv_saturation_mp_wv_sat_init_]
 image:
-  archive_members: [zm_conv.o]
+  archive_members:
+  - zm_conv.o
+  - cloud_fraction.o
+  - physconst.o
+  - cam_logfile.o
+  - ppgrid.o
+  - ref_pres.o
+  - wv_saturation.o
+  - wv_sat_methods.o
+  - error_messages.o
   stubs:
-    inert: []
-    fail_closed: []
-    abort: []
+    inert:
+    - mpishorthand_mp_mpichar_
+    - mpishorthand_mp_mpicom_
+    - mpishorthand_mp_mpiint_
+    - mpishorthand_mp_mpilog_
+    - mpishorthand_mp_mpir8_
+    - shr_assert_mod_mp_shr_assert_in_domain_0d_double_
+    - spmd_utils_mp_masterproc_
+    fail_closed:
+    - cam_history_mp_addfld_
+    - cam_history_mp_outfld_
+    - constituents_mp_cnst_get_type_byind_
+    - dycore_mp_get_resolution_
+    - dyn_grid_mp_dyn_grid_get_pref_
+    - mpibcast_
+    - netcdf_mp_nf90_strerror_
+    - phys_control_mp_cam_physpkg_is_
+    - phys_control_mp_phys_getopts_
+    - phys_grid_mp_get_rlat_all_p_
+    - phys_grid_mp_get_rlat_p_
+    - phys_grid_mp_get_rlon_all_p_
+    - phys_grid_mp_get_rlon_p_
+    - physics_buffer_mp_get_pbuf1d_field_by_index_2d_double_
+    - physics_buffer_mp_pbuf_add_field_double_
+    - shr_nl_mod_mp_shr_nl_find_group_name_
+    - units_mp_freeunit_
+    - units_mp_getunit_
+    - water_tracer_vars_mp_iwspec_
+    - water_tracer_vars_mp_trace_water_
+    - water_tracer_vars_mp_wtrc_iatype_
+    - water_tracer_vars_mp_wtrc_ntype_
+    - water_tracers_mp_wtrc_ratio_
+    abort:
+    - shr_sys_mod_mp_shr_sys_abort_
   base_address: 1342177280

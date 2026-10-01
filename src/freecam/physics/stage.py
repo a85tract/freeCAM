@@ -41,7 +41,7 @@ from ..pi_cam.kernel_codegen import load_direct_kernels
 from .capture import lane_sha256
 from .errors import PhysicsError
 from .native_model import NativeModel, NativePlugin
-from .segments import OriginalAtPause, OriginalKernel, SegmentedStage
+from .segments import ByChunk, OriginalAtPause, OriginalAtPauseByChunk, OriginalByChunk, OriginalKernel, SegmentedStage
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -1125,6 +1125,10 @@ class StageExecution:
     segment_pauses: int = 0
     #: model calls by the kernel they answered, whichever path made them
     model_calls_by_kernel: dict[str, int] = field(default_factory=dict)
+    #: how a hook batch answered the stage's kernel (``model``: one forward over every chunk,
+    #: ``original``: the original on each gathered chunk; None call by call), and the steps it did
+    batch: str | None = None
+    batched_steps: int = 0
 
     def count_model_call(self, kernel: str) -> None:
         self.python_model_calls += 1
@@ -1142,6 +1146,7 @@ class StageExecution:
             "python_model_calls_by_kernel": dict(self.model_calls_by_kernel),
             "legacy_steps": self.legacy_steps,
             "python_fortran_crossings_per_step": crossings,
+            **({"hook_batch": self.batch, "batched_steps": self.batched_steps} if self.batch else {}),
         }
 
 
@@ -1300,6 +1305,9 @@ class NativeStage:
         self.execution = StageExecution()
         #: The segment runner's driver, created on the first segmented step.
         self._segmented: "SegmentedStage | None" = None
+        #: Segmented steps run every chunk of the rank to a kernel before any is answered,
+        #: so a chunk-batch model answers them in one call (the runner's batched mode).
+        self.batch_chunks: bool = False
         if kernels is not None:
             unknown = [name for name in kernels if name not in self.kernels]
             if unknown:
@@ -1331,13 +1339,15 @@ class NativeStage:
         object.__setattr__(self, name, value)
 
     def binding_kind(self, name: str) -> str:
-        """What is in kernel ``name``'s slot: original, original-through-python, surrogate, method or callable."""
+        """What is in kernel ``name``'s slot: original, original-through-python, original-by-chunk, surrogate, method or callable."""
 
         binding = self.kernels[name]
         if binding is None:
             return "original"
         if isinstance(binding, OriginalKernel):
             return "original-through-python"
+        if isinstance(binding, OriginalByChunk):
+            return "original-by-chunk"
         if isinstance(binding, MethodKernel):
             return "method"
         compiled = self.__dict__.get("_hook_compiled", {}).get(name)
@@ -1744,7 +1754,7 @@ class NativeStage:
             # the models are bound at their hooks once; then the original stage
             # runs whole and the hooks answer inside the image: one crossing
             self.bind_native_models(native)
-            native.run_action(self.STAGE)
+            self.run_whole(native)
             self.execution.native_stage_calls += 1
             return
         if mode == "native-whole":
@@ -1752,7 +1762,7 @@ class NativeStage:
             # own (disabled) workflow action -- no walk, no views, no copies;
             # a split stage leaves the driver to its resume half instead
             if self.WHOLE_ACTION:
-                native.run_action(self.STAGE)
+                self.run_whole(native)
             else:
                 self.native_between_halves(native)
             self.execution.native_stage_calls += 1
@@ -1763,6 +1773,11 @@ class NativeStage:
             return
         self.execution.legacy_steps += 1
         self._tend_walk(native, context)
+
+    def run_whole(self, native: Any) -> None:
+        """The stage's whole Fortran action, once: what native-whole and native-model run."""
+
+        native.run_action(self.STAGE)
 
     def bind_native_models(self, native: Any) -> None:
         """Bind every :class:`NativeModel` in a slot at its kernel's hook, once per file.
@@ -1852,7 +1867,7 @@ class NativeStage:
         for model in kernels.values():
             if hasattr(model, "current_step"):
                 model.current_step = getattr(self, "_current_step", None)
-        segmented.run(kernels)
+        segmented.run(kernels, batched=getattr(self, "batch_chunks", False))
         counters = segmented.counters
         self.execution.native_segment_calls = counters.starts + counters.resumes
         self.execution.python_model_calls = counters.model_calls
@@ -1866,6 +1881,14 @@ class NativeStage:
         for name, kernel in self.kernels.items():
             if kernel is None:
                 kernels[name] = None
+            elif isinstance(kernel, OriginalByChunk):
+                # the batched path's gate: every waiting chunk handed over in one call and
+                # the answer split back by chunk, around the original -- at each chunk's own
+                # pause when the runner runs it there, else through Python chunk by chunk
+                if getattr(runner, "runs_original", False):
+                    kernels[name] = OriginalAtPauseByChunk()
+                else:
+                    kernels[name] = ByChunk(self._owner_of(name).original_kernel_through_python(native, name))
             elif isinstance(kernel, OriginalKernel):
                 owner = self._owner_of(name)
                 if getattr(runner, "runs_original", False):

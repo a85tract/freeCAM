@@ -44,7 +44,9 @@ def coerce_inputs(spec: FunctionSpec, inputs: Mapping[str, Any]) -> dict[str, np
                 f"{item.name} has shape {array.shape}, expected {expected} "
                 f"({'scalar' if not expected else '[' + ', '.join(spec.public_axis(a) for a in item.public_shape) + ']'})"
             )
-        if array.dtype.kind == "f" and not np.all(np.isfinite(array)):
+        # a dummy the routine overwrites before reading may carry anything in: a model's
+        # caller hands it whatever its storage last held
+        if array.dtype.kind == "f" and item.overwritten_on_entry is None and not np.all(np.isfinite(array)):
             raise InvalidInput(f"{item.name} contains non-finite values")
         resolved[item.name] = array
     missing = [

@@ -67,7 +67,7 @@ module pycam_shcu_glue
   use pycam_shcu_driver, only: driver_bind
   implicit none
   private
-  public :: glue_piece_1, glue_piece_2, glue_enter, glue_bind_driver, glue_resolve_indices
+  public :: glue_piece_1, glue_piece_2, glue_enter, glue_bind_driver, glue_resolve_indices, glue_chunk_slots, glue_store_chunk, glue_load_chunk
 
   integer(c_int64_t), parameter :: zero_shape(1) = (/ 0_c_int64_t /)
 
@@ -119,6 +119,44 @@ module pycam_shcu_glue
   ! the module's private physics-buffer indices, resolved by name at configure
   integer, save, public :: prec_sh_idx = -1
   integer, save, public :: snow_sh_idx = -1
+
+  ! batched mode: a chunk's state, kept in its slot while another chunk runs
+  type :: chunk_state_t
+    real(r8) :: ztodt
+    real(r8), pointer :: fsns(:) => null()
+    real(r8), pointer :: fsnt(:) => null()
+    real(r8), pointer :: flns(:) => null()
+    real(r8), pointer :: flnt(:) => null()
+    type(physics_state), pointer :: state => null()
+    type(physics_tend), pointer :: tend => null()
+    type(physics_buffer_desc), pointer :: pbuf(:) => null()
+    real(r8), pointer :: fsds(:) => null()
+    real(r8), pointer :: landm(:) => null()
+    real(r8), pointer :: sgh30(:) => null()
+    type(cam_out_t), pointer :: cam_out => null()
+    type(cam_in_t), pointer :: cam_in => null()
+    real(r8) :: copy_sgh30(pcols)
+    real(r8), pointer :: cmfmc(:,:) => null()
+    real(r8), pointer :: cmfmc2(:,:) => null()
+    real(r8), pointer :: dlf(:,:) => null()
+    real(r8), pointer :: dlf2(:,:) => null()
+    real(r8), pointer :: rliq(:) => null()
+    real(r8), pointer :: wtdlf(:,:,:) => null()
+    type(check_tracers_data), pointer :: tracerint => null()
+    integer :: flow
+    real(r8) :: flx_cnd(pcols)
+    logical :: isok
+    integer :: lchnk
+    integer :: ncol
+    integer :: nstep
+    real(r8), pointer :: prec_sh(:) => null()
+    type(physics_ptend) :: ptend
+    real(r8) :: rliq2(pcols)
+    real(r8), pointer :: snow_sh(:) => null()
+    real(r8) :: zero(pcols)
+    real(r8) :: zero_tracers(pcols,pcnst)
+  end type chunk_state_t
+  type(chunk_state_t), allocatable, save :: chunk_store(:)
 
 contains
 
@@ -237,6 +275,92 @@ contains
         call t_stopf('moist_convection')
 
   end subroutine glue_piece_2
+
+  subroutine glue_chunk_slots(slots)
+    ! room for every chunk's state; zero releases it
+    integer, intent(in) :: slots
+    if (allocated(chunk_store)) then
+      if (size(chunk_store) == slots) return
+      deallocate(chunk_store)
+    end if
+    if (slots > 0) allocate(chunk_store(slots))
+  end subroutine glue_chunk_slots
+
+  subroutine glue_store_chunk(slot)
+    ! the chunk in flight's state into its slot
+    integer, intent(in) :: slot
+    chunk_store(slot)%ztodt = ztodt
+    chunk_store(slot)%fsns => fsns
+    chunk_store(slot)%fsnt => fsnt
+    chunk_store(slot)%flns => flns
+    chunk_store(slot)%flnt => flnt
+    chunk_store(slot)%state => state
+    chunk_store(slot)%tend => tend
+    chunk_store(slot)%pbuf => pbuf
+    chunk_store(slot)%fsds => fsds
+    chunk_store(slot)%landm => landm
+    chunk_store(slot)%sgh30 => sgh30
+    chunk_store(slot)%cam_out => cam_out
+    chunk_store(slot)%cam_in => cam_in
+    chunk_store(slot)%copy_sgh30 = copy_sgh30
+    chunk_store(slot)%cmfmc => cmfmc
+    chunk_store(slot)%cmfmc2 => cmfmc2
+    chunk_store(slot)%dlf => dlf
+    chunk_store(slot)%dlf2 => dlf2
+    chunk_store(slot)%rliq => rliq
+    chunk_store(slot)%wtdlf => wtdlf
+    chunk_store(slot)%tracerint => tracerint
+    chunk_store(slot)%flow = flow
+    chunk_store(slot)%flx_cnd = flx_cnd
+    chunk_store(slot)%isok = isok
+    chunk_store(slot)%lchnk = lchnk
+    chunk_store(slot)%ncol = ncol
+    chunk_store(slot)%nstep = nstep
+    chunk_store(slot)%prec_sh => prec_sh
+    chunk_store(slot)%ptend = ptend
+    chunk_store(slot)%rliq2 = rliq2
+    chunk_store(slot)%snow_sh => snow_sh
+    chunk_store(slot)%zero = zero
+    chunk_store(slot)%zero_tracers = zero_tracers
+  end subroutine glue_store_chunk
+
+  subroutine glue_load_chunk(slot)
+    ! a slot's chunk back in flight
+    integer, intent(in) :: slot
+    ztodt = chunk_store(slot)%ztodt
+    fsns => chunk_store(slot)%fsns
+    fsnt => chunk_store(slot)%fsnt
+    flns => chunk_store(slot)%flns
+    flnt => chunk_store(slot)%flnt
+    state => chunk_store(slot)%state
+    tend => chunk_store(slot)%tend
+    pbuf => chunk_store(slot)%pbuf
+    fsds => chunk_store(slot)%fsds
+    landm => chunk_store(slot)%landm
+    sgh30 => chunk_store(slot)%sgh30
+    cam_out => chunk_store(slot)%cam_out
+    cam_in => chunk_store(slot)%cam_in
+    copy_sgh30 = chunk_store(slot)%copy_sgh30
+    cmfmc => chunk_store(slot)%cmfmc
+    cmfmc2 => chunk_store(slot)%cmfmc2
+    dlf => chunk_store(slot)%dlf
+    dlf2 => chunk_store(slot)%dlf2
+    rliq => chunk_store(slot)%rliq
+    wtdlf => chunk_store(slot)%wtdlf
+    tracerint => chunk_store(slot)%tracerint
+    flow = chunk_store(slot)%flow
+    flx_cnd = chunk_store(slot)%flx_cnd
+    isok = chunk_store(slot)%isok
+    lchnk = chunk_store(slot)%lchnk
+    ncol = chunk_store(slot)%ncol
+    nstep = chunk_store(slot)%nstep
+    prec_sh => chunk_store(slot)%prec_sh
+    ptend = chunk_store(slot)%ptend
+    rliq2 = chunk_store(slot)%rliq2
+    snow_sh => chunk_store(slot)%snow_sh
+    zero = chunk_store(slot)%zero
+    zero_tracers = chunk_store(slot)%zero_tracers
+  end subroutine glue_load_chunk
 
   subroutine put_slot(index, address, rank, shape, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
     integer, intent(in) :: index, rank, dtype, intent

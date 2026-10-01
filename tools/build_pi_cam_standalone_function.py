@@ -546,8 +546,11 @@ def main() -> int:
     target = args.output_root.resolve() / spec.function
     (target / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     if args.evidence is not None:
+        # the image's own manifest keeps its absolute paths; the committed copy names no site directory
+        from freecam.site import spell_site_paths
+
         args.evidence.parent.mkdir(parents=True, exist_ok=True)
-        args.evidence.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+        args.evidence.write_text(json.dumps(spell_site_paths(manifest), indent=2, sort_keys=True) + "\n")
     print(f"{spec.function}: {manifest['library']} ({manifest['library_sha256'][:12]})")
     print(f"  call proof: {manifest['original_call_proof']}")
     print(f"  stubs: {len(manifest['stubs']['stubs'])}  members: {len(manifest['members'])}")

@@ -135,3 +135,74 @@ def test_a_packed_model_block_is_read_and_rendered(tmp_path) -> None:
     assert "out_p(1) = c_loc(o_packed); out_s(:, 1) = (/ int(16, c_int64_t), int(1190, c_int64_t), 0_c_int64_t /)" in body
     assert subprocess.run([sys.executable, str(REPO / "tools/generate_pi_cam_hooks.py"), "--check"],
                           capture_output=True, text=True, cwd=REPO).returncode == 0
+
+
+def test_a_batch_block_is_read_for_a_fortran_bound_packed_hook_only(tmp_path) -> None:
+    packed = {"inputs": ["a"], "outputs": ["b"], "packed": True}
+    hook = load_hooks(_table(tmp_path, binding="fortran", model=packed, batch={"columns": "n", "chunk": "c"})).hook("toy")
+    assert hook.batches and (hook.batch_columns, hook.batch_chunk) == ("n", "c")
+    assert not load_hooks(_table(tmp_path, binding="fortran", model=packed)).hook("toy").batches
+    with pytest.raises(PICAMConfigurationError):                  # a bind(C) hook answers call by call
+        load_hooks(_table(tmp_path, model=packed, batch={"columns": "n", "chunk": "c"}))
+    with pytest.raises(PICAMConfigurationError):                  # the batch is one packed forward
+        load_hooks(_table(tmp_path, binding="fortran", model={"inputs": ["a"], "outputs": ["b"]},
+                          batch={"columns": "n", "chunk": "c"}))
+    with pytest.raises(PICAMConfigurationError):                  # it names the columns and the chunk
+        load_hooks(_table(tmp_path, binding="fortran", model=packed, batch={"columns": "n"}))
+
+
+def test_the_uwshcu_hook_batch_is_rendered_checked_and_taken_by_chunk() -> None:
+    hook = load_hooks().hook("compute_uwshcu_inv")
+    assert hook.batches and (hook.batch_columns, hook.batch_chunk) == ("iend", "lchnk")
+    assert [h.kernel for h in load_hooks().hooks if h.batches] == ["compute_uwshcu_inv"]
+    text = (REPO / "native/pi_cam/support/pycam_hooks.F90").read_text()
+    hook_body = text[text.index("subroutine hook_compute_uwshcu_inv("):text.index("end subroutine hook_compute_uwshcu_inv")]
+    # a batched hook takes its chunk's answer before the call-by-call model or the original
+    assert hook_body.index("if (batch_mode(6) /= 0) then") < hook_body.index("if (modeled(6)) then")
+    put = text[text.index("subroutine pycam_hooks_batch_put_compute_uwshcu_inv("):
+               text.index("end subroutine pycam_hooks_batch_put_compute_uwshcu_inv")]
+    assert "bi_compute_uwshcu_inv_tr0_inv(o + 1:o + n, :, :) = tr0_inv(1:n, :, :)" in put   # live columns only, stacked
+    forward = text[text.index("subroutine pycam_hooks_batch_forward_compute_uwshcu_inv("):
+                   text.index("end subroutine pycam_hooks_batch_forward_compute_uwshcu_inv")]
+    assert forward.count("call torch_model_forward(models(6), in_t, out_t)") == 1           # one forward for the batch
+    assert "v_ps0_inv => bi_compute_uwshcu_inv_ps0_inv" in forward
+    assert "call original_compute_uwshcu_inv(bs_compute_uwshcu_inv_mix(slot)" in forward    # the gate: chunk by chunk
+    take = text[text.index("subroutine batched_compute_uwshcu_inv("):text.index("end subroutine batched_compute_uwshcu_inv")]
+    # every input is checked against what was gathered, bit for bit, before anything is written
+    assert take.count("is not what was gathered for its chunk'") == 25
+    assert "transfer(dt, 0_c_int64_t) /= transfer(bs_compute_uwshcu_inv_dt(slot), 0_c_int64_t)" in take
+    assert take.index("is not what was gathered") < take.index("btaken_compute_uwshcu_inv(slot) = .true.")
+    assert "o_packed(1:n, :) = bo_compute_uwshcu_inv(o + 1:o + n, :)" in take
+    assert "w_trten_inv(1:hk_n, hk_j, sub_trten_inv(hk_s)) = o_packed(1:hk_n, 582 + (hk_j - 1) * 12 + hk_s)" in take
+    assert "trten_inv(1:n, :, :) = bf_compute_uwshcu_inv_trten_inv(1:n, :, :, slot)" in take   # the original's rows
+    gather = (REPO / "native/pi_cam/support/pycam_shcu_batch.F90").read_text()
+    assert "call pycam_hooks_batch_put_compute_uwshcu_inv(pcols, pver, state%ncol, pcnst, ztodt," in gather
+    assert "start=(/1,1,itim_old/), kount=(/pcols,pver,1/)" in gather                      # as the driver reads CLD
+
+
+def test_a_hook_batch_is_set_and_read() -> None:
+    from freecam.pi_cam.hooks import read_hook_batch, set_hook_batch
+
+    calls = []
+
+    def batch(hook, mode, check):
+        calls.append((hook, mode, check))
+        return 3 if mode == 1 and hook == 7 else 0
+
+    def stats(hook, forwards, chunks, rows, untaken, pending, seconds, diff):
+        forwards._obj.value, chunks._obj.value, rows._obj.value = 50, 100, 1350
+        seconds._obj.value = 2.5
+        return 0
+
+    library = _Library()
+    library.pycam_hooks_batch_v1 = _Entry(batch)
+    library.pycam_hooks_batch_stats_v1 = _Entry(stats)
+    set_hook_batch(library, 6, "original")
+    with pytest.raises(PICAMConfigurationError, match="a TorchScript model bound at the hook"):
+        set_hook_batch(library, 7, "model")
+    assert calls == [(6, 2, 0), (7, 1, 0)]
+    assert read_hook_batch(library, 6) == {"forwards": 50, "chunks": 100, "rows": 1350, "untaken": 0, "pending": 0,
+                                           "forward_seconds": 2.5, "check_max_abs_diff": 0.0}
+    assert read_hook_counts(library)["cldfrc_fice"]["batch"]["chunks"] == 100
+    with pytest.raises(PICAMConfigurationError, match="built before hook batches"):
+        set_hook_batch(object(), 6, "model")

@@ -172,6 +172,8 @@ def test_the_support_modules_are_additions_the_image_links() -> None:
                                "pycam_stage_hosts.F90",
                                "pycam_dadadj_glue.F90", "pycam_dadadj_runner.F90",
                                "pycam_shcu_driver.F90", "pycam_shcu_glue.F90", "pycam_shcu_runner.F90",
+                               # the shallow batch uses the hooks and the hosts
+                               "pycam_shcu_batch.F90",
                                "pycam_radt_driver.F90", "pycam_radt_glue.F90", "pycam_radt_runner.F90",
                                "pycam_zmdeep_zm.F90", "pycam_zmdeep_deep.F90", "pycam_zmdeep_glue.F90",
                                "pycam_zmdeep_runner.F90",

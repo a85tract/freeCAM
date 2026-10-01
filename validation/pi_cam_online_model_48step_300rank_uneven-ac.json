@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "what": "One allocation's online PI-atm run (48 steps, 300 ranks), legs back to back: the original Fortran, freeCAM with nothing replaced, and freeCAM with a model in the kernel's slot. Every component is live in every leg (online coupling, not the offline replay). Times are the coupling loop; the model legs are not bit-for-bit by construction, their drift and health are recorded instead.",
+  "boundary": "online",
+  "steps": 48,
+  "ranks": 300,
+  "layout": "a timing study off the admitted 512-rank layout: every component inside the ranks, CICE on its compiled 128 tasks, no oracle and no bit-for-bit comparison at this count",
+  "pbs_job_id": "7649000.desched1",
+  "git_commit": "62917b54f136c1b0f9a4143d5265badf8884caa5",
+  "hardware": "select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=200GB place=scatter:shared",
+  "gpu_mps": null,
+  "root": "freeCAM/PI-cam/online-model-1month-uneven-ac-7649000.desched1",
+  "order": "AC",
+  "kernel": "compute_uwshcu_inv",
+  "legs": {
+    "A": {
+      "what": "the original Fortran model (the pyCESM case executable), every component live",
+      "position": 1,
+      "completed": true,
+      "coupling_loop_seconds": 29.75651,
+      "init_seconds": 17.116327,
+      "final_seconds": 0.002749,
+      "lifecycle_seconds": 46.875586,
+      "executable_sha256": "accd9860c1a29b32415d1fecd86d5728c8cd5c4204ad41e9d93e2db6b0077d7e",
+      "timing_source": "GPTL CPL:RUN_LOOP in timing/cesm_timing.000"
+    },
+    "C": {
+      "what": "freeCAM online (live CLM, CICE, DOCN, RTM and coupler), the stage classes installed, nothing replaced",
+      "position": 2,
+      "completed": true,
+      "steps": 48,
+      "coupling_loop_seconds": 26.443519931000083,
+      "init_seconds": 14.774151699999948,
+      "final_seconds": 0.19868725300011647,
+      "lifecycle_seconds": 41.46152037799993,
+      "sypd": 8.951619503938367,
+      "boundary_mode": "online",
+      "boundary_provider": "CESMOnlineBoundaryProvider",
+      "native_manifest": "build/pi_cam_promoted_p39/native_cam_manifest.json",
+      "native_library_sha256": "0a6478288170cc2b2c5d7219118809b26a91da5de15846757aad1e84f2d87ba5",
+      "python_stages": [
+        "shallow_convection"
+      ],
+      "cloud_macro_micro_python": true,
+      "stage_execution_modes": {
+        "cloud_macro_microphysics_python": "native-whole",
+        "shallow_convection_python": "native-whole"
+      },
+      "kernel_models": null,
+      "model": {
+        "calls": 48750,
+        "modeled": 0,
+        "original": 48750,
+        "ranks": 300
+      },
+      "mps": null,
+      "bfb": false,
+      "bfb_files": 1,
+      "peak_rank_rss_bytes": 1020350464,
+      "total_rss_bytes": 180228997120,
+      "health": {
+        "big_error": 0,
+        "isotopic_mass_error": 0,
+        "qneg3_macro": 0,
+        "qneg3_total": 0,
+        "tracebacks": 0
+      },
+      "drift": null
+    }
+  },
+  "ratios": {
+    "C/A": 0.8886633523555042
+  }
+}

@@ -604,9 +604,18 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         verify_shadow_atmosphere: bool = False,
         python_owned_internal: bool = False,
         oracle: str | Path | None = None,
+        ranks: int = 512,
     ) -> None:
         self.library = Path(library).expanduser().resolve()
         self.run_dir = Path(run_dir).expanduser().resolve()
+        #: the MPI ranks the provider runs on.  512 is the admitted layout; another count is an
+        #: exploration (a timing study) whose run directory's drv_in lays the components out
+        #: over that many ranks with CICE's compiled 128-task decomposition, and has no oracle
+        self.ranks = int(ranks)
+        if self.ranks != 512 and oracle is not None:
+            raise BoundaryReplayError(
+                f"the exact-provider oracle was captured on 512 ranks; a {self.ranks}-rank run has none"
+            )
         if verify_shadow_atmosphere:
             raise BoundaryReplayError(
                 "shadow-atmosphere verification was removed with the shadow CAM"
@@ -891,6 +900,25 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         bit = _CESM_ALARM_BITS[(alarm, str(kind))]
         return bool(int(mask) & (1 << bit))
 
+    def _check_layout(self, size: int) -> None:
+        """The run directory's drv_in lays every component out inside ``size`` ranks, CICE on 128."""
+
+        import re
+
+        text = (self.run_dir / "drv_in").read_text()
+        values = {name: int(value) for name, value in re.findall(r"\b(\w+_(?:ntasks|rootpe))\s*=\s*(-?\d+)", text)}
+        if values.get("atm_ntasks") != size or values.get("cpl_ntasks") != size:
+            raise BoundaryReplayError(
+                f"drv_in gives atm_ntasks {values.get('atm_ntasks')} and cpl_ntasks {values.get('cpl_ntasks')} "
+                f"for a {size}-rank run")
+        if values.get("ice_ntasks") != 128:
+            raise BoundaryReplayError(
+                f"drv_in gives ice_ntasks {values.get('ice_ntasks')}: CICE's decomposition is compiled for 128 tasks")
+        for component in ("atm", "cpl", "lnd", "ice", "ocn", "rof", "glc", "wav"):
+            end = values.get(f"{component}_rootpe", 0) + values.get(f"{component}_ntasks", 0)
+            if end > size:
+                raise BoundaryReplayError(f"drv_in lays {component} out to rank {end - 1}, beyond a {size}-rank run")
+
     def _load_oracle(self, rank: int) -> None:
         if self.oracle is None:
             return
@@ -929,10 +957,12 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         self, *, rank: int, size: int, config_fingerprint: str
     ) -> None:
         del config_fingerprint
-        if size != 512:
+        if size != self.ranks:
             raise BoundaryReplayError(
-                f"the admitted PI-atm CESM provider requires 512 ranks, got {size}"
+                f"the PI-atm CESM provider was set up for {self.ranks} ranks (512 is the admitted "
+                f"layout), got {size}"
             )
+        self._check_layout(size)
         if not self.library.is_file():
             raise BoundaryReplayError(f"missing coupled CESM library {self.library}")
         if not (self.run_dir / "drv_in").is_file():

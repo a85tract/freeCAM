@@ -203,6 +203,102 @@ def verify_against_source(
                 f"argument {item.name}: source declares [{source_unit}], spec says {item.units!r}"
             )
     report.ok(f"source: {compared} bracketed units agree with the spec")
+    verify_overwritten_on_entry(spec, source_lines, line_start=line_start, line_end=line_end, report=report)
+    return report
+
+
+def _code(line: str) -> str:
+    """A source line without its trailing comment (a ``!`` outside quotes)."""
+
+    quote = None
+    for index, char in enumerate(line):
+        if quote:
+            if char == quote:
+                quote = None
+        elif char in "'\"":
+            quote = char
+        elif char == "!":
+            return line[:index]
+    return line
+
+
+def _top_level_split(text: str) -> list[str]:
+    parts, depth, start = [], 0, 0
+    for index, char in enumerate(text):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif char == "," and depth == 0:
+            parts.append(text[start:index])
+            start = index + 1
+    parts.append(text[start:])
+    return [part.strip().lower() for part in parts]
+
+
+def verify_overwritten_on_entry(
+    spec: FunctionSpec,
+    source_lines: Sequence[str],
+    *,
+    line_start: int,
+    line_end: int,
+    report: VerificationReport | None = None,
+) -> VerificationReport:
+    """A dummy said to be overwritten on entry is assigned whole at that line, and appears nowhere before it.
+
+    Before the line, the name may stand only in the routine's argument list and in
+    declarations; after a ``contains`` it may not stand at all, since an internal
+    procedure called earlier could read it.  Anything else fails: the claim is that
+    the value handed in cannot matter.
+    """
+
+    report = report or VerificationReport(spec.function)
+    for item in spec.arguments:
+        line = item.overwritten_on_entry
+        if line is None:
+            continue
+        where = f"argument {item.name}: overwritten_on_entry {line}"
+        if not line_start < line <= line_end:
+            report.fail(f"{where} is outside the routine ({line_start}-{line_end})")
+            continue
+        statement = _code(source_lines[line - 1])
+        match = re.match(rf"\s*{re.escape(item.name)}\s*(?:\((?P<sections>.*)\))?\s*=(?!=)", statement, re.IGNORECASE)
+        if match is None:
+            report.fail(f"{where} is not an assignment to it: {statement.strip()!r}")
+            continue
+        if match.group("sections") is not None:
+            sections = _top_level_split(match.group("sections"))
+            aliases = {native.lower(): canonical for native, canonical in spec.dimension_aliases.items()}
+            whole = len(sections) == item.rank
+            for axis, lower, section in zip(item.native_shape, item.lower_bounds, sections):
+                bounds = {axis.lower(), *(native for native, canonical in aliases.items() if canonical == axis)}
+                if axis == "pcols":
+                    bounds.add("ncol")                    # the live lanes are the whole of what the call sees
+                if section != ":" and not (section.startswith(f"{lower}:") and section[len(f"{lower}:"):] in bounds):
+                    whole = False
+            if not whole:
+                report.fail(f"{where} assigns a part of it, not its whole live section: {statement.strip()!r}")
+                continue
+        header_open = True
+        inside = False
+        name = re.compile(rf"(?<![\w%]){re.escape(item.name)}(?!\w)", re.IGNORECASE)
+        for number in range(line_start, line_end + 1):
+            text = _code(source_lines[number - 1])
+            if number == line_start or header_open:
+                header_open = text.rstrip().endswith("&")
+                continue
+            if re.match(r"\s*contains\s*$", text, re.IGNORECASE):
+                inside = True
+            if number == line or text.lstrip().startswith("#") or not name.search(text):
+                continue
+            if inside:
+                report.fail(f"{where}: an internal procedure names it at line {number}")
+                break
+            if number < line and "::" not in text:
+                report.fail(f"{where}: line {number} uses it before the assignment: {text.strip()!r}")
+                break
+        else:
+            report.ok(f"source: {item.name} is assigned whole at line {line} before any use")
     return report
 
 
@@ -215,4 +311,5 @@ __all__ = [
     "declaration_units",
     "verify_against_inventory",
     "verify_against_source",
+    "verify_overwritten_on_entry",
 ]

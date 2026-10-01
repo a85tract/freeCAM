@@ -265,6 +265,12 @@ def _chunk_slice(name: str, argument: DirectKernelArgument) -> str:
     return f"{name}({','.join(indices)})"
 
 
+def _slice_rank(argument: DirectKernelArgument) -> int:
+    """The rank of the section a chunk hands the routine: the axes neither chunked nor fixed."""
+
+    return _chunk_slice("x", argument).count(":")
+
+
 def _argument_reference(name: str, argument: DirectKernelArgument) -> str:
     """The actual argument handed to the original routine for this chunk."""
 
@@ -292,6 +298,11 @@ def _chunk_preamble(name: str, argument: DirectKernelArgument) -> tuple[str, ...
 def _chunk_postamble(name: str, argument: DirectKernelArgument) -> tuple[str, ...]:
     """Statements that read this argument back after the call."""
 
+    if argument.fortran_type == "logical":
+        if argument.intent not in ("out", "inout"):
+            return ()
+        # the routine's logical answer back into its int32 carrier
+        return (f"    {_chunk_slice(name, argument)} = merge(1_c_int32_t, 0_c_int32_t, {name}_value)",)
     if argument.fortran_type != "character":
         return ()
     return (
@@ -333,7 +344,11 @@ def _kernel_function(kernel: DirectKernel) -> list[str]:
                 f"  {argument.storage_type}, pointer :: {name}_chunk({slice_dimensions})"
             )
         if argument.fortran_type == "logical":
-            lines.append(f"  logical :: {name}_value")
+            # a logical array dummy takes a logical array of the chunk's section, allocated by
+            # the assignment that converts the int32 carrier (the wrapper compiles with realloc_lhs)
+            section = _slice_rank(argument)
+            lines.append(f"  logical :: {name}_value" if not section else
+                         f"  logical, allocatable :: {name}_value({','.join(':' for _ in range(section))})")
         if argument.fortran_type == "character":
             lines.append(f"  character(len={CHARACTER_LENGTH}) :: {name}_value")
     lines.extend(

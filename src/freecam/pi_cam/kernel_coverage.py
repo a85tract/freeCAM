@@ -114,31 +114,44 @@ EVIDENCE_PATTERNS = {
     "capture": ("pi_cam_{name}_capture_50step.json", "pi_cam_pausable_{name}-capture_50step.json"),
     "standalone_build": ("pi_cam_{name}_standalone_build.json", "pi_cam_{name}_standalone_manifest.json"),
     # frame captures are replayed through the public function on every captured call and
-    # lane, which is at once the chunk, the column and the public-API replay
-    "replay_full_chunk": ("pi_cam_{name}_full_chunk_vs_capture.json", "pi_cam_{name}_frame_replay.json"),
+    # lane, which is at once the chunk, the column and the public-API replay; a routine whose
+    # columns are gathered, or whose lanes round by position, is replayed a whole call at a time
+    "replay_full_chunk": ("pi_cam_{name}_full_chunk_vs_capture.json", "pi_cam_{name}_frame_replay.json",
+                          "pi_cam_{name}_frame_replay_chunk.json"),
     "replay_single_column": ("pi_cam_{name}_single_column_vs_capture.json", "pi_cam_{name}_frame_replay.json"),
     "replay_public_api": ("pi_cam_{name}_public_api_vs_capture.json", "pi_cam_{name}_frame_replay.json"),
     "module_state": ("pi_cam_{name}_module_state.json",),
 }
-def _capture_named_by_replay(name: str) -> list[str]:
-    """The capture run a kernel's frame-replay record names, when its records are here and bit-for-bit.
+#: Steps whose records say whether they passed; a record that did not pass is no evidence.
+JUDGED_STEPS = ("replay_full_chunk", "replay_single_column", "replay_public_api")
+
+
+def _passed(name: str) -> bool:
+    """A replay record counts when it says so: bit-for-bit (frame replay) or passed (capture replay)."""
+
+    record = _record(name)
+    return record is not None and (record.get("bfb") is True or record.get("passed") is True)
+def _capture_named_by_replay(names: Iterable[str]) -> list[str]:
+    """The capture run a kernel's frame-replay records name, when its records are here and bit-for-bit.
 
     A capture run's tag need not spell the kernel's name (``fice-capture`` recorded
-    ``cldfrc_fice``); the replay record carries the run tag and the comparison it
-    was checked against, and the capture counts only when both are present and
-    the run was bit-for-bit.
+    ``cldfrc_fice``); a replay record, lane by lane or a call at a time, carries the
+    run tag and the comparison it was checked against, and the capture counts only
+    when both are present and the run was bit-for-bit.
     """
 
-    replay = _record(f"pi_cam_{name}_frame_replay.json")
-    capture = (replay or {}).get("capture") or {}
-    run_tag, bfb_name = capture.get("run_tag"), capture.get("bfb_record")
-    if not run_tag or not bfb_name:
-        return []
-    record_name = f"{run_tag}.json"
-    bfb = _record(bfb_name)
-    if not (VALIDATION / record_name).is_file() or bfb is None or not bfb.get("bfb"):
-        return []
-    return [record_name]
+    found: list[str] = []
+    for name in names:
+        for replay_name in (f"pi_cam_{name}_frame_replay.json", f"pi_cam_{name}_frame_replay_chunk.json"):
+            capture = (_record(replay_name) or {}).get("capture") or {}
+            run_tag, bfb_name = capture.get("run_tag"), capture.get("bfb_record")
+            if not run_tag or not bfb_name:
+                continue
+            record_name = f"{run_tag}.json"
+            bfb = _record(bfb_name)
+            if (VALIDATION / record_name).is_file() and bfb is not None and bfb.get("bfb") and record_name not in found:
+                found.append(record_name)
+    return found
 
 
 #: In-model replacement gates that are not named after the kernel: the record
@@ -195,6 +208,8 @@ class KernelRow:
     in_model_gates: list[dict[str, Any]] = field(default_factory=list)
     status: str = "open"
     missing: list[str] = field(default_factory=list)
+    #: steps that do not apply to this kernel, and why (a gathered routine has no lone column)
+    not_applicable: dict[str, str] = field(default_factory=dict)
     note: str | None = None
 
 
@@ -282,10 +297,25 @@ def _kernel_rows(stage_classes: Iterable[str], runner_specs: Mapping[str, Any]) 
         for description in stage.describe_kernels():
             name = description["kernel"]
             contract = contracts.get(name)
-            evidence = {step: [p.format(name=name) for p in patterns if (VALIDATION / p.format(name=name)).is_file()]
+            # records are named after the kernel, or after the reviewed function spec that
+            # describes it (compute_uwshcu_inv's spec, image and snapshot are uwshcu's)
+            spelled = [name]
+            if contract is not None and contract[0] == "reviewed" and Path(contract[1]).stem != name:
+                spelled.append(Path(contract[1]).stem)
+            evidence = {step: [p.format(name=n) for n in spelled for p in patterns
+                               if (VALIDATION / p.format(name=n)).is_file()
+                               and (step not in JUDGED_STEPS or _passed(p.format(name=n)))]
                         for step, patterns in EVIDENCE_PATTERNS.items()}
             if not evidence["capture"]:
-                evidence["capture"] = _capture_named_by_replay(name)
+                evidence["capture"] = _capture_named_by_replay(spelled)
+            not_applicable: dict[str, str] = {}
+            if contract is not None and contract[0] == "reviewed":
+                payload = load_table(REPO / contract[1])
+                if isinstance(payload, Mapping) and payload.get("columns") == "gathered":
+                    reason = (f"columns gathered ({contract[1]}): one column is not replayed alone; "
+                              "the whole-call replay is the proof")
+                    not_applicable = {step: reason for step in ("replay_single_column", "replay_public_api")
+                                      if not evidence[step]}
             gates = []
             for path, record, bfb_record in (*IN_MODEL_GATES.get(name, ()), *_manifest_gates(spec, name)):
                 bfb = _record(bfb_record)
@@ -295,7 +325,8 @@ def _kernel_rows(stage_classes: Iterable[str], runner_specs: Mapping[str, Any]) 
                     "bfb": None if bfb is None else bool(bfb.get("bfb")),
                     "compared_files": None if bfb is None else bfb.get("compared_files"),
                 })
-            missing = [step for step, files in evidence.items() if not files and step != "module_state"]
+            missing = [step for step, files in evidence.items()
+                       if not files and step != "module_state" and step not in not_applicable]
             if not any(g["present"] and g["bfb"] for g in gates):
                 missing.append("in_model_replacement_bfb")
             if not description["bindable"]:
@@ -311,6 +342,7 @@ def _kernel_rows(stage_classes: Iterable[str], runner_specs: Mapping[str, Any]) 
                 bindable=bool(description["bindable"]),
                 validated_through_runner=bool(description["validated"]),
                 evidence=evidence, in_model_gates=gates, status=status, missing=missing,
+                not_applicable=not_applicable,
                 note=(spec.kernel(name).note if spec is not None and name in spec.kernel_names else None),
             ))
         close = getattr(stage, "close", None)

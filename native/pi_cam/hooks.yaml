@@ -133,6 +133,12 @@ hooks:
         wtqc_inv: [11, 12, 18, 19, 25, 26, 32, 33]
         wtprec: [10, 17, 24, 31]
         wtsnow: [10, 17, 24, 31]
+    # every chunk of the rank answered at once: convect_shallow_tend computes none of the
+    # kernel's inputs, it hands on the chunk's state and physics-buffer fields, so
+    # pycam_shcu_batch gathers them for every chunk before the stage runs, the model runs
+    # once on their live columns, and each call takes its chunk's rows (iend live columns,
+    # lchnk the chunk).  Every call checks its inputs against what was gathered, bit for bit
+    batch: {columns: iend, chunk: lchnk}
   - kernel: mmacro_pcond
     contract: native/pi_cam/functions/mmacro_pcond.yaml
     # the macrophysics condensation core, called from macrop_driver_tend; instratus_condensate inside it keeps its own hook.  A logical and six pointer dummies: Fortran-bound
