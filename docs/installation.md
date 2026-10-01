@@ -122,6 +122,24 @@ than producing its own.
    * the **python-state** case (`FREECAM_STATE_CASE`): supplies `.mod` files
      and the control shells, its `SourceMods/src.cam` written by
      [`tools/generate_pi_cam_python_state_source.py`](../tools/generate_pi_cam_python_state_source.py).
+
+   Both are built from the CESM source
+   [`tools/prepare_cesm_source.py`](../tools/prepare_cesm_source.py)
+   prepares: the pinned submodule with the patches
+   [`native/pi_cam/cesm_source/source.yaml`](../native/pi_cam/cesm_source/source.yaml)
+   lists (the `ne16_g16` grid, a river-model fix, and for the python-state
+   case `-fPIC` objects):
+
+   ```bash
+   uv run python tools/prepare_cesm_source.py --output DIR [--variant state]
+   ```
+
+   The admitted cases were made by hand from checkouts that held the same
+   changes as local commits. `--compare-with CHECKOUT --as-of TIME` checks a
+   prepared tree file by file against such a checkout as it was when its case
+   was built; `validation/pi_cam_cesm_source_{oracle,state,pycesm}_case.json`
+   record that for the three cases, with the few files the recipe leaves
+   different on purpose and why.
 3. FTorch, once, on a login node:
 
    ```bash

@@ -1,0 +1,40 @@
+diff --git a/src/riverroute/RtmMod.F90 b/src/riverroute/RtmMod.F90
+index a0ec86e..acca0c9 100644
+--- a/src/riverroute/RtmMod.F90
++++ b/src/riverroute/RtmMod.F90
+@@ -259,7 +259,7 @@ contains
+     if (masterproc) then
+        write(iulog,*) 'define run:'
+        write(iulog,*) '   run type              = ',runtyp(nsrest+1)
+-       if (nsrest == nsrStartup .and. finidat_rtm /= ' ') then
++       if (nsrest == nsrStartup .and. finidat_rtm /= 'UNSET') then
+           write(iulog,*) '   RTM initial data   = ',trim(finidat_rtm)
+        end if
+     endif
+@@ -336,7 +336,7 @@ contains
+     call ncd_pio_init()
+ 
+     ! Obtain restart file if appropriate
+-    if ((nsrest == nsrStartup .and. finidat_rtm /= ' ') .or. &
++    if ((nsrest == nsrStartup .and. finidat_rtm /= 'UNSET') .or. &
+         (nsrest == nsrContinue) .or. & 
+         (nsrest == nsrBranch  )) then
+            call RtmRestGetfile( file=fnamer, path=pnamer )
+@@ -971,7 +971,7 @@ contains
+     !-------------------------------------------------------
+ 
+     ! The call below opens and closes the file
+-    if ((nsrest == nsrStartup .and. finidat_rtm /= ' ') .or. &
++    if ((nsrest == nsrStartup .and. finidat_rtm /= 'UNSET') .or. &
+         (nsrest == nsrContinue) .or. & 
+         (nsrest == nsrBranch  )) then
+           call RtmRestFileRead( file=fnamer )
+@@ -1280,7 +1280,7 @@ contains
+           enddo
+           if (abort) then
+              write(iulog,*) trim(subname),':BUDGET abort balance too large ',budget_tolerance
+-             call shr_sys_abort(trim(subname)//':rtm budget ERROR')
++!             call shr_sys_abort(trim(subname)//':rtm budget ERROR')
+           endif
+        endif
+        call t_stopf('RTMbudget')

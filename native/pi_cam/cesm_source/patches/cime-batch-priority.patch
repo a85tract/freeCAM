@@ -1,0 +1,12 @@
+diff --git a/config/cesm/machines/config_batch.xml b/config/cesm/machines/config_batch.xml
+index 85ec3f0..497812e 100644
+--- a/config/cesm/machines/config_batch.xml
++++ b/config/cesm/machines/config_batch.xml
+@@ -72,6 +72,7 @@
+       <!-- space required at beginning of name -->
+       <arg flag="-n" name=" $TOTALPES / $MAX_MPITASKS_PER_NODE"/>
+       <arg flag="-q" name="JOB_QUEUE"/>
++      <arg flag="-l job_priority" name="$PRIORITY"/>
+       <arg flag="--mode script"/>
+     </submit_args>
+   </batch_system>

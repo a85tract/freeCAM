@@ -1,0 +1,167 @@
+diff --git a/bld/namelist_files/namelist_definition_pop.xml b/bld/namelist_files/namelist_definition_pop.xml
+index b569e54..a789b5c 100644
+--- a/bld/namelist_files/namelist_definition_pop.xml
++++ b/bld/namelist_files/namelist_definition_pop.xml
+@@ -3047,10 +3047,10 @@ id="pt_interior_data_type"
+ type="char*256"
+ category="forcing"
+ group="forcing_pt_interior_nml"
+-valid_values="none,annual,monthly,monthly-equal,monthly-calendar,n-hour" >
++valid_values="none,annual,annual-fixed,monthly,monthly-equal,monthly-calendar,n-hour" >
+ Type or periodicity of interior potential temperature forcing.
+ 
+-Valid Values: 'none', 'annual', 'monthly', 'monthly-equal', 'monthly-calendar', 'n-hour'
++Valid Values: 'none', 'annual', 'annual-fixed', 'monthly', 'monthly-equal', 'monthly-calendar', 'n-hour'
+ Default: 'none'
+ </entry>
+ 
+diff --git a/source/wiso_mod.F90 b/source/wiso_mod.F90
+index 94daa03..047fb4a 100644
+--- a/source/wiso_mod.F90
++++ b/source/wiso_mod.F90
+@@ -1398,6 +1398,11 @@ character(*), parameter :: sub_name = 'wiso_mod:wiso_init'
+       STF_HDO,         & ! Total ratio flux from driver
+       WORK,            & ! for work computation  
+       WISO_surf_sat      ! WISO surface saturation (either d18o or dD) (per mil)
++   
++   real (r8), dimension(nx_block,ny_block,max_blocks_clinic) ::   &
++      WISO_SFLUX_16O,  &
++      WISO_SFLUX_18O,  &
++      WISO_SFLUX_HDO
+ 
+    character (char_len) :: &
+       tracer_data_label          ! label for what is being updated
+@@ -1413,6 +1418,11 @@ character(*), parameter :: sub_name = 'wiso_mod:wiso_init'
+       wiso_restore_tau,         &! restoring time scale
+       wiso_restore_rtau          ! reciprocal of restoring time scale
+ 
++   real (r8) ::        &
++      avg_16O_F,       &
++      avg_18O_F,       &
++      avg_HDO_F
++
+ !-----------------------------------------------------------------------
+ !  local parameters
+ !-----------------------------------------------------------------------
+@@ -1819,6 +1829,37 @@ character(*), parameter :: sub_name = 'wiso_mod:wiso_init'
+    end do
+  !$OMP END PARALLEL DO
+ 
++!-----------------------------------------------------------------------
++!  adjust 18O and HDO surface flux
++!-----------------------------------------------------------------------
++   WISO_SFLUX_16O(:,:,:) = WISO_SFLUX_TAVG(:,:, 9,:) +  &
++                           WISO_SFLUX_TAVG(:,:,12,:) +  &
++                           WISO_SFLUX_TAVG(:,:,15,:) +  &
++                           WISO_SFLUX_TAVG(:,:,18,:) +  &
++                           WISO_SFLUX_TAVG(:,:,21,:)
++
++   WISO_SFLUX_18O(:,:,:) = WISO_SFLUX_TAVG(:,:,10,:) +  &
++                           WISO_SFLUX_TAVG(:,:,13,:) +  &
++                           WISO_SFLUX_TAVG(:,:,16,:) +  &
++                           WISO_SFLUX_TAVG(:,:,19,:) +  &
++                           WISO_SFLUX_TAVG(:,:,22,:)
++
++   WISO_SFLUX_HDO(:,:,:) = WISO_SFLUX_TAVG(:,:,11,:) +  &
++                           WISO_SFLUX_TAVG(:,:,14,:) +  &
++                           WISO_SFLUX_TAVG(:,:,17,:) +  &
++                           WISO_SFLUX_TAVG(:,:,20,:) +  &
++                           WISO_SFLUX_TAVG(:,:,23,:)
++
++   call comp_tarea_avg(WISO_SFLUX_16O, avg_16O_F)
++   call comp_tarea_avg(WISO_SFLUX_18O, avg_18O_F)
++   call comp_tarea_avg(WISO_SFLUX_HDO, avg_HDO_F)
++
++   WISO_SFLUX_18O(:,:,:) = WISO_SFLUX_18O(:,:,:) - avg_18O_F + avg_16O_F
++   WISO_SFLUX_HDO(:,:,:) = WISO_SFLUX_HDO(:,:,:) - avg_HDO_F + avg_16O_F
++
++   WISO_SFLUX_TAVG(:,:,37,:) = (WISO_SFLUX_18O - WISO_SFLUX_16O) * fwmass_to_fwflux
++   WISO_SFLUX_TAVG(:,:,38,:) = (WISO_SFLUX_HDO - WISO_SFLUX_16O) * fwmass_to_fwflux
++
+ !-----------------------------------------------------------------------
+ !  do marginal sea balancing before setting the STF array
+ !-----------------------------------------------------------------------
+@@ -2019,6 +2060,83 @@ character(*), parameter :: sub_name = 'wiso_mod:wiso_init'
+ 
+  end subroutine comp_surf_avg
+ 
++!***********************************************************************
++!BOP
++! !IROUTINE: comp_tarea_avg
++! !INTERFACE:
++
++ subroutine comp_tarea_avg(XY, XYave)
++
++! !DESCRIPTION:
++!  compute average surface everage
++!
++!  XYave = sum(XY*TAREA) / sum(TAREA)
++!  with the sum taken over ocean points only
++!
++! !REVISION HISTORY:
++!  by Jiang Zhu, Sep. 7, 2015
++
++   use grid, only: TAREA, RCALCT, area_t
++   use global_reductions, only: global_sum
++
++! !INPUT PARAMETERS:
++
++  real (r8), dimension(nx_block,ny_block,max_blocks_clinic), &
++      intent(in) :: XY
++  real (r8), intent(out)  :: &
++      XYave ! resulting global ave
++
++!EOP
++!BOC
++!-----------------------------------------------------------------------
++!  local variables
++!-----------------------------------------------------------------------
++
++   integer (int_kind) :: &
++      n,       & ! tracer index
++      iblock,  & ! block index
++      dcount,  & ! diag counter
++      ib,ie,jb,je
++
++   real (r8), dimension(max_blocks_clinic) :: &
++      local_sums ! array for holding block sums of each diagnostic
++
++   real (r8) :: &
++      sum_tmp ! temp for local sum
++
++   real (r8), dimension(nx_block,ny_block) :: &
++      WORK1, &! local work space
++      TFACT   ! factor for normalizing sums
++
++   type (block) :: &
++      this_block ! block information for current block
++
++!-----------------------------------------------------------------------
++
++   local_sums = c0
++
++!jw   !$OMP PARALLEL DO PRIVATE(iblock,this_block,ib,ie,jb,je,TFACT,n,WORK1)
++   do iblock = 1,nblocks_clinic
++      this_block = get_block(blocks_clinic(iblock),iblock)
++      ib = this_block%ib
++      ie = this_block%ie
++      jb = this_block%jb
++      je = this_block%je
++      TFACT = TAREA(:,:,iblock)*RCALCT(:,:,iblock)
++
++      WORK1 = XY(:,:,iblock) * TFACT
++      local_sums(iblock) = sum(WORK1(ib:ie,jb:je))
++   end do
++!jw   !$OMP END PARALLEL DO
++
++   sum_tmp = sum(local_sums)
++   XYave   = global_sum(sum_tmp,distrb_clinic) / area_t
++
++!-----------------------------------------------------------------------
++!EOC
++
++ end subroutine comp_tarea_avg
++
+ !***********************************************************************
+ !BOP
+ ! !IROUTINE: wiso_write_restart

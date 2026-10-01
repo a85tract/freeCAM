@@ -1,0 +1,18 @@
+diff --git a/config/cesm/config_grids.xml b/config/cesm/config_grids.xml
+index 1e89871..7cae750 100644
+--- a/config/cesm/config_grids.xml
++++ b/config/cesm/config_grids.xml
+@@ -649,6 +649,13 @@
+       <mask>gx1v7</mask>
+     </model_grid>
+ 
++    <model_grid alias="ne16_g16">
++      <grid name="atm">ne16np4</grid>
++      <grid name="lnd">ne16np4</grid>
++      <grid name="ocnice">gx1v6</grid>
++      <mask>gx1v6</mask>
++    </model_grid>
++
+     <model_grid alias="ne16_ne16_mg17" not_compset="_POP">
+       <grid name="atm">ne16np4</grid>
+       <grid name="lnd">ne16np4</grid>

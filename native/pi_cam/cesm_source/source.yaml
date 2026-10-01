@@ -1,0 +1,53 @@
+schema_version: 1
+# The CESM source the PI-atm cases are built from: the repository's pinned iCESM submodule (at
+# tools/prepare_pi_cam_source.py's PINNED_REVISIONS) with these patches.
+#
+# The oracle, python-state and pyCESM cases were made by hand from two checkouts of that same
+# submodule revision.  Their cime and rtm each carried one more local commit than the public tag
+# the submodule pins (on no remote), plus a few working-tree edits from before the builds; the
+# patches below are those, so the source is rebuilt from the repository alone.
+# tools/prepare_cesm_source.py --compare-with checks a prepared tree file by file against a
+# checkout as it was when its case was built.
+base: external/iCESM1.3.1_fzhu
+patches:
+  - component: cime
+    file: patches/cime-ne16-grid.patch
+    why: "the ne16_g16 model grid (config_grids.xml); the checkouts' commit on icime_hires_v1.05"
+  - component: cime
+    file: patches/cime-batch-priority.patch
+    why: "a job_priority argument for PBS submission (config_batch.xml)"
+  - component: components/rtm
+    file: patches/rtm-rtmmod.patch
+    why: "four lines of RtmMod.F90 the river model runs with; the checkouts' commit on irtm_alpha01b_v1.03"
+  - component: components/pop
+    file: patches/pop-wiso-flux.patch
+    why: "POP's water-isotope surface flux adjustment; these compsets run DOCN and never build POP"
+# the case each variant is for, and the patches only it takes
+variants:
+  cases:
+    for: "the oracle and pyCESM cases"
+    patches: []
+  state:
+    for: "the python-state case, whose objects are linked into a shared library"
+    patches:
+      - component: cime
+        file: patches/cime-pic-objects.patch
+        why: "-fPIC in every Fortran and C flag set (config_compilers.xml); the image build strips it again"
+    # The hand-made python-state case was built with an earlier form of this repository's own CAM
+    # control patch in three files.  The image build compiles all three from the prepared control
+    # source (tools/prepare_pi_cam_source.py) and reads their .mod files from its own working
+    # directory first, so the case's copies never reach an image; the case supplies flags and the
+    # other modules' .mod files.
+    known_differences:
+      - path: components/cam/src/control/cam_comp.F90
+        why: "the control patch's phase entry points; compiled from the prepared control source"
+      - path: components/cam/src/physics/cam/physpkg.F90
+        why: "an earlier control patch; compiled from the generated SourceMods or the prepared control source"
+      - path: components/cam/src/cpl/atm_comp_mct.F90
+        why: "an earlier control patch; compiled from the prepared control source"
+# files the prepared tree leaves at the public tag on purpose, and why (a variant may add its own)
+known_differences:
+  - path: cime/config/cesm/machines/template.st_archive
+    why: "a site-specific short-term-archive hook, commented out in the checkouts; the cases archive nothing (DOUT_S=FALSE)"
+  - path: cime/scripts/Tools/case.submit
+    why: "one blank line"
