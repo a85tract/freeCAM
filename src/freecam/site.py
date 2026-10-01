@@ -131,6 +131,13 @@ SETTINGS: tuple[Setting, ...] = (
         "such run under FREECAM_SCRATCH is used when this is unset",
     ),
     Setting(
+        "FREECAM_PI_ATM_MAPPINGS",
+        "directory of the ne16np4/gx1v6/r05 domain and mapping files the PI-atm "
+        "CESM cases name",
+        "the PI-atm grid's mapping files; unset, the reference case's "
+        "ATM_DOMAIN_PATH is used",
+    ),
+    Setting(
         "FREECAM_CAPTURE",
         "directory of published kernel-argument capture bundles",
         "validation/jobs/pi_cam_function_capture_training.pbs, or an "

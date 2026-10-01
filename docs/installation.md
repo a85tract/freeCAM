@@ -141,6 +141,24 @@ than producing its own.
    was built; `validation/pi_cam_cesm_source_*.json` record that for the
    three cases and the coupler library, with the few files the recipe leaves
    different on purpose and why.
+
+   [`tools/build_pi_cam_cases.py`](../tools/build_pi_cam_cases.py) makes the
+   cases themselves from
+   [`native/pi_cam/cesm_source/cases.yaml`](../native/pi_cam/cesm_source/cases.yaml),
+   everything under one build root:
+
+   ```bash
+   uv run python tools/build_pi_cam_cases.py --root DIR source   # the sources above
+   uv run python tools/build_pi_cam_cases.py --root DIR create   # create_newcase/clone, case.setup
+   uv run python tools/build_pi_cam_cases.py --root DIR compare --with "$FREECAM_CASES"
+   validation/jobs/submit.sh validation/jobs/pi_cam_cases_build.pbs -v FREECAM_BUILD_ROOT=DIR
+   uv run python tools/build_pi_cam_cases.py --root DIR run --case oracle   # the 50-step oracle
+   ```
+
+   `compare` sets every configured value of each case beside the hand-made
+   case of the same name, with each case's own roots, account and user read
+   as names. The domain and mapping files come from `FREECAM_PI_ATM_MAPPINGS`
+   (unset, the reference case's).
 3. FTorch, once, on a login node:
 
    ```bash

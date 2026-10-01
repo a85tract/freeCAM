@@ -1,0 +1,43 @@
+#!/bin/bash
+# Build the PI-atm CESM cases tools/build_pi_cam_cases.py made under a build root:
+#
+#   tools/build_pi_cam_cases.py --root DIR source
+#   tools/build_pi_cam_cases.py --root DIR create
+#   validation/jobs/submit.sh validation/jobs/pi_cam_cases_build.pbs -v FREECAM_BUILD_ROOT=DIR
+#
+# FREECAM_BUILD_CASES names a subset (space-separated; default every case).
+# The cases build side by side, each with its own case.build, on one CPU node.
+#PBS -N freecam-cases-build
+#PBS -q develop
+#PBS -l select=1:ncpus=32:mpiprocs=1:ompthreads=1:mem=120GB
+#PBS -l walltime=01:30:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+set -euo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+root=${FREECAM_BUILD_ROOT:?set FREECAM_BUILD_ROOT to the root the cases were made under}
+read -r -a cases <<< "${FREECAM_BUILD_CASES:-oracle state pycesm}"
+
+cd "${FREECAM_REPO}"
+mkdir -p "${root}/logs"
+pids=()
+for case in "${cases[@]}"; do
+  "${FREECAM_PYTHON}" tools/build_pi_cam_cases.py --root "${root}" build --case "${case}" \
+    > "${root}/logs/build-${case}.log" 2>&1 &
+  pids+=("$!")
+done
+status=0
+for index in "${!cases[@]}"; do
+  if wait "${pids[${index}]}"; then
+    echo "built ${cases[${index}]}"
+  else
+    echo "FAILED ${cases[${index}]}: ${root}/logs/build-${cases[${index}]}.log"
+    status=1
+  fi
+done
+echo "PI-atm cases build exit status: ${status}"
+exit "${status}"

@@ -94,6 +94,14 @@ def apply_patch(patch: Path, target: Path) -> None:
             raise SystemExit(f"{patch.name} {failure} {target.name}: {result.stderr.strip()}")
 
 
+def model_version(source: Path) -> str:
+    """What CIME would name the source as (``git describe`` of its HEAD), which a copy without git cannot say."""
+
+    result = subprocess.run("git describe --tags $(git log -n1 --pretty='%h')", shell=True, cwd=source,
+                            capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else "unknown"
+
+
 def prepare(output: Path, *, variant: str = "cases", recipe_path: Path = RECIPE, force: bool = False) -> Path:
     """Copy the pinned submodule to ``output`` and apply the recipe's patches for ``variant``."""
 
@@ -112,7 +120,8 @@ def prepare(output: Path, *, variant: str = "cases", recipe_path: Path = RECIPE,
         apply_patch(path, output / patch["component"])
         applied.append({"component": patch["component"], "file": patch["file"], "sha256": _sha256(path.read_bytes())})
     record = {"schema_version": 1, "recipe": _shown(recipe_path), "variant": variant,
-              "base": recipe["base"], "revisions": revisions, "patches": applied}
+              "base": recipe["base"], "revisions": revisions, "patches": applied,
+              "model_version": model_version(source)}
     (output / ".cesm-source.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     return output
 

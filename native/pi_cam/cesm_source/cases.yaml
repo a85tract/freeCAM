@@ -1,0 +1,91 @@
+schema_version: 1
+# How the PI-atm CESM cases are made: create_newcase with these arguments from the source
+# tools/prepare_cesm_source.py prepares for the case's variant, these xmlchange settings in
+# order, case.setup, then these user_nl lines appended to the files case.setup writes.
+# Read from the hand-made cases' README.case, CaseStatus and user_nl_* files, which agree with
+# one another and with the PI-atm case script they were made by.
+#
+# tools/build_pi_cam_cases.py fills ${...}:
+#   MAPPINGS     FREECAM_PI_ATM_MAPPINGS: the ne16np4/gx1v6/r05 domain and mapping files
+#   OUTPUT_ROOT  the case's CIME_OUTPUT_ROOT, under the build's root
+#   CASE         the case's name
+#   ACCOUNT      FREECAM_ACCOUNT
+#   QUEUE        the case's run queue
+create_newcase: [--res, ne16_g16, --compset, 1850_CAM50_CLM40%SP_CICE%PRES_DOCN%DOM_RTM_SGLC_SWAV,
+                 --mach, derecho, --run-unsupported]
+xmlchange:
+  - RUN_TYPE=startup,GET_REFCASE=FALSE,CLM_FORCE_COLDSTART=on
+  - CLM_BLDNML_OPTS=-ignore_warnings --append
+  - CIME_OUTPUT_ROOT=${OUTPUT_ROOT}
+  # the 512-rank layout: CAM and the coupler on every rank, CLM on half, CICE (whose
+  # decomposition is compiled for 128 tasks) and DOCN after it
+  - NTASKS_CPL=512,NTHRDS_CPL=1,ROOTPE_CPL=0
+  - NTASKS_ATM=512,NTHRDS_ATM=1,ROOTPE_ATM=0
+  - NTASKS_LND=256,NTHRDS_LND=1,ROOTPE_LND=0
+  - NTASKS_ICE=128,NTHRDS_ICE=1,ROOTPE_ICE=256
+  - NTASKS_OCN=32,NTHRDS_OCN=1,ROOTPE_OCN=384
+  - NTASKS_ROF=128,NTHRDS_ROF=1,ROOTPE_ROF=0
+  - ATM_DOMAIN_PATH=${MAPPINGS},ATM_DOMAIN_FILE=domain.lnd.ne16np4_gx1v6.231103.nc
+  - LND_DOMAIN_PATH=${MAPPINGS},LND_DOMAIN_FILE=domain.lnd.ne16np4_gx1v6.231103.nc
+  - OCN_DOMAIN_PATH=${MAPPINGS},OCN_DOMAIN_FILE=domain.ocn.gx1v6.231103.nc
+  - ICE_DOMAIN_PATH=${MAPPINGS},ICE_DOMAIN_FILE=domain.ocn.gx1v6.231103.nc
+  - ATM2OCN_FMAPNAME=${MAPPINGS}/map_ne16np4_TO_gx1v6_aave.231103.nc
+  - ATM2OCN_SMAPNAME=${MAPPINGS}/map_ne16np4_TO_gx1v6_blin.231103.nc
+  - ATM2OCN_VMAPNAME=${MAPPINGS}/map_ne16np4_TO_gx1v6_patc.231103.nc
+  - OCN2ATM_FMAPNAME=${MAPPINGS}/map_gx1v6_TO_ne16np4_aave.231103.nc
+  - OCN2ATM_SMAPNAME=${MAPPINGS}/map_gx1v6_TO_ne16np4_aave.231103.nc
+  - LND2ROF_FMAPNAME=${MAPPINGS}/map_ne16np4_TO_r05_nomask_aave.231103.nc
+  - ROF2LND_FMAPNAME=${MAPPINGS}/map_r05_nomask_TO_ne16np4_aave.231103.nc
+  - ROF2OCN_FMAPNAME=${MAPPINGS}/map_r05_nomask_TO_gx1v6_aave.231103.nc
+  - ROF2OCN_RMAPNAME=${MAPPINGS}/map_r05_nomask_to_gx1v6_nnsm_e1000r300.231103.nc
+  # the 50-step reference run
+  - STOP_OPTION=nsteps,STOP_N=50
+  - REST_OPTION=nsteps,REST_N=50
+  - RESUBMIT=0,DOUT_S=FALSE
+  - JOB_QUEUE=${QUEUE} --force
+  - JOB_WALLCLOCK_TIME=02:00:00
+  - DOUT_S_ROOT=${OUTPUT_ROOT}/${CASE}/archive,PROJECT=${ACCOUNT}
+user_nl:
+  cam: |
+    cldfrc_rhminl  = 0.870D0
+    micro_mg_dcs   = 400.D-6
+    dust_emis_fact = 0.95D0
+    wtrc_limiter_phis_crit = 100000.0
+    nhtfrq = -50
+    mfilt = 1
+  rtm: |
+    wiso_runoff = .true.
+  # CICE is prescribed: a cold start from its built-in initial state, and no pond or isotope
+  # tracers, whose restart files the gx1v6 initial file does not carry
+  cice: |
+    ice_ic  = 'default'
+    tr_pond = .false.
+    tr_iso  = .false.
+  clm: |
+    hist_nhtfrq = -50
+    hist_mfilt = 1
+# The cases, in the order they are made.  A case with `clone` is CIME's create_clone of that
+# case, run from its own variant's source, and takes no xmlchange or user_nl of its own.
+cases:
+  oracle:
+    name: f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+    variant: cases
+    output: pyCAM/PI-cam
+    queue: develop
+    for: "the reference: its libatm.a is the image's numerical code, its 50-step run the BFB oracle"
+  state:
+    name: f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
+    variant: state
+    clone: oracle
+    output: pyCAM/PI-cam
+    # tools/generate_pi_cam_python_state_source.py writes SourceMods/src.cam before the build.
+    # physpkg.F90 is left out of the case's build: it uses support modules only the image's
+    # control source has, and the image compiles it from the generated SourceMod itself.
+    python_state: true
+    for: "the image's compile commands, the pointer-shell .mod files and the state registry object"
+  pycesm:
+    name: f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step
+    variant: cases
+    output: pyCESM/PI-atm
+    queue: main
+    for: "the original coupled model: the online coupler library links its components"
