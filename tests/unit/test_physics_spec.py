@@ -328,3 +328,19 @@ def test_state_set_by_an_initializer_needs_an_initializer() -> None:
     document["initializers"] = []
     with pytest.raises(PhysicsSpecError, match="no initializers are named"):
         parse_function_spec(document)
+
+
+def test_a_contract_takes_the_image_s_pcols_and_nothing_else() -> None:
+    from freecam.physics.spec import load_function_spec
+
+    reviewed = load_function_spec("uwshcu")
+    assert reviewed.dimensions["pcols"] == 16 and reviewed.argument("mix").value == 16
+    wide = load_function_spec("uwshcu", grid={"pcols": 32, "pver": 30, "pcnst": 57, "psubcols": 1})
+    assert wide.dimensions["pcols"] == 32 and wide.argument("mix").value == 32       # the column count it is told
+    assert wide.argument("mkx").value == 30 and wide.argument("ncnst").value == 57   # levels, constituents unchanged
+    assert wide.argument("ps0_inv").native_extent(wide.dimensions) == (32, 31)
+    tms = load_function_spec("compute_tms", grid={"pcols": 8})
+    assert tms.argument("pcols").value == 8 and tms.argument("pver").value == 30
+    assert load_function_spec("uwshcu", grid={"pcols": 16}) == reviewed                # the reviewed grid: as written
+    with pytest.raises(PhysicsSpecError, match="only pcols may differ from the reviewed contract: it has pver=30"):
+        load_function_spec("uwshcu", grid={"pcols": 32, "pver": 40})

@@ -14,6 +14,8 @@ inventory and the Fortran source are consulted at build time by
 
 from __future__ import annotations
 
+import copy
+
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
@@ -625,8 +627,43 @@ def parse_function_spec(document: Mapping[str, Any], *, path: Path | None = None
     )
 
 
-def load_function_spec(name_or_path: str | Path, *, functions_dir: Path | None = None) -> FunctionSpec:
-    """Load ``<name>.yaml`` from the functions directory, or an explicit path."""
+#: structural dummies that carry the column count a contract was reviewed at (uwshcu calls it ``mix``)
+COLUMN_DUMMIES = ("pcols", "mix")
+
+
+def regrid_document(document: Mapping[str, Any], grid: Mapping[str, int] | None) -> Mapping[str, Any]:
+    """The contract at an image's ``pcols``: its column dimension and the structural dummies that carry it.
+
+    ``pcols`` is the one grid extent a build may choose; the contract's other dimensions
+    (levels, constituents) must be the image's already, and a grid that says otherwise
+    is refused rather than substituted into a layout reviewed for them.
+    """
+
+    if not grid:
+        return document
+    dimensions = dict(document.get("dimensions") or {})
+    for name, value in grid.items():
+        if name != "pcols" and name in dimensions and int(dimensions[name]) != int(value):
+            raise PhysicsSpecError(f"only pcols may differ from the reviewed contract: it has {name}={dimensions[name]}, "
+                                   f"the image {name}={value}")
+    if "pcols" not in grid or "pcols" not in dimensions or int(dimensions["pcols"]) == int(grid["pcols"]):
+        return document
+    old, new = int(dimensions["pcols"]), int(grid["pcols"])
+    regridded = copy.deepcopy(dict(document))
+    regridded["dimensions"] = {**dimensions, "pcols": new}
+    for entry in regridded.get("arguments") or ():
+        if entry.get("name") in COLUMN_DUMMIES and entry.get("role") == "structural" and entry.get("value") == old:
+            entry["value"] = new
+    return regridded
+
+
+def load_function_spec(name_or_path: str | Path, *, functions_dir: Path | None = None,
+                       grid: Mapping[str, int] | None = None) -> FunctionSpec:
+    """Load ``<name>.yaml`` from the functions directory, or an explicit path.
+
+    ``grid`` (an image's, see :func:`freecam.pi_cam.image_grid.image_grid`) gives the
+    contract the image's ``pcols`` (:func:`regrid_document`).
+    """
 
     candidate = Path(name_or_path)
     if candidate.suffix in (".yaml", ".yml") and candidate.is_file():
@@ -635,7 +672,7 @@ def load_function_spec(name_or_path: str | Path, *, functions_dir: Path | None =
         path = (functions_dir or default_functions_dir()) / f"{name_or_path}.yaml"
     if not path.is_file():
         raise PhysicsSpecError(f"function spec not found: {path}")
-    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document = regrid_document(yaml.safe_load(path.read_text(encoding="utf-8")), grid)
     spec = parse_function_spec(document, path=path)
     if spec.function != path.stem:
         raise PhysicsSpecError(f"{path} declares function {spec.function!r}, expected {path.stem!r}")
@@ -651,5 +688,6 @@ __all__ = [
     "ParameterSpec",
     "default_functions_dir",
     "load_function_spec",
+    "regrid_document",
     "parse_function_spec",
 ]

@@ -201,8 +201,13 @@ than producing its own.
    * `build_pi_cam_devices.py` generates the adapters, compiles them non-PIC,
      links the fixed-address image (with FTorch and libtorch, from
      `--ftorch-root`, default `build/ftorch`), retypes it, and writes
-     `native_cam_manifest.json`: every compile and link command, and the
-     sha256 of what they produced.
+     `native_cam_manifest.json`: every compile and link command, the
+     sha256 of what they produced, and the grid CAM was compiled for
+     (`dimensions`: `pcols`, `pver`, `pcnst`, `psubcols`, as every compile
+     command's `-DPCOLS`/`-DPLEV`/`-DPCNST`/`-DPSUBCOLS` defines them).  A
+     run refuses a configuration whose `pcols` or `pver` differs from its
+     image's, and the hook module takes its extents from CAM's own `ppgrid`,
+     so a hook array always has the image's shape.
 
 That the pipeline reproduces the image in use is checked rather than assumed:
 [`validation/pi_cam_native_image_rebuild.json`](../validation/pi_cam_native_image_rebuild.json)

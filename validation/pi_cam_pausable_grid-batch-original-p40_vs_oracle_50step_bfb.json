@@ -1,0 +1,9 @@
+{
+  "bfb": true,
+  "reference_files": 4,
+  "candidate_files": 4,
+  "compared_files": 4,
+  "missing_in_candidate": [],
+  "extra_in_candidate": [],
+  "first_difference": null
+}
