@@ -1,0 +1,2228 @@
+diff --git a/src/drivers/mct/main/cesm_comp_mod.F90 b/src/drivers/mct/main/cesm_comp_mod.F90
+--- a/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -1,5 +1,7 @@
+ module cesm_comp_mod
+ 
++   use, intrinsic :: iso_c_binding, only: c_loc, c_null_ptr, c_ptr
++
+ !-------------------------------------------------------------------------------
+ !
+ ! Purpose: Main program for NCAR CESM4/cpl7. Can have different
+@@ -52,6 +54,15 @@
+    use rof_comp_esmf , only: rof_register_esmf
+ #else
+    use atm_comp_mct  , only: atm_init=>atm_init_mct, atm_run=>atm_run_mct, atm_final=>atm_final_mct
++   use atm_comp_mct  , only: atm_attach_initialized=>atm_attach_initialized_mct
++   use atm_comp_mct  , only: atm_finish_external_init=>atm_finish_external_init_mct
++   use atm_comp_mct  , only: atm_run_begin=>atm_run_begin_mct
++   use atm_comp_mct  , only: atm_run_action=>atm_run_action_mct
++   use atm_comp_mct  , only: atm_run_granular_action=>atm_run_granular_action_mct
++   use atm_comp_mct  , only: atm_run_physics_action=>atm_run_physics_action_mct
++   use atm_comp_mct  , only: atm_run_end=>atm_run_end_mct
++   use atm_comp_mct  , only: atm_run_external_iteration=>atm_run_external_iteration_mct
++   use atm_comp_mct  , only: atm_run_external_begin=>atm_run_external_begin_mct
+    use lnd_comp_mct  , only: lnd_init=>lnd_init_mct, lnd_run=>lnd_run_mct, lnd_final=>lnd_final_mct
+    use ocn_comp_mct  , only: ocn_init=>ocn_init_mct, ocn_run=>ocn_run_mct, ocn_final=>ocn_final_mct
+    use ice_comp_mct  , only: ice_init=>ice_init_mct, ice_run=>ice_run_mct, ice_final=>ice_final_mct
+@@ -135,6 +146,8 @@
+    use component_type_mod , only: atm, lnd, ice, ocn, rof, glc, wav
+    use component_mod      , only: component_init_pre
+    use component_mod      , only: component_init_cc, component_init_cx, component_run, component_final
++   use component_mod      , only: component_init_external_begin, component_init_external_end
++   use component_mod      , only: component_run_begin, component_run_end
+    use component_mod      , only: component_init_areacor, component_init_aream
+    use component_mod      , only: component_exch, component_diag
+ #ifdef ESMF_INTERFACE
+@@ -164,6 +177,13 @@
+    private
+ 
+    public cesm_pre_init1, cesm_pre_init2, cesm_init, cesm_run, cesm_final
++   public cesm_init_action_call
++   public cesm_action_call, cesm_nested_action_call, cesm_cam_action_call
++   public cesm_physics_action_call
++   public cesm_step_begin, cesm_step_end, cesm_run_finish
++   public cesm_final_action_call
++   public cesm_external_atm_iteration, cesm_exchange_buffer_query
++   public cesm_init_atm_phase2_end
+ #ifdef USE_ESMF_LIB
+    public cesm_comp_register
+ #endif
+@@ -514,6 +534,23 @@
+    integer, parameter :: fix1=1         ! temporary hard-coding to first ensemble, needs to be fixed
+    integer :: eai, eli, eoi, eii, egi, eri, ewi, exi, efi  ! component instance counters
+ 
++   ! Python-owned PI-atm control lifecycle.  The native component objects,
++   ! MCT vectors, clocks, and alarms remain module state; Python only chooses
++   ! which already-existing orchestration action runs next.
++   logical :: pycesm_run_started = .false.
++   logical :: pycesm_step_active = .false.
++   logical :: pycesm_atm_nested_active = .false.
++   integer :: pycesm_expected_action = 0
++   integer :: pycesm_nested_expected_action = 0
++   integer :: pycesm_cam_expected_action = 0
++   integer :: pycesm_physics_expected_action = 0
++   logical :: pycesm_init_active = .false.
++   integer :: pycesm_init_expected_action = 0
++   logical :: pycesm_atm_phase2_active = .false.
++   logical :: pycesm_final_active = .false.
++   integer :: pycesm_final_expected_action = 0
++   integer :: pycesm_hashint(7) = 0
++
+    !----------------------------------------------------------------------------
+    ! formats
+    !----------------------------------------------------------------------------
+@@ -535,10 +572,12 @@
+ !*******************************************************************************
+ !===============================================================================
+ 
+-subroutine cesm_pre_init1()
++subroutine cesm_pre_init1(Global_Comm_in)
+    use shr_pio_mod, only : shr_pio_init1, shr_pio_init2
+    implicit none
+ 
++   integer, intent(in), optional :: Global_Comm_in
++
+    !----------------------------------------------------------
+    !| Initialize MCT and MPI communicators and IO
+    !----------------------------------------------------------
+@@ -547,11 +586,20 @@
+    logical :: comp_iamin(num_inst_total)
+    character(len=seq_comm_namelen) :: comp_name(num_inst_total)
+    integer :: i, it
++   logical :: mpi_was_initialized
+ 
+-   call mpi_init(ierr)
+-   call shr_mpi_chkerr(ierr,subname//' mpi_init')
++   call mpi_initialized(mpi_was_initialized, ierr)
++   call shr_mpi_chkerr(ierr,subname//' mpi_initialized')
++   if (.not. mpi_was_initialized) then
++      call mpi_init(ierr)
++      call shr_mpi_chkerr(ierr,subname//' mpi_init')
++   endif
+ 
+-   Global_Comm=MPI_COMM_WORLD
++   if (present(Global_Comm_in)) then
++      Global_Comm=Global_Comm_in
++   else
++      Global_Comm=MPI_COMM_WORLD
++   endif
+    comp_comm = MPI_COMM_NULL
+    time_brun = mpi_wtime()
+ 
+@@ -989,6 +1037,54 @@
+ #ifdef USE_ESMF_LIB
+   type(ESMF_CplComp) :: drvcomp
+ #endif
++  integer :: action_id
++  integer :: status
++
++  do action_id = 504, 532
++#ifdef USE_ESMF_LIB
++     call cesm_init_action_call(action_id, status, drvcomp)
++#else
++     call cesm_init_action_call(action_id, status)
++#endif
++     if (status /= 0) then
++        call shr_sys_abort(subname//' Python initialization action rejected')
++     endif
++  enddo
++
++end subroutine cesm_init
++
++!===============================================================================
++
++#ifdef USE_ESMF_LIB
++subroutine cesm_init_action_call(action_id, status, drvcomp)
++#else
++subroutine cesm_init_action_call(action_id, status)
++#endif
++
++  implicit none
++  integer, intent(in) :: action_id
++  integer, intent(out) :: status
++#ifdef USE_ESMF_LIB
++  type(ESMF_CplComp) :: drvcomp
++#endif
++
++  status = 0
++  if (action_id == 504) then
++     if (pycesm_init_active) then
++        status = 1
++        return
++     endif
++     pycesm_init_active = .true.
++     pycesm_init_expected_action = 503
++  endif
++  if (.not. pycesm_init_active) then
++     status = 1
++     return
++  endif
++  if (action_id /= pycesm_init_expected_action + 1) then
++     status = 2
++     return
++  endif
+ 
+  101  format( A, 2i8, 12A, A, F8.2, A, F8.2 )
+  102  format( A, 2i8, A, 8L3 )
+@@ -1008,6 +1104,8 @@
+    !  components will set them to true for the purposes of symmetry
+    !-----------------------------------------------------------------------------
+ 
++   select case (action_id)
++   case (504)
+    call t_startf('CPL:init_comps')
+    if (iamroot_CPLID )then
+       write(logunit,*) ' '
+@@ -1017,40 +1115,70 @@
+ 
+    call t_adj_detailf(+2)
+ 
++   case (505)
+    call component_init_pre(atm, ATMID, CPLATMID, CPLALLATMID, infodata, ntype='atm')
++   case (506)
+    call component_init_pre(lnd, LNDID, CPLLNDID, CPLALLLNDID, infodata, ntype='lnd')
++   case (507)
+    call component_init_pre(rof, ROFID, CPLROFID, CPLALLROFID, infodata, ntype='rof')
++   case (508)
+    call component_init_pre(ocn, OCNID, CPLOCNID, CPLALLOCNID, infodata, ntype='ocn')
++   case (509)
+    call component_init_pre(ice, ICEID, CPLICEID, CPLALLICEID, infodata, ntype='ice')
++   case (510)
+    call component_init_pre(glc, GLCID, CPLGLCID, CPLALLGLCID, infodata, ntype='glc')
++   case (511)
+    call component_init_pre(wav, WAVID, CPLWAVID, CPLALLWAVID, infodata, ntype='wav')
+ 
+ #ifdef ESMF_INTERFACE
++   case (512)
+    call component_init_cc(Eclock_a, drvcomp, atm, atm_register_esmf, infodata, NLFilename)
++   case (513)
+    call component_init_cc(Eclock_l, drvcomp, lnd, lnd_register_esmf, infodata, NLFilename)
++   case (514)
+    call component_init_cc(Eclock_r, drvcomp, rof, rof_register_esmf, infodata, NLFilename)
++   case (515)
+    call component_init_cc(Eclock_o, drvcomp, ocn, ocn_register_esmf, infodata, NLFilename)
++   case (516)
+    call component_init_cc(Eclock_i, drvcomp, ice, ice_register_esmf, infodata, NLFilename)
++   case (517)
+    call component_init_cc(Eclock_g, drvcomp, glc, glc_register_esmf, infodata, NLFilename)
++   case (518)
+    call component_init_cc(Eclock_w, drvcomp, wav, wav_register_esmf, infodata, NLFilename)
+ #else
+-   call component_init_cc(Eclock_a, atm, atm_init, infodata, NLFilename)
++   case (512)
++   call component_init_cc(Eclock_a, atm, atm_attach_initialized, infodata, &
++        NLFilename)
++   case (513)
+    call component_init_cc(Eclock_l, lnd, lnd_init, infodata, NLFilename)
++   case (514)
+    call component_init_cc(Eclock_r, rof, rof_init, infodata, NLFilename)
++   case (515)
+    call component_init_cc(Eclock_o, ocn, ocn_init, infodata, NLFilename)
++   case (516)
+    call component_init_cc(Eclock_i, ice, ice_init, infodata, NLFilename)
++   case (517)
+    call component_init_cc(Eclock_g, glc, glc_init, infodata, NLFilename)
++   case (518)
+    call component_init_cc(Eclock_w, wav, wav_init, infodata, NLFilename)
+ #endif
+ 
++   case (519)
+    call component_init_cx(atm, infodata)
++   case (520)
+    call component_init_cx(lnd, infodata)
++   case (521)
+    call component_init_cx(rof, infodata)
++   case (522)
+    call component_init_cx(ocn, infodata)
++   case (523)
+    call component_init_cx(ice, infodata)
++   case (524)
+    call component_init_cx(glc, infodata)
++   case (525)
+    call component_init_cx(wav, infodata)
+ 
++   case (526)
+ #ifdef ESMF_INTERFACE
+    if (iamin_CPLID) then
+       call ESMF_GridCompInitialize(cplgc, importState=c2x_cx_state, exportState=x2c_cx_state, &
+@@ -1111,6 +1239,7 @@
+ 
+    call t_stopf('CPL:init_comps')
+ 
++   case (527)
+    !----------------------------------------------------------
+    !| Determine coupling interactions based on present and prognostic flags
+    !----------------------------------------------------------
+@@ -1656,6 +1785,7 @@
+       endif
+    endif
+ 
++   case (528)
+    !----------------------------------------------------------
+    !| ATM PREP for recalculation of initial solar
+    !  Note that ocean albedos are ALWAYS CALCULATED on the ocean grid
+@@ -1709,6 +1839,7 @@
+ 
+    endif  ! atm_prognostic
+ 
++   case (529)
+    !----------------------------------------------------------
+    !| Second phase of atmosphere component initialization
+    !  Recalculate solar based on input albedo's from surface components.
+@@ -1733,29 +1864,14 @@
+          endif
+       enddo
+ 
+-      ! Run atm_init_mct with init phase of 2
+-#ifdef ESMF_INTERFACE
+-      call component_init_cc(Eclock_a, drvcomp, atm, atm_register_esmf, &
+-#else
+-      call component_init_cc(Eclock_a, atm, atm_init,                   &
+-#endif
+-           infodata, NLFilename,                                        &
+-           seq_flds_x2c_fluxes=seq_flds_x2a_fluxes,                     &
+-           seq_flds_c2x_fluxes=seq_flds_a2x_fluxes)
+-
+-      ! Map atm output data from atm pes to cpl pes
+-      call component_exch(atm, flow='c2x', infodata=infodata, &
+-           infodata_string='atm2cpl_init')
+-
+-      if (iamin_CPLID) then
+-         if (drv_threading) call seq_comm_setnthreads(nthreads_CPLID)
+-         call component_diag(infodata, atm, flow='c2x', comment= 'recv IC2 atm', &
+-              info_debug=info_debug)
+-         if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
+-      endif
++      call component_init_external_begin(atm, infodata, &
++           seq_flds_x2a_fluxes, status)
++      if (status /= 0) return
++      pycesm_atm_phase2_active = .true.
+ 
+    endif   ! atm present
+ 
++   case (530)
+    !----------------------------------------------------------
+    !| Read driver restart file, overwrite anything previously sent or computed
+    !----------------------------------------------------------
+@@ -1770,6 +1886,7 @@
+    endif
+    call t_stopf  ('CPL:init_readrestart')
+ 
++   case (531)
+    !----------------------------------------------------------
+    !| Map initial r2x_rx and g2x_gx to _ox, _ix and _lx
+    !----------------------------------------------------------
+@@ -1795,6 +1912,7 @@
+       endif
+    endif
+ 
++   case (532)
+    !----------------------------------------------------------
+    !| Write histinit output file
+    !----------------------------------------------------------
+@@ -1824,17 +1942,60 @@
+ 
+    call t_stopf  ('CPL:INIT')
+ 
+-end subroutine cesm_init
++   case default
++      status = 3
++      return
++   end select
++
++   pycesm_init_expected_action = action_id
++   if (action_id == 532) then
++      pycesm_init_active = .false.
++      pycesm_init_expected_action = 0
++   endif
++
++end subroutine cesm_init_action_call
++
++!===============================================================================
++
++subroutine cesm_init_atm_phase2_end(status)
++   implicit none
++   integer, intent(out) :: status
++
++   status = 0
++   if (.not. pycesm_init_active .or. .not. pycesm_atm_phase2_active .or. &
++       pycesm_init_expected_action /= 529) then
++      status = 4
++      return
++   endif
++   if (atm_present) then
++      call atm_finish_external_init(EClock_a, status)
++      if (status /= 0) return
++      call component_init_external_end(atm, infodata, &
++           seq_flds_a2x_fluxes, status)
++      if (status /= 0) return
++      call component_exch(atm, flow='c2x', infodata=infodata, &
++           infodata_string='atm2cpl_init')
++      if (iamin_CPLID) then
++         if (drv_threading) call seq_comm_setnthreads(nthreads_CPLID)
++         call component_diag(infodata, atm, flow='c2x', &
++              comment='recv IC2 atm', info_debug=info_debug)
++         if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
++      endif
++   endif
++   pycesm_atm_phase2_active = .false.
++end subroutine cesm_init_atm_phase2_end
+ 
+  !===============================================================================
+  !*******************************************************************************
+  !===============================================================================
+ 
+- subroutine cesm_run()
++ subroutine cesm_run(max_steps)
+    use seq_comm_mct, only : atm_layout, lnd_layout, ice_layout, glc_layout, rof_layout, &
+          ocn_layout, wav_layout
+ 
+    implicit none
++   integer, intent(in), optional :: max_steps
++   integer :: steps_this_call
+    ! gptl timer lookup variables
+    integer, parameter :: hashcnt=7
+    integer :: hashint(hashcnt)
+@@ -1851,6 +2012,7 @@
+ 
+ 
+    hashint = 0
++   steps_this_call = 0
+ 
+ 
+    call seq_infodata_putData(infodata,atm_phase=1,lnd_phase=1,ocn_phase=1,ice_phase=1)
+@@ -3508,6 +3670,11 @@
+       endif
+       call t_drvstopf  ('CPL:TPROF_WRITE',cplrun=.true.)
+ 
++      steps_this_call = steps_this_call + 1
++      if (present(max_steps)) then
++         if (steps_this_call >= max_steps) exit
++      endif
++
+    enddo   ! driver run loop
+ 
+    !|----------------------------------------------------------
+@@ -3523,78 +3690,1234 @@
+  end subroutine cesm_run
+ 
+ !===============================================================================
+-!*******************************************************************************
++! Begin one Python-owned PI-atm coupling step.  This routine performs exactly
++! the clock/alarm work that precedes the first action in cesm_run and returns
++! the resulting native state to Python.  Bit assignments in alarm_mask are
++! part of the bind(C) adapter contract.
+ !===============================================================================
+ 
+- subroutine cesm_final()
++ subroutine cesm_step_begin(stepno, current_ymd, current_tod, alarm_mask, status, &
++      python_step, python_ymd, python_tod, python_alarm_mask)
++   implicit none
++   integer, intent(out) :: stepno
++   integer, intent(out) :: current_ymd
++   integer, intent(out) :: current_tod
++   integer, intent(out) :: alarm_mask
++   integer, intent(out) :: status
++   integer, intent(in), optional :: python_step
++   integer, intent(in), optional :: python_ymd
++   integer, intent(in), optional :: python_tod
++   integer, intent(in), optional :: python_alarm_mask
++   integer :: native_control_mask
++   logical :: python_controls_alarms
+ 
+-   use shr_pio_mod, only : shr_pio_finalize
++103 format( 5A )
++
++   stepno = 0
++   current_ymd = 0
++   current_tod = 0
++   alarm_mask = 0
++   status = 0
++
++   if (pycesm_step_active .or. pycesm_atm_nested_active) then
++      status = 3
++      return
++   endif
++
++   ! Fail closed outside the one configuration whose native trace and kernels
++   ! have been admitted.  Supporting another sequence requires a separate
++   ! source trace and BFB gate, not a guessed branch through this routine.
++   if (trim(cpl_seq_option) /= 'CESM1_MOD_TIGHT' .or. &
++       trim(aoflux_grid) /= 'ocn' .or. do_budgets .or. &
++       .not. atm_present .or. .not. lnd_present .or. &
++       .not. ice_present .or. .not. ocn_present .or. &
++       .not. rof_present .or. glc_present .or. wav_present .or. &
++       .not. atm_prognostic .or. .not. lnd_prognostic .or. &
++       .not. ice_prognostic .or. ocn_prognostic .or. &
++       .not. rof_prognostic) then
++      status = 2
++      return
++   endif
++
++   if (.not. pycesm_run_started) then
++      pycesm_hashint = 0
++      call seq_infodata_putData(infodata,atm_phase=1,lnd_phase=1,ocn_phase=1,ice_phase=1)
++      call seq_timemgr_EClockGetData(EClock_d, stepno=begstep)
++      call seq_timemgr_EClockGetData(EClock_d, dtime=dtime)
++      call seq_timemgr_EClockGetData(EClock_d, calendar=calendar)
++      ncpl = 86400/dtime
++      cktime_acc = 0._r8
++      cktime_cnt = 0
++      stop_alarm = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_stop)
++      if (seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_datestop)) then
++         stop_alarm = .true.
++      endif
++      force_stop = .false.
++      force_stop_ymd = -1
++      force_stop_tod = -1
++      call t_startf('CPL:RUN_LOOP_BSTART')
++      call mpi_barrier(mpicom_GLOID,ierr)
++      call t_stopf('CPL:RUN_LOOP_BSTART')
++      Time_begin = mpi_wtime()
++      Time_bstep = mpi_wtime()
++      pycesm_run_started = .true.
++   endif
++
++   if (stop_alarm) then
++      status = 4
++      return
++   endif
++
++   call t_startf('CPL:RUN_LOOP', pycesm_hashint(1))
++   call t_drvstartf('CPL:CLOCK_ADVANCE',cplrun=.true.,hashint=pycesm_hashint(2))
++
++   call seq_timemgr_clockAdvance(seq_SyncClock, force_stop, force_stop_ymd, force_stop_tod)
++   call seq_timemgr_EClockGetData(EClock_d, stepno=stepno, curr_ymd=ymd, curr_tod=tod)
++   call shr_cal_date2ymd(ymd,year,month,day)
++   stop_alarm    = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_stop)
++   atmrun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_atmrun)
++   lndrun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_lndrun)
++   rofrun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_rofrun)
++   icerun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_icerun)
++   glcrun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_glcrun)
++   wavrun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_wavrun)
++   ocnrun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_ocnrun)
++   ocnnext_alarm = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_ocnnext)
++   restart_alarm = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_restart)
++   history_alarm = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_history)
++   histavg_alarm = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_histavg)
++   tprof_alarm   = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_tprof)
++
++   t1hr_alarm = mod(tod, 3600) == 0
++   t2hr_alarm = mod(tod, 7200) == 0
++   t3hr_alarm = mod(tod,10800) == 0
++   t6hr_alarm = mod(tod,21600) == 0
++   t12hr_alarm = mod(tod,43200) == 0
++   t24hr_alarm = tod == 0
++   t1yr_alarm = month==1 .and. day==1 .and. tod==0
++   call seq_infodata_putData(infodata, glcrun_alarm=glcrun_alarm)
++
++   if (seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_datestop)) then
++      if (iamroot_CPLID) then
++         write(logunit,*) ' '
++         write(logunit,103) subname,' NOTE: Stopping from alarm STOP DATE'
++         write(logunit,*) ' '
++      endif
++      stop_alarm = .true.
++   endif
++
++   if (trim(orb_mode) == trim(seq_infodata_orb_variable_year)) then
++      orb_nyear = orb_iyear + (year - orb_iyear_align)
++      if (orb_nyear /= orb_cyear) then
++         orb_cyear = orb_nyear
++         call shr_orb_params(orb_cyear, orb_eccen, orb_obliq, orb_mvelp, &
++              orb_obliqr, orb_lambm0, orb_mvelpp, iamroot_CPLID)
++         call seq_infodata_putData(infodata,orb_eccen=orb_eccen,orb_obliqr=orb_obliqr, &
++              orb_lambm0=orb_lambm0,orb_mvelpp=orb_mvelpp)
++      endif
++   endif
++
++   if (ocnrun_alarm) ocnrun_count = ocnrun_count + 1
++   if (ocnrun_count > 1) skip_ocean_run = .false.
++   if (skip_ocean_run) then
++      ocnrun_alarm = .false.
++      ocnnext_alarm = .false.
++   endif
++
++   ! Python is authoritative for the scientific run/restart/stop decisions in
++   ! the admitted PI-atm path.  The native time manager is still advanced so
++   ! component ESMF clocks remain intact, and its result is retained as a
++   ! fail-closed BFB oracle.  Diagnostic history-average and profiling alarms
++   ! remain native because they do not select a scientific component action.
++   python_controls_alarms = present(python_step) .or. present(python_ymd) .or. &
++        present(python_tod) .or. present(python_alarm_mask)
++   if (python_controls_alarms) then
++      if (.not. present(python_step) .or. .not. present(python_ymd) .or. &
++          .not. present(python_tod) .or. .not. present(python_alarm_mask)) then
++         status = 9
++         return
++      endif
++      if (python_step /= stepno .or. python_ymd /= ymd .or. python_tod /= tod) then
++         status = 10
++         return
++      endif
++
++      native_control_mask = 0
++      if (atmrun_alarm)  native_control_mask = ibset(native_control_mask,0)
++      if (lndrun_alarm)  native_control_mask = ibset(native_control_mask,1)
++      if (icerun_alarm)  native_control_mask = ibset(native_control_mask,2)
++      if (rofrun_alarm)  native_control_mask = ibset(native_control_mask,3)
++      if (ocnrun_alarm)  native_control_mask = ibset(native_control_mask,4)
++      if (ocnnext_alarm) native_control_mask = ibset(native_control_mask,5)
++      if (restart_alarm) native_control_mask = ibset(native_control_mask,6)
++      if (stop_alarm)    native_control_mask = ibset(native_control_mask,8)
++      if (iand(python_alarm_mask,383) /= native_control_mask) then
++         status = 11
++         return
++      endif
++
++      atmrun_alarm  = btest(python_alarm_mask,0)
++      lndrun_alarm  = btest(python_alarm_mask,1)
++      icerun_alarm  = btest(python_alarm_mask,2)
++      rofrun_alarm  = btest(python_alarm_mask,3)
++      ocnrun_alarm  = btest(python_alarm_mask,4)
++      ocnnext_alarm = btest(python_alarm_mask,5)
++      restart_alarm = btest(python_alarm_mask,6)
++      stop_alarm    = btest(python_alarm_mask,8)
++   endif
++
++   call t_drvstopf('CPL:CLOCK_ADVANCE',cplrun=.true.,hashint=pycesm_hashint(2))
++
++   if (atmrun_alarm)  alarm_mask = ibset(alarm_mask,0)
++   if (lndrun_alarm)  alarm_mask = ibset(alarm_mask,1)
++   if (icerun_alarm)  alarm_mask = ibset(alarm_mask,2)
++   if (rofrun_alarm)  alarm_mask = ibset(alarm_mask,3)
++   if (ocnrun_alarm)  alarm_mask = ibset(alarm_mask,4)
++   if (ocnnext_alarm) alarm_mask = ibset(alarm_mask,5)
++   if (restart_alarm) alarm_mask = ibset(alarm_mask,6)
++   if (history_alarm) alarm_mask = ibset(alarm_mask,7)
++   if (stop_alarm)    alarm_mask = ibset(alarm_mask,8)
++   if (histavg_alarm) alarm_mask = ibset(alarm_mask,9)
++   if (tprof_alarm)   alarm_mask = ibset(alarm_mask,10)
++
++   current_ymd = ymd
++   current_tod = tod
++   pycesm_expected_action = 100
++   pycesm_nested_expected_action = 0
++   pycesm_cam_expected_action = 0
++   pycesm_physics_expected_action = 0
++   pycesm_atm_nested_active = .false.
++   pycesm_step_active = .true.
++ end subroutine cesm_step_begin
++
++!===============================================================================
++! Finish one Python-owned step after the HISTORY action.  Timing and wall-clock
++! policy stay in the original Fortran control module because they use native
++! timers and do not belong to a scientific kernel.
++!===============================================================================
++
++ subroutine cesm_step_end(status)
+    implicit none
++   integer, intent(out) :: status
+ 
+-   !------------------------------------------------------------------------
+-   ! Finalization of all models
+-   !------------------------------------------------------------------------
++101 format( A, 2i8, 12A, A, F8.2, A, F8.2 )
++105 format( A, 2i8, A, f10.2, A, f10.2, A, A, i5, A, A)
++108 format( A, f10.2, A, i8.8)
++109 format( A, 2f10.3)
++
++   status = 0
++   if (.not. pycesm_step_active) then
++      status = 3
++      return
++   endif
++   if (pycesm_expected_action /= 129) then
++      status = 6
++      return
++   endif
++   if (pycesm_atm_nested_active) then
++      status = 7
++      return
++   endif
++
++   call t_drvstartf('CPL:TSTAMP_WRITE',cplrun=.true.)
++   if (tod == 0 .or. info_debug > 1) then
++      if (iamroot_CPLID) then
++         call date_and_time(dstr,tstr)
++         Time_estep = mpi_wtime()
++         cktime = time_estep-time_bstep
++         cktime_acc(1) = cktime_acc(1) + cktime
++         cktime_cnt(1) = cktime_cnt(1) + 1
++         write(logunit,101) ' tStamp_write: model date = ',ymd,tod, &
++              ' wall clock = ',dstr(1:4),'-',dstr(5:6),'-',dstr(7:8),' ', &
++              tstr(1:2),':',tstr(3:4),':',tstr(5:6), &
++              ' avg dt = ',cktime_acc(1)/cktime_cnt(1),' dt = ',cktime
++         Time_bstep = mpi_wtime()
++         call shr_sys_flush(logunit)
++         if (cktime > max_cplstep_time .and. max_cplstep_time > 0.0) then
++            call shr_sys_abort(subname//'Wall clock time exceeds max_cplstep_time')
++         else if (max_cplstep_time < -0.05) then
++            max_cplstep_time = -(max_cplstep_time)*cktime
++         endif
++      endif
++   endif
++   if (tod == 0 .and. wall_time_limit > 0.0_r8 .and. .not. force_stop) then
++      time_erun = mpi_wtime()
++      wall_time = (time_erun - time_brun) / 3600._r8
++      write(logunit,109) subname//' check wall_time_limit: ',wall_time, wall_time_limit
++      if (wall_time > wall_time_limit) then
++         force_stop = .true.
++         force_stop_tod = 0
++         if (trim(force_stop_at) == 'month') then
++            call shr_cal_date2ymd(ymd,year,month,day)
++            month = month + 1
++            do while (month > 12)
++               month = month - 12
++               year = year + 1
++            enddo
++            call shr_cal_ymd2date(year,month,1,force_stop_ymd)
++         elseif (trim(force_stop_at) == 'year') then
++            call shr_cal_date2ymd(ymd,year,month,day)
++            call shr_cal_ymd2date(year+1,1,1,force_stop_ymd)
++         else
++            ymdtmp = ymd
++            call shr_cal_advDateInt(1,'days',ymdtmp,0,force_stop_ymd,todtmp,calendar)
++         endif
++         write(logunit,108) subname//' reached wall_time_limit (hours) =',wall_time_limit, &
++              ' :stop at ',force_stop_ymd
++      endif
++   endif
++   if (tod == 0 .or. info_debug > 1) then
++      if (iamroot_CPLID .or. ocn(ens1)%iamroot_compid .or. &
++          atm(ens1)%iamroot_compid .or. lnd(ens1)%iamroot_compid .or. &
++          ice(ens1)%iamroot_compid .or. glc(ens1)%iamroot_compid .or. &
++          wav(ens1)%iamroot_compid) then
++         call shr_mem_getusage(msize,mrss)
++         write(logunit,105) ' memory_write: model date = ',ymd,tod, &
++              ' memory = ',mrss,' MB (highwater)    ',msize,' MB (usage)', &
++              '  (pe=',iam_GLOID,' comps=',trim(complist)//')'
++      endif
++   endif
++   call t_drvstopf('CPL:TSTAMP_WRITE',cplrun=.true.)
++
++   call t_stopf('CPL:RUN_LOOP',pycesm_hashint(1))
++   call t_drvstartf('CPL:TPROF_WRITE',cplrun=.true.)
++   if (tprof_alarm) then
++      call t_startf('sync1_tprof')
++      call mpi_barrier(mpicom_GLOID,ierr)
++      call t_stopf('sync1_tprof')
++      write(timing_file,'(a,i8.8,a1,i5.5)') trim(tchkpt_dir)//'/model_timing_',ymd,'_',tod
++      call t_prf(filename=trim(timing_file),mpicom=mpicom_GLOID,num_outpe=1)
++      call t_startf('sync2_tprof')
++      call mpi_barrier(mpicom_GLOID,ierr)
++      call t_stopf('sync2_tprof')
++   endif
++   call t_drvstopf('CPL:TPROF_WRITE',cplrun=.true.)
++
++   pycesm_step_active = .false.
++   pycesm_expected_action = 0
++   pycesm_nested_expected_action = 0
++   pycesm_cam_expected_action = 0
++   pycesm_physics_expected_action = 0
++   pycesm_atm_nested_active = .false.
++ end subroutine cesm_step_end
++
++!===============================================================================
++
++ subroutine cesm_run_finish(status)
++   implicit none
++   integer, intent(out) :: status
+ 
+-   call t_barrierf ('CPL:FINAL_BARRIER', mpicom_GLOID)
+-   call t_startf ('CPL:FINAL')
++   status = 0
++   if (pycesm_step_active .or. pycesm_atm_nested_active) then
++      status = 3
++      return
++   endif
++   if (.not. pycesm_run_started) return
++   call t_startf('CPL:RUN_LOOP_BSTOP')
++   call mpi_barrier(mpicom_GLOID,ierr)
++   call t_stopf('CPL:RUN_LOOP_BSTOP')
++   Time_end = mpi_wtime()
++   pycesm_run_started = .false.
++ end subroutine cesm_run_finish
++
++!===============================================================================
++! Execute one already-validated PI-atm coupling kernel against the live module
++! state.  This is intentionally fail-closed: actions are added only after an
++! independent capture/replay gate proves the original kernel bit-for-bit.
++! No numerical expression is duplicated here; each branch calls the original
++! CESM routine with the same MCT objects used by cesm_run.
++!===============================================================================
++
++ subroutine cesm_nested_action_call(action_id, loop_complete, status)
++   implicit none
++   integer, intent(in) :: action_id
++   integer, intent(out) :: loop_complete
++   integer, intent(out) :: status
++   integer :: action_status
++   logical :: atm_loop_complete
++
++   status = 0
++   loop_complete = 0
++   action_status = 0
++   atm_loop_complete = .false.
++   if (.not. pycesm_step_active) then
++      status = 3
++      return
++   endif
++   if (.not. atmrun_alarm) then
++      status = 5
++      return
++   endif
++
++   if (action_id == 201) then
++      if (pycesm_expected_action /= 124 .or. pycesm_atm_nested_active) then
++         status = 4
++         return
++      endif
++      call component_run_begin(atm,infodata,seq_flds_x2a_fluxes, &
++           atm_prognostic,'CPL:ATM_RUN_BARRIER','CPL:ATM_RUN', &
++           run_barriers,action_status)
++      if (action_status /= 0) then
++         status = action_status
++         return
++      endif
++      pycesm_atm_nested_active = .true.
++      pycesm_nested_expected_action = 201
++      return
++   endif
++
++   if (.not. pycesm_atm_nested_active .or. &
++       action_id /= pycesm_nested_expected_action + 1) then
++      status = 4
++      return
++   endif
++
++   select case (action_id)
++   case (202)
++      call atm_run_external_begin(Eclock_a,atm(ens1)%cdata_cc, &
++           atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,action_status)
++      pycesm_cam_expected_action = 300
++      pycesm_physics_expected_action = 400
++   case (203:208)
++      call atm_run_action(action_id,Eclock_a,atm(ens1)%cdata_cc, &
++           atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,atm_loop_complete,action_status)
++   case (209)
++      call atm_run_end(Eclock_a,atm(ens1)%cdata_cc, &
++           atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,action_status)
++   case (210)
++      call component_run_end(atm,seq_flds_a2x_fluxes, &
++           'CPL:ATM_RUN',action_status)
++   case default
++      status = 1
++      return
++   end select
++
++   if (action_status /= 0) then
++      status = action_status
++      return
++   endif
++   if (action_id == 208 .and. .not. atm_loop_complete) then
++      pycesm_nested_expected_action = 202
++   else
++      pycesm_nested_expected_action = action_id
++   endif
++   if (atm_loop_complete) loop_complete = 1
++   if (action_id == 210) then
++      pycesm_atm_nested_active = .false.
++      pycesm_expected_action = 125
++   endif
++ end subroutine cesm_nested_action_call
++
++!===============================================================================
++
++ subroutine cesm_external_atm_iteration(loop_complete, status)
++   implicit none
++   integer, intent(out) :: loop_complete
++   integer, intent(out) :: status
++   integer :: action_status
++   logical :: atm_loop_complete
++
++   loop_complete = 0
++   status = 0
++   action_status = 0
++   atm_loop_complete = .false.
++   if (.not. pycesm_step_active .or. .not. pycesm_atm_nested_active) then
++      status = 3
++      return
++   endif
++   if (.not. atmrun_alarm .or. pycesm_nested_expected_action /= 202) then
++      status = 5
++      return
++   endif
++
++   call atm_run_external_iteration(Eclock_a,atm(ens1)%cdata_cc, &
++        atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,atm_loop_complete, &
++        action_status)
++   if (action_status /= 0) then
++      status = action_status
++      return
++   endif
++   if (atm_loop_complete) then
++      loop_complete = 1
++      pycesm_nested_expected_action = 209
++   else
++      ! The original ATM do-while loop remains inside the same component and
++      ! CESM driver step.  Python will provide the next external CAM timestep
++      ! before any component_end or post-ATM coupler action is allowed.
++      pycesm_nested_expected_action = 202
++   endif
++ end subroutine cesm_external_atm_iteration
++
++!===============================================================================
++
++ subroutine cesm_exchange_buffer_query(exchange_id, address, nattr, npoint, &
++      status)
++   implicit none
++   integer, intent(in) :: exchange_id
++   type(c_ptr), intent(out) :: address
++   integer, intent(out) :: nattr
++   integer, intent(out) :: npoint
++   integer, intent(out) :: status
++
++   address = c_null_ptr
++   nattr = 0
++   npoint = 0
++   status = 0
++   if (num_inst_atm < 1) then
++      status = 3
++      return
++   endif
++   select case (exchange_id)
++   case (1)
++      if (.not. associated(atm(ens1)%x2c_cc%rattr)) then
++         status = 4
++         return
++      endif
++      nattr = size(atm(ens1)%x2c_cc%rattr, 1)
++      npoint = size(atm(ens1)%x2c_cc%rattr, 2)
++      if (nattr > 0 .and. npoint > 0) &
++           address = c_loc(atm(ens1)%x2c_cc%rattr(1,1))
++   case (2)
++      if (.not. associated(atm(ens1)%c2x_cc%rattr)) then
++         status = 4
++         return
++      endif
++      nattr = size(atm(ens1)%c2x_cc%rattr, 1)
++      npoint = size(atm(ens1)%c2x_cc%rattr, 2)
++      if (nattr > 0 .and. npoint > 0) &
++           address = c_loc(atm(ens1)%c2x_cc%rattr(1,1))
++   case default
++      status = 1
++   end select
++ end subroutine cesm_exchange_buffer_query
++
++!===============================================================================
++
++ subroutine cesm_cam_action_call(action_id, loop_complete, status)
++   implicit none
++   integer, intent(in) :: action_id
++   integer, intent(out) :: loop_complete
++   integer, intent(out) :: status
++   integer :: action_status
++   logical :: atm_loop_complete
++
++   status = 0
++   loop_complete = 0
++   action_status = 0
++   atm_loop_complete = .false.
++   if (.not. pycesm_step_active .or. .not. pycesm_atm_nested_active) then
++      status = 3
++      return
++   endif
++   if (.not. atmrun_alarm .or. pycesm_nested_expected_action /= 202) then
++      status = 5
++      return
++   endif
++   if (action_id /= pycesm_cam_expected_action + 1) then
++      status = 4
++      return
++   endif
++
++   call atm_run_granular_action(action_id,Eclock_a,atm(ens1)%cdata_cc, &
++        atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,atm_loop_complete,action_status)
++   if (action_status /= 0) then
++      status = action_status
++      return
++   endif
++
++   if (action_id == 310 .and. .not. atm_loop_complete) then
++      pycesm_cam_expected_action = 300
++   else
++      pycesm_cam_expected_action = action_id
++   endif
++   if (atm_loop_complete) then
++      loop_complete = 1
++      pycesm_nested_expected_action = 208
++   endif
++ end subroutine cesm_cam_action_call
++
++!===============================================================================
++
++ subroutine cesm_physics_action_call(action_id, loop_complete, status)
++   implicit none
++   integer, intent(in) :: action_id
++   integer, intent(out) :: loop_complete
++   integer, intent(out) :: status
++   integer :: action_status
++   logical :: atm_loop_complete
++
++   status = 0
++   loop_complete = 0
++   action_status = 0
++   atm_loop_complete = .false.
++   if (.not. pycesm_step_active .or. .not. pycesm_atm_nested_active) then
++      status = 3
++      return
++   endif
++   if (.not. atmrun_alarm .or. pycesm_nested_expected_action /= 202) then
++      status = 5
++      return
++   endif
++   if (action_id /= pycesm_physics_expected_action + 1) then
++      status = 4
++      return
++   endif
++
++   call atm_run_physics_action(action_id,Eclock_a,atm(ens1)%cdata_cc, &
++        atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,atm_loop_complete,action_status)
++   if (action_status /= 0) then
++      status = action_status
++      return
++   endif
++
++   if (action_id == 432 .and. .not. atm_loop_complete) then
++      pycesm_physics_expected_action = 400
++   else
++      pycesm_physics_expected_action = action_id
++   endif
++   if (atm_loop_complete) then
++      loop_complete = 1
++      pycesm_nested_expected_action = 208
++   endif
++ end subroutine cesm_physics_action_call
++
++!===============================================================================
++
++ subroutine cesm_action_call(action_id, status)
++   use seq_comm_mct, only : atm_layout, lnd_layout, ice_layout, rof_layout, ocn_layout
++   implicit none
++   integer, intent(in) :: action_id
++   integer, intent(out) :: status
++
++   status = 0
++
++   if (action_id >= 101 .and. action_id <= 129) then
++      if (.not. pycesm_step_active) then
++         status = 3
++         return
++      endif
++      if (action_id <= pycesm_expected_action) then
++         status = 4
++         return
++      endif
++   endif
+ 
+-   call seq_timemgr_EClockGetData( EClock_d, stepno=endstep)
+-   call shr_mem_getusage(msize,mrss)
++   if (drv_threading) call seq_comm_setnthreads(nthreads_CPLID)
+ 
++   select case (action_id)
++   case (1) ! atm_ocn_flux
++      if (trim(aoflux_grid) /= 'ocn' .or. .not. ocn_present) then
++         status = 2
++      else
++         do exi = 1,num_inst_xao
++            eai = mod((exi-1),num_inst_atm) + 1
++            eoi = mod((exi-1),num_inst_ocn) + 1
++            a2x_ox => prep_ocn_get_a2x_ox()
++            o2x_ox => component_get_c2x_cx(ocn(eoi))
++            xao_ox => prep_aoflux_get_xao_ox()
++            call seq_flux_atmocn_mct(infodata, a2x_ox(eai), o2x_ox, xao_ox(exi))
++         enddo
++      endif
++   case (2) ! ocn_albedo
++      if (.not. ocn_present) then
++         status = 2
++      else
++         do exi = 1,num_inst_xao
++            eoi = mod((exi-1),num_inst_ocn) + 1
++            efi = mod((exi-1),num_inst_frc) + 1
++            xao_ox => prep_aoflux_get_xao_ox()
++            call seq_flux_ocnalb_mct(infodata, ocn(1), fractions_ox(efi), xao_ox(exi))
++         enddo
++      endif
++   case (101) ! atm_to_ocn_map
++      if (iamin_CPLID .and. (atm_c2_ocn .or. atm_c2_ice)) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:OCNPRE1_BARRIER')
++         call t_drvstartf('CPL:OCNPRE1',cplrun=.true.,barrier=mpicom_CPLID,hashint=pycesm_hashint(3))
++         call prep_ocn_calc_a2x_ox(timer='CPL:ocnpre1_atm2ocn')
++         call t_drvstopf('CPL:OCNPRE1',cplrun=.true.,hashint=pycesm_hashint(3))
++      endif
++   case (102) ! lnd_prepare
++      if (.not. lndrun_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:LNDPREP_BARRIER')
++         call t_drvstartf('CPL:LNDPREP',cplrun=.true.,barrier=mpicom_CPLID)
++         if (atm_c2_lnd) call prep_lnd_calc_a2x_lx(timer='CPL:lndprep_atm2lnd')
++         if (lnd_prognostic) then
++            call prep_lnd_mrg(infodata,timer_mrg='CPL:lndprep_mrgx2l')
++            call component_diag(infodata,lnd,flow='x2c',comment='send lnd', &
++                 info_debug=info_debug,timer_diag='CPL:lndprep_diagav')
++         endif
++         call t_drvstopf('CPL:LNDPREP',cplrun=.true.)
++      endif
++   case (103) ! cpl_to_lnd
++      if (.not. lndrun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLLNDID) then
++         call component_exch(lnd,flow='x2c',infodata=infodata, &
++              infodata_string='cpl2lnd_run',mpicom_barrier=mpicom_CPLALLLNDID, &
++              run_barriers=run_barriers,timer_barrier='CPL:C2L_BARRIER', &
++              timer_comp_exch='CPL:C2L',timer_map_exch='CPL:c2l_lndx2lndl', &
++              timer_infodata_exch='CPL:c2l_infoexch')
++      endif
++   case (104) ! ice_prepare
++      if (.not. icerun_alarm) then
++         status = 5
++      elseif (iamin_CPLID .and. ice_prognostic) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ICEPREP_BARRIER')
++         call t_drvstartf('CPL:ICEPREP',cplrun=.true.,barrier=mpicom_CPLID)
++         if (ocn_c2_ice) call prep_ice_calc_o2x_ix(timer='CPL:iceprep_ocn2ice')
++         if (atm_c2_ice) then
++            a2x_ox => prep_ocn_get_a2x_ox()
++            call prep_ice_calc_a2x_ix(a2x_ox,timer='CPL:iceprep_atm2ice')
++         endif
++         call prep_ice_mrg(infodata,timer_mrg='CPL:iceprep_mrgx2i')
++         call component_diag(infodata,ice,flow='x2c',comment='send ice', &
++              info_debug=info_debug,timer_diag='CPL:iceprep_diagav')
++         call t_drvstopf('CPL:ICEPREP',cplrun=.true.)
++      endif
++   case (105) ! cpl_to_ice
++      if (.not. icerun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLICEID .and. ice_prognostic) then
++         call component_exch(ice,flow='x2c',infodata=infodata, &
++              infodata_string='cpl2ice_run',mpicom_barrier=mpicom_CPLALLICEID, &
++              run_barriers=run_barriers,timer_barrier='CPL:C2I_BARRIER', &
++              timer_comp_exch='CPL:C2I',timer_map_exch='CPL:c2i_icex2icei', &
++              timer_infodata_exch='CPL:ice_infoexch')
++      endif
++   case (106) ! rof_prepare
++      if (.not. rofrun_alarm) then
++         status = 5
++      elseif (iamin_CPLID .and. rof_prognostic) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ROFPREP_BARRIER')
++         call t_drvstartf('CPL:ROFPREP',cplrun=.true.,barrier=mpicom_CPLID)
++         call prep_rof_accum_avg(timer='CPL:rofprep_l2xavg')
++         if (lnd_c2_rof) call prep_rof_calc_l2r_rx(fractions_lx,timer='CPL:rofprep_lnd2rof')
++         call prep_rof_mrg(infodata,fractions_rx,timer_mrg='CPL:rofprep_mrgx2r')
++         call component_diag(infodata,rof,flow='x2c',comment='send rof', &
++              info_debug=info_debug,timer_diag='CPL:rofprep_diagav')
++         call t_drvstopf('CPL:ROFPREP',cplrun=.true.)
++      endif
++   case (107) ! cpl_to_rof
++      if (.not. rofrun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLROFID .and. rof_prognostic) then
++         call component_exch(rof,flow='x2c',infodata=infodata, &
++              infodata_string='cpl2rof_run',mpicom_barrier=mpicom_CPLALLLNDID, &
++              run_barriers=run_barriers,timer_barrier='CPL:C2R_BARRIER', &
++              timer_comp_exch='CPL:C2R',timer_map_exch='CPL:c2r_rofx2rofr', &
++              timer_infodata_exch='CPL:c2r_infoexch')
++      endif
++   case (108) ! ice_run
++      if (.not. icerun_alarm) then
++         status = 5
++      else
++#ifdef ESMF_INTERFACE
++         call component_run(Eclock_i,ice,infodata, &
++#else
++         call component_run(Eclock_i,ice,ice_run,infodata, &
++#endif
++              seq_flds_x2c_fluxes=seq_flds_x2i_fluxes, &
++              seq_flds_c2x_fluxes=seq_flds_i2x_fluxes, &
++              comp_prognostic=ice_prognostic,comp_num=4, &
++              timer_barrier='CPL:ICE_RUN_BARRIER',timer_comp_run='CPL:ICE_RUN', &
++              run_barriers=run_barriers,ymd=ymd,tod=tod,comp_layout=ice_layout)
++      endif
++   case (109) ! lnd_run
++      if (.not. lndrun_alarm) then
++         status = 5
++      else
++#ifdef ESMF_INTERFACE
++         call component_run(Eclock_l,lnd,infodata, &
++#else
++         call component_run(Eclock_l,lnd,lnd_run,infodata, &
++#endif
++              seq_flds_x2c_fluxes=seq_flds_x2l_fluxes, &
++              seq_flds_c2x_fluxes=seq_flds_l2x_fluxes, &
++              comp_prognostic=lnd_prognostic,comp_num=3, &
++              timer_barrier='CPL:LND_RUN_BARRIER',timer_comp_run='CPL:LND_RUN', &
++              run_barriers=run_barriers,ymd=ymd,tod=tod,comp_layout=lnd_layout)
++      endif
++   case (110) ! rof_run
++      if (.not. rofrun_alarm) then
++         status = 5
++      else
++#ifdef ESMF_INTERFACE
++         call component_run(Eclock_r,rof,infodata, &
++#else
++         call component_run(Eclock_r,rof,rof_run,infodata, &
++#endif
++              seq_flds_x2c_fluxes=seq_flds_x2r_fluxes, &
++              seq_flds_c2x_fluxes=seq_flds_r2x_fluxes, &
++              comp_prognostic=rof_prognostic,comp_num=8, &
++              timer_barrier='CPL:ROF_RUN_BARRIER',timer_comp_run='CPL:ROF_RUN', &
++              run_barriers=run_barriers,ymd=ymd,tod=tod,comp_layout=rof_layout)
++      endif
++   case (111) ! ocn_run
++      if (.not. ocnrun_alarm) then
++         status = 5
++      else
++#ifdef ESMF_INTERFACE
++         call component_run(Eclock_o,ocn,infodata, &
++#else
++         call component_run(Eclock_o,ocn,ocn_run,infodata, &
++#endif
++              seq_flds_x2c_fluxes=seq_flds_x2o_fluxes, &
++              seq_flds_c2x_fluxes=seq_flds_o2x_fluxes, &
++              comp_prognostic=ocn_prognostic,comp_num=5, &
++              timer_barrier='CPL:OCNT_RUN_BARRIER',timer_comp_run='CPL:OCNT_RUN', &
++              run_barriers=run_barriers,ymd=ymd,tod=tod,comp_layout=ocn_layout)
++      endif
++   case (112) ! ocn_to_cpl
++      if (.not. ocnnext_alarm) then
++         status = 5
++      elseif (iamin_CPLALLOCNID) then
++         call component_exch(ocn,flow='c2x',infodata=infodata, &
++              infodata_string='ocn2cpl_run',mpicom_barrier=mpicom_CPLALLOCNID, &
++              run_barriers=run_barriers,timer_barrier='CPL:O2CT_BARRIER', &
++              timer_comp_exch='CPL:O2CT',timer_map_exch='CPL:o2c_ocno2ocnx', &
++              timer_infodata_exch='CPL:o2c_infoexch')
++      endif
++   case (113) ! ocn_post
++      if (.not. ocnnext_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:OCNPOSTT_BARRIER')
++         call t_drvstartf('CPL:OCNPOSTT',cplrun=.true.,barrier=mpicom_CPLID)
++         call component_diag(infodata,ocn,flow='c2x',comment='recv ocn', &
++              info_debug=info_debug,timer_diag='CPL:ocnpost_diagav')
++         call t_drvstopf('CPL:OCNPOSTT',cplrun=.true.)
++      endif
++   case (114) ! atm_ocn_flux in the active CESM1_MOD_TIGHT block
++      if (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ATMOCNP_BARRIER')
++         call t_drvstartf('CPL:ATMOCNP',cplrun=.true.,barrier=mpicom_CPLID, &
++              hashint=pycesm_hashint(7))
++         call t_drvstartf('CPL:atmocnp_fluxo',barrier=mpicom_CPLID)
++         do exi = 1,num_inst_xao
++            eai = mod((exi-1),num_inst_atm) + 1
++            eoi = mod((exi-1),num_inst_ocn) + 1
++            a2x_ox => prep_ocn_get_a2x_ox()
++            o2x_ox => component_get_c2x_cx(ocn(eoi))
++            xao_ox => prep_aoflux_get_xao_ox()
++            call seq_flux_atmocn_mct(infodata,a2x_ox(eai),o2x_ox,xao_ox(exi))
++         enddo
++         call t_drvstopf('CPL:atmocnp_fluxo')
++      endif
++   case (115) ! ocn_albedo and close the active ATMOCNP block
++      if (iamin_CPLID) then
++         call t_drvstartf('CPL:atmocnp_ocnalb',barrier=mpicom_CPLID)
++         do exi = 1,num_inst_xao
++            efi = mod((exi-1),num_inst_frc) + 1
++            xao_ox => prep_aoflux_get_xao_ox()
++            call seq_flux_ocnalb_mct(infodata,ocn(1),fractions_ox(efi),xao_ox(exi))
++         enddo
++         call t_drvstopf('CPL:atmocnp_ocnalb')
++         call t_drvstopf('CPL:ATMOCNP',cplrun=.true.,hashint=pycesm_hashint(7))
++      endif
++   case (116) ! lnd_to_cpl
++      if (.not. lndrun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLLNDID) then
++         call component_exch(lnd,flow='c2x',infodata=infodata, &
++              infodata_string='lnd2cpl_run',mpicom_barrier=mpicom_CPLALLLNDID, &
++              run_barriers=run_barriers,timer_barrier='CPL:L2C_BARRIER', &
++              timer_comp_exch='CPL:L2C',timer_map_exch='CPL:l2c_lndl2lndx', &
++              timer_infodata_exch='lnd2cpl_run')
++      endif
++   case (117) ! lnd_post
++      if (.not. lndrun_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:LNDPOST_BARRIER')
++         call t_drvstartf('CPL:LNDPOST',cplrun=.true.,barrier=mpicom_CPLID)
++         call component_diag(infodata,lnd,flow='c2x',comment='recv lnd', &
++              info_debug=info_debug,timer_diag='CPL:lndpost_diagav')
++         if (lnd_c2_rof) call prep_rof_accum(timer='CPL:lndpost_accl2r')
++         if (lnd_c2_glc) call prep_glc_accum(timer='CPL:lndpost_accl2g')
++         call t_drvstopf('CPL:LNDPOST',cplrun=.true.)
++      endif
++   case (118) ! rof_to_cpl
++      if (.not. rofrun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLROFID) then
++         call component_exch(rof,flow='c2x',infodata=infodata, &
++              infodata_string='rof2cpl_run',mpicom_barrier=mpicom_CPLALLROFID, &
++              run_barriers=run_barriers,timer_barrier='CPL:R2C_BARRIER', &
++              timer_comp_exch='CPL:R2C',timer_map_exch='CPL:r2c_rofr2rofx', &
++              timer_infodata_exch='CPL:r2c_infoexch')
++      endif
++   case (119) ! rof_post
++      if (.not. rofrun_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ROFPOST_BARRIER')
++         call t_drvstartf('CPL:ROFPOST',cplrun=.true.,barrier=mpicom_CPLID)
++         call component_diag(infodata,rof,flow='c2x',comment='recv rof', &
++              info_debug=info_debug,timer_diag='CPL:rofpost_diagav')
++         if (do_hist_r2x) then
++            call t_drvstartf('CPL:rofpost_histaux',barrier=mpicom_CPLID)
++            do eri = 1,num_inst_rof
++               suffix = component_get_suffix(rof(eri))
++               call seq_hist_writeaux(infodata,EClock_d,rof(eri),flow='c2x', &
++                    aname='r2x'//trim(suffix),dname='domrb',nx=rof_nx,ny=rof_ny,nt=1)
++            enddo
++            call t_drvstopf('CPL:rofpost_histaux')
++         endif
++         if (rof_c2_lnd) call prep_lnd_calc_r2x_lx(timer='CPL:rofpost_rof2lnd')
++         if (rof_c2_ice) call prep_ice_calc_r2x_ix(timer='CPL:rofpost_rof2ice')
++         if (rof_c2_ocn) call prep_ocn_calc_r2x_ox(timer='CPL:rofpost_rof2ocn')
++         call t_drvstopf('CPL:ROFPOST',cplrun=.true.)
++      endif
++   case (120) ! ice_to_cpl
++      if (.not. icerun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLICEID) then
++         call component_exch(ice,flow='c2x',infodata=infodata, &
++              infodata_string='ice2cpl_run',mpicom_barrier=mpicom_CPLALLICEID, &
++              run_barriers=run_barriers,timer_barrier='CPL:I2C_BARRIER', &
++              timer_comp_exch='CPL:I2C',timer_map_exch='CPL:i2c_icei2icex', &
++              timer_infodata_exch='CPL:r2c_infoexch')
++      endif
++   case (121) ! ice_post
++      if (.not. icerun_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ICEPOST_BARRIER')
++         call t_drvstartf('CPL:ICEPOST',cplrun=.true.,barrier=mpicom_CPLID)
++         call component_diag(infodata,ice,flow='c2x',comment='recv ice', &
++              info_debug=info_debug,timer_diag='CPL:icepost_diagav')
++         call t_drvstopf('CPL:ICEPOST',cplrun=.true.)
++      endif
++   case (122) ! fraction_update
++      if (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:FRACSET_BARRIER')
++         call t_drvstartf('CPL:FRACSET',cplrun=.true.,barrier=mpicom_CPLID)
++         call t_drvstartf('CPL:fracset_fracset',barrier=mpicom_CPLID)
++         do efi = 1,num_inst_frc
++            eii = mod((efi-1),num_inst_ice) + 1
++            call seq_frac_set(infodata,ice(eii),fractions_ax(efi), &
++                 fractions_ix(efi),fractions_ox(efi))
++         enddo
++         call t_drvstopf('CPL:fracset_fracset')
++         call t_drvstopf('CPL:FRACSET',cplrun=.true.)
++      endif
++   case (123) ! atm_prepare
++      if (.not. atmrun_alarm) then
++         status = 5
++      elseif (iamin_CPLID .and. atm_prognostic) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ATMPREP_BARRIER')
++         call t_drvstartf('CPL:ATMPREP',cplrun=.true.,barrier=mpicom_CPLID)
++         if (ocn_c2_atm) then
++            call prep_aoflux_calc_xao_ax(fractions_ox,flds='states_and_fluxes', &
++                 timer='CPL:atmprep_xao2atm')
++            call prep_atm_calc_o2x_ax(fractions_ox,timer='CPL:atmprep_ocn2atm')
++            call prep_aoflux_calc_xao_ax(fractions_ox,flds='albedos', &
++                 timer='CPL:atmprep_alb2atm')
++         endif
++         if (ice_c2_atm) call prep_atm_calc_i2x_ax(fractions_ix,timer='CPL:atmprep_ice2atm')
++         if (lnd_c2_atm) call prep_atm_calc_l2x_ax(fractions_lx,timer='CPL:atmprep_lnd2atm')
++         if (associated(xao_ax)) then
++            call prep_atm_mrg(infodata,fractions_ax,xao_ax=xao_ax,timer_mrg='CPL:atmprep_mrgx2a')
++         endif
++         call component_diag(infodata,atm,flow='x2c',comment='send atm', &
++              info_debug=info_debug,timer_diag='CPL:atmprep_diagav')
++         call t_drvstopf('CPL:ATMPREP',cplrun=.true.)
++      endif
++   case (124) ! cpl_to_atm
++      if (.not. atmrun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLATMID .and. atm_prognostic) then
++         call component_exch(atm,flow='x2c',infodata=infodata, &
++              infodata_string='cpl2atm_run',mpicom_barrier=mpicom_CPLALLATMID, &
++              run_barriers=run_barriers,timer_barrier='CPL:C2A_BARRIER', &
++              timer_comp_exch='CPL:C2A',timer_map_exch='CPL:c2a_atmx2atmg', &
++              timer_infodata_exch='CPL:c2a_infoexch')
++      endif
++   case (125) ! atm_run
++      if (.not. atmrun_alarm) then
++         status = 5
++      else
+ #ifdef ESMF_INTERFACE
+-   call component_final(EClock_a, atm)
+-   call component_final(EClock_l, lnd)
+-   call component_final(EClock_r, rof)
+-   call component_final(EClock_i, ice)
+-   call component_final(EClock_o, ocn)
+-   call component_final(EClock_g, glc)
+-   call component_final(EClock_w, wav)
+-#else
+-   call component_final(EClock_a, atm, atm_final)
+-   call component_final(EClock_l, lnd, lnd_final)
+-   call component_final(EClock_r, rof, rof_final)
+-   call component_final(EClock_i, ice, ice_final)
+-   call component_final(EClock_o, ocn, ocn_final)
+-   call component_final(EClock_g, glc, glc_final)
+-   call component_final(EClock_w, wav, wav_final)
++         call component_run(Eclock_a,atm,infodata, &
++#else
++         call component_run(Eclock_a,atm,atm_run,infodata, &
+ #endif
++              seq_flds_x2c_fluxes=seq_flds_x2a_fluxes, &
++              seq_flds_c2x_fluxes=seq_flds_a2x_fluxes, &
++              comp_prognostic=atm_prognostic,comp_num=2, &
++              timer_barrier='CPL:ATM_RUN_BARRIER',timer_comp_run='CPL:ATM_RUN', &
++              run_barriers=run_barriers,ymd=ymd,tod=tod,comp_layout=atm_layout)
++      endif
++   case (126) ! atm_to_cpl
++      if (.not. atmrun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLATMID) then
++         call component_exch(atm,flow='c2x',infodata=infodata, &
++              infodata_string='atm2cpl_run',mpicom_barrier=mpicom_CPLALLATMID, &
++              run_barriers=run_barriers,timer_barrier='CPL:A2C_BARRIER', &
++              timer_comp_exch='CPL:A2C',timer_map_exch='CPL:a2c_atma2atmx', &
++              timer_infodata_exch='CPL:a2c_infoexch')
++      endif
++   case (127) ! atm_post
++      if (.not. atmrun_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ATMPOST_BARRIER')
++         call t_drvstartf('CPL:ATMPOST',cplrun=.true.,barrier=mpicom_CPLID)
++         call component_diag(infodata,atm,flow='c2x',comment='recv atm', &
++              info_debug=info_debug,timer_diag='CPL:atmpost_diagav')
++         call t_drvstopf('CPL:ATMPOST',cplrun=.true.)
++      endif
++   case (128) ! restart
++      if (.not. restart_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:RESTART_BARRIER')
++         call t_drvstartf('CPL:RESTART',cplrun=.true.,barrier=mpicom_CPLID)
++         if (iamroot_CPLID) then
++            write(logunit,'(A,2I8)') ' Write restart file at ',ymd,tod
++            call shr_sys_flush(logunit)
++         endif
++         call seq_rest_write(EClock_d,seq_SyncClock,infodata,atm,lnd,ice,ocn,rof,glc,wav, &
++              fractions_ax,fractions_lx,fractions_ix,fractions_ox, &
++              fractions_rx,fractions_gx,fractions_wx)
++         call t_drvstopf('CPL:RESTART',cplrun=.true.)
++      endif
++   case (129) ! history
++      if (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:HISTORY_BARRIER')
++         call t_drvstartf('CPL:HISTORY',cplrun=.true.,barrier=mpicom_CPLID)
++         if (history_alarm) then
++            if (iamroot_CPLID) then
++               write(logunit,'(A,2I8)') ' Write history file at ',ymd,tod
++               call shr_sys_flush(logunit)
++            endif
++            call seq_hist_write(infodata,EClock_d,atm,lnd,ice,ocn,rof,glc,wav, &
++                 fractions_ax,fractions_lx,fractions_ix,fractions_ox, &
++                 fractions_rx,fractions_gx,fractions_wx)
++         endif
++         if (do_histavg) then
++            call seq_hist_writeavg(infodata,EClock_d,atm,lnd,ice,ocn,rof,glc,wav,histavg_alarm)
++         endif
++         if (do_hist_a2x) then
++            do eai = 1,num_inst_atm
++               suffix = component_get_suffix(atm(eai))
++               if (trim(hist_a2x_flds) == 'all') then
++                  call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                       aname='a2x'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny,nt=ncpl)
++               else
++                  call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                       aname='a2x'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny, &
++                       nt=ncpl,flds=hist_a2x_flds)
++               endif
++            enddo
++         endif
++         if (do_hist_a2x3hr) then
++            do eai = 1,num_inst_atm
++               suffix = component_get_suffix(atm(eai))
++               if (trim(hist_a2x3hr_flds) == 'all') then
++                  call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                       aname='a2x3h'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny, &
++                       nt=8,write_now=t3hr_alarm)
++               else
++                  call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                       aname='a2x3h'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny, &
++                       nt=8,write_now=t3hr_alarm,flds=hist_a2x3hr_flds)
++               endif
++            enddo
++         endif
++         if (do_hist_a2x3hrp) then
++            do eai = 1,num_inst_atm
++               suffix = component_get_suffix(atm(eai))
++               if (trim(hist_a2x3hrp_flds) == 'all') then
++                  call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                       aname='a2x3h_prec'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny, &
++                       nt=8,write_now=t3hr_alarm)
++               else
++                  call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                       aname='a2x3h_prec'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny, &
++                       nt=8,write_now=t3hr_alarm,flds=hist_a2x3hrp_flds)
++               endif
++            enddo
++         endif
++         if (do_hist_a2x24hr) then
++            do eai = 1,num_inst_atm
++               suffix = component_get_suffix(atm(eai))
++               call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                    aname='a2x1d'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny, &
++                    nt=1,write_now=t24hr_alarm)
++            enddo
++         endif
++         if (do_hist_l2x1yr .and. glcrun_alarm) then
++            do eli = 1,num_inst_lnd
++               suffix = component_get_suffix(lnd(eli))
++               call seq_hist_writeaux(infodata,EClock_d,lnd(eli),flow='c2x', &
++                    aname='l2x'//trim(suffix),dname='doml',nx=lnd_nx,ny=lnd_ny, &
++                    nt=1,write_now=t1yr_alarm,yr_offset=-1)
++            enddo
++         endif
++         if (do_hist_l2x) then
++            do eli = 1,num_inst_lnd
++               suffix = component_get_suffix(lnd(eli))
++               call seq_hist_writeaux(infodata,EClock_d,lnd(eli),flow='c2x', &
++                    aname='l2x'//trim(suffix),dname='doml',nx=lnd_nx,ny=lnd_ny,nt=ncpl)
++            enddo
++         endif
++         call t_drvstopf('CPL:HISTORY',cplrun=.true.)
++      endif
++   case default
++      status = 1
++   end select
+ 
+-   !------------------------------------------------------------------------
+-   ! End the run cleanly
+-   !------------------------------------------------------------------------
++   if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
++   if (status == 0 .and. action_id >= 101 .and. action_id <= 129) then
++      pycesm_expected_action = action_id
++   endif
++ end subroutine cesm_action_call
+ 
+-   call shr_pio_finalize( )
++!===============================================================================
++!*******************************************************************************
++!===============================================================================
+ 
+-   call shr_mpi_min(msize ,msize0,mpicom_GLOID,' driver msize0', all=.true.)
+-   call shr_mpi_max(msize ,msize1,mpicom_GLOID,' driver msize1', all=.true.)
+-   call shr_mpi_min(mrss  ,mrss0,mpicom_GLOID,'  driver mrss0',  all=.true.)
+-   call shr_mpi_max(mrss  ,mrss1,mpicom_GLOID,'  driver mrss1',  all=.true.)
++ subroutine cesm_final()
++   implicit none
++   integer :: action_id
++   integer :: status
+ 
+-   if (iamroot_CPLID )then
+-      call seq_timemgr_EClockGetData( EClock_d, curr_ymd=ymd, curr_tod=tod, dtime=dtime)
+-      simDays = (endStep-begStep)*dtime/(24._r8*3600._r8)
+-      write(logunit,'(//)')
+-      write(logunit,FormatA) subname, 'SUCCESSFUL TERMINATION OF CPL7-CESM'
+-      write(logunit,FormatD) subname, '  at YMD,TOD = ',ymd,tod
+-      write(logunit,FormatR) subname, '# simulated days (this run) = ', simDays
+-      write(logunit,FormatR) subname, 'compute time (hrs)          = ', (Time_end-Time_begin)/3600._r8
+-      if ( (Time_end /= Time_begin) .and. (simDays /= 0.0_r8) )then
+-         SYPD = shr_const_cday*simDays/(days_per_year*(Time_end-Time_begin))
+-         write(logunit,FormatR) subname, '# simulated years / cmp-day = ', SYPD
+-      endif
+-      write(logunit,FormatR) subname,' pes min memory highwater  (MB)  = ',mrss0
+-      write(logunit,FormatR) subname,' pes max memory highwater  (MB)  = ',mrss1
+-      write(logunit,FormatR) subname,' pes min memory last usage (MB)  = ',msize0
+-      write(logunit,FormatR) subname,' pes max memory last usage (MB)  = ',msize1
+-      write(logunit,'(//)')
+-      close(logunit)
+-   endif
+-
+-   call t_stopf  ('CPL:FINAL')
+-   call t_prf(trim(timing_dir)//'/cesm_timing', mpicom_GLOID)
+-   call t_finalizef()
++   do action_id = 601, 610
++      call cesm_final_action_call(action_id, status)
++      if (status /= 0) then
++         call shr_sys_abort(subname//' Python finalization action rejected')
++      endif
++   enddo
++
++ end subroutine cesm_final
++
++!===============================================================================
++
++ subroutine cesm_final_action_call(action_id, status)
++
++   use shr_pio_mod, only : shr_pio_finalize
++   implicit none
++   integer, intent(in) :: action_id
++   integer, intent(out) :: status
++
++   status = 0
++   if (action_id == 601) then
++      if (pycesm_final_active .or. pycesm_step_active .or. &
++          pycesm_atm_nested_active) then
++         status = 1
++         return
++      endif
++      pycesm_final_active = .true.
++      pycesm_final_expected_action = 600
++   endif
++
++   if (.not. pycesm_final_active) then
++      status = 1
++      return
++   endif
++   if (action_id /= pycesm_final_expected_action + 1) then
++      status = 2
++      return
++   endif
++
++   !------------------------------------------------------------------------
++   ! Finalization of all models
++   !------------------------------------------------------------------------
++
++   select case (action_id)
++   case (601)
++      call t_barrierf ('CPL:FINAL_BARRIER', mpicom_GLOID)
++      call t_startf ('CPL:FINAL')
++      call seq_timemgr_EClockGetData( EClock_d, stepno=endstep)
++      call shr_mem_getusage(msize,mrss)
++   case (602)
++      ! The unique CAM instance is finalized explicitly by FreeCAM between
++      ! actions 601 and 602.  The provider owns only coupler/components.
++      continue
++   case (603)
++#ifdef ESMF_INTERFACE
++      call component_final(EClock_l, lnd)
++#else
++      call component_final(EClock_l, lnd, lnd_final)
++#endif
++   case (604)
++#ifdef ESMF_INTERFACE
++      call component_final(EClock_r, rof)
++#else
++      call component_final(EClock_r, rof, rof_final)
++#endif
++   case (605)
++#ifdef ESMF_INTERFACE
++      call component_final(EClock_i, ice)
++#else
++      call component_final(EClock_i, ice, ice_final)
++#endif
++   case (606)
++#ifdef ESMF_INTERFACE
++      call component_final(EClock_o, ocn)
++#else
++      call component_final(EClock_o, ocn, ocn_final)
++#endif
++   case (607)
++#ifdef ESMF_INTERFACE
++      call component_final(EClock_g, glc)
++#else
++      call component_final(EClock_g, glc, glc_final)
++#endif
++   case (608)
++#ifdef ESMF_INTERFACE
++      call component_final(EClock_w, wav)
++#else
++      call component_final(EClock_w, wav, wav_final)
++#endif
++   case (609)
++      ! End the component run cleanly while preserving the original reduction
++      ! and log order.
++      call shr_pio_finalize( )
++      call shr_mpi_min(msize ,msize0,mpicom_GLOID,' driver msize0', all=.true.)
++      call shr_mpi_max(msize ,msize1,mpicom_GLOID,' driver msize1', all=.true.)
++      call shr_mpi_min(mrss  ,mrss0,mpicom_GLOID,'  driver mrss0',  all=.true.)
++      call shr_mpi_max(mrss  ,mrss1,mpicom_GLOID,'  driver mrss1',  all=.true.)
++
++      if (iamroot_CPLID )then
++         call seq_timemgr_EClockGetData( EClock_d, curr_ymd=ymd, curr_tod=tod, dtime=dtime)
++         simDays = (endStep-begStep)*dtime/(24._r8*3600._r8)
++         write(logunit,'(//)')
++         write(logunit,FormatA) subname, 'SUCCESSFUL TERMINATION OF CPL7-CESM'
++         write(logunit,FormatD) subname, '  at YMD,TOD = ',ymd,tod
++         write(logunit,FormatR) subname, '# simulated days (this run) = ', simDays
++         write(logunit,FormatR) subname, 'compute time (hrs)          = ', (Time_end-Time_begin)/3600._r8
++         if ( (Time_end /= Time_begin) .and. (simDays /= 0.0_r8) )then
++            SYPD = shr_const_cday*simDays/(days_per_year*(Time_end-Time_begin))
++            write(logunit,FormatR) subname, '# simulated years / cmp-day = ', SYPD
++         endif
++         write(logunit,FormatR) subname,' pes min memory highwater  (MB)  = ',mrss0
++         write(logunit,FormatR) subname,' pes max memory highwater  (MB)  = ',mrss1
++         write(logunit,FormatR) subname,' pes min memory last usage (MB)  = ',msize0
++         write(logunit,FormatR) subname,' pes max memory last usage (MB)  = ',msize1
++         write(logunit,'(//)')
++         close(logunit)
++      endif
++   case (610)
++      call t_stopf  ('CPL:FINAL')
++      call t_prf(trim(timing_dir)//'/cesm_timing', mpicom_GLOID)
++      call t_finalizef()
++   case default
++      status = 3
++      return
++   end select
++
++   pycesm_final_expected_action = action_id
++   if (action_id == 610) then
++      pycesm_final_active = .false.
++      pycesm_final_expected_action = 0
++   endif
+ 
+-end subroutine cesm_final
++ end subroutine cesm_final_action_call
+ 
+ !===============================================================================
+ !*******************************************************************************
+diff --git a/src/drivers/mct/main/component_mod.F90 b/src/drivers/mct/main/component_mod.F90
+--- a/src/drivers/mct/main/component_mod.F90
++++ b/src/drivers/mct/main/component_mod.F90
+@@ -49,6 +49,8 @@
+ 
+   public :: component_init_pre
+   public :: component_init_cc            ! mct and esmf versions
++  public :: component_init_external_begin
++  public :: component_init_external_end
+   public :: component_init_cx
+   public :: component_init_aream
+   public :: component_init_areacor
+@@ -56,6 +58,8 @@
+   public :: component_init_update_petlist !esmf only
+ #endif
+   public :: component_run                 ! mct and esmf versions
++  public :: component_run_begin           ! Python-owned PI-atm boundary
++  public :: component_run_end             ! Python-owned PI-atm boundary
+   public :: component_final               ! mct and esmf versions 
+   public :: component_exch
+   public :: component_diag
+@@ -287,6 +291,82 @@
+ 
+   !===============================================================================
+ 
++#ifndef ESMF_INTERFACE
++  subroutine component_init_external_begin(comp, infodata, &
++       seq_flds_x2c_fluxes, status)
++    type(component_type), intent(inout) :: comp(:)
++    type(seq_infodata_type), intent(inout) :: infodata
++    character(len=*), intent(in) :: seq_flds_x2c_fluxes
++    integer, intent(out) :: status
++    integer :: eci
++
++    status = 0
++    if (size(comp) /= 1 .or. comp(1)%oneletterid /= 'a') then
++       status = 2
++       return
++    endif
++    if (comp(1)%iamin_cplallcompid) then
++       call seq_infodata_exchange(infodata, comp(1)%cplallcompid, &
++            'cpl2'//comp(1)%ntype(1:3)//'_init')
++    endif
++    do eci = 1,size(comp)
++       if (.not. associated(comp(eci)%x2c_cc)) allocate(comp(eci)%x2c_cc)
++       if (.not. associated(comp(eci)%c2x_cc)) allocate(comp(eci)%c2x_cc)
++       if (comp(eci)%iamin_compid .and. comp(eci)%present) then
++          if (drv_threading) &
++               call seq_comm_setnthreads(comp(eci)%nthreads_compid)
++          call shr_sys_flush(logunit)
++          call mct_avect_vecmult(comp(eci)%x2c_cc, comp(eci)%drv2mdl, &
++               seq_flds_x2c_fluxes, mask_spval=.true.)
++       endif
++    enddo
++  end subroutine component_init_external_begin
++
++  !===============================================================================
++
++  subroutine component_init_external_end(comp, infodata, &
++       seq_flds_c2x_fluxes, status)
++    type(component_type), intent(inout) :: comp(:)
++    type(seq_infodata_type), intent(inout) :: infodata
++    character(len=*), intent(in) :: seq_flds_c2x_fluxes
++    integer, intent(out) :: status
++    integer :: eci, k1, k2
++
++    status = 0
++    if (size(comp) /= 1 .or. comp(1)%oneletterid /= 'a') then
++       status = 2
++       return
++    endif
++    do eci = 1,size(comp)
++       if (comp(eci)%iamin_compid .and. comp(eci)%present) then
++          call mct_avect_vecmult(comp(eci)%c2x_cc, comp(eci)%mdl2drv, &
++               seq_flds_c2x_fluxes, mask_spval=.true.)
++          if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
++       endif
++    enddo
++    if (comp(1)%iamin_cplcompid) then
++       call seq_infodata_exchange(infodata, comp(1)%cplcompid, &
++            comp(1)%ntype(1:3)//'2cpl_init')
++    endif
++    do eci = 1,size(comp)
++       call seq_infodata_getData(infodata, atm_present=comp(eci)%present)
++       if (comp(eci)%iamin_compid .and. comp(eci)%present) then
++          if (drv_threading) &
++               call seq_comm_setnthreads(comp(eci)%nthreads_compid)
++          k1 = mct_aVect_indexRa(comp(eci)%cdata_cc%dom%data, 'area', &
++               perrWith='aa area ')
++          k2 = mct_aVect_indexRa(comp(eci)%cdata_cc%dom%data, 'aream', &
++               perrWith='aa aream')
++          comp(eci)%cdata_cc%dom%data%rAttr(k2,:) = &
++               comp(eci)%cdata_cc%dom%data%rAttr(k1,:)
++          if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
++       endif
++    enddo
++  end subroutine component_init_external_end
++#endif
++
++  !===============================================================================
++
+ #ifdef ESMF_INTERFACE
+   subroutine component_init_cc(Eclock, drvcomp, comp, gridcomp_register,  &
+        infodata, NlFilename, seq_flds_x2c_fields, seq_flds_c2x_fields, &
+@@ -928,6 +1008,73 @@
+   !===============================================================================
+ 
+ #ifndef ESMF_INTERFACE
++  subroutine component_run_begin(comp, infodata, seq_flds_x2c_fluxes, &
++       comp_prognostic, timer_barrier, timer_comp_run, run_barriers, status)
++
++    ! Split the non-numerical prologue from component_run so Python can own
++    ! the ordering of the component's internal entry points.  The admitted
++    ! PI-atm path has one ATM instance and one phase; fail closed otherwise.
++    type(component_type)      , intent(inout) :: comp(:)
++    type(seq_infodata_type)   , intent(inout) :: infodata
++    character(len=*)          , intent(in)    :: seq_flds_x2c_fluxes
++    logical                   , intent(in)    :: comp_prognostic
++    character(len=*)          , intent(in)    :: timer_barrier
++    character(len=*)          , intent(in)    :: timer_comp_run
++    logical                   , intent(in)    :: run_barriers
++    integer                   , intent(out)   :: status
++    integer :: ierr
++
++    status = 0
++    if (size(comp) /= 1) then
++       status = 2
++       return
++    endif
++
++    if (comp(1)%oneletterid == 'a') then
++       call seq_infodata_putData(infodata, atm_phase=1)
++    else
++       status = 2
++       return
++    endif
++
++    if (.not. comp(1)%iamin_compid) return
++    if (run_barriers) then
++       call t_drvstartf(trim(timer_barrier))
++       call mpi_barrier(comp(1)%mpicom_compid, ierr)
++       call t_drvstopf(trim(timer_barrier))
++    endif
++    call t_drvstartf(trim(timer_comp_run), barrier=comp(1)%mpicom_compid)
++    if (drv_threading) call seq_comm_setnthreads(comp(1)%nthreads_compid)
++    if (comp_prognostic) then
++       call mct_avect_vecmult(comp(1)%x2c_cc, comp(1)%drv2mdl, &
++            seq_flds_x2c_fluxes, mask_spval=.true.)
++    endif
++  end subroutine component_run_begin
++
++  !===============================================================================
++
++  subroutine component_run_end(comp, seq_flds_c2x_fluxes, timer_comp_run, status)
++
++    ! Complete the exact epilogue paired with component_run_begin.
++    type(component_type), intent(inout) :: comp(:)
++    character(len=*)     , intent(in)   :: seq_flds_c2x_fluxes
++    character(len=*)     , intent(in)   :: timer_comp_run
++    integer              , intent(out)  :: status
++
++    status = 0
++    if (size(comp) /= 1 .or. comp(1)%oneletterid /= 'a') then
++       status = 2
++       return
++    endif
++    if (.not. comp(1)%iamin_compid) return
++    call mct_avect_vecmult(comp(1)%c2x_cc, comp(1)%mdl2drv, &
++         seq_flds_c2x_fluxes, mask_spval=.true.)
++    if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
++    call t_drvstopf(trim(timer_comp_run))
++  end subroutine component_run_end
++
++  !===============================================================================
++
+   subroutine component_run(Eclock, comp, comp_run, infodata,  &
+        seq_flds_x2c_fluxes, seq_flds_c2x_fluxes, &
+        comp_prognostic, comp_num, timer_barrier, timer_comp_run, &
+@@ -1385,5 +1532,3 @@
+   end subroutine component_diag
+ 
+ end module component_mod
+-
+-
+diff --git a/src/externals/mct/mct/m_AttrVect.F90 b/src/externals/mct/mct/m_AttrVect.F90
+--- a/src/externals/mct/mct/m_AttrVect.F90
++++ b/src/externals/mct/mct/m_AttrVect.F90
+@@ -70,6 +70,11 @@
+ !
+       use m_realkinds,only : SP,DP,FP          ! Real types definitions
+ 
++      use, intrinsic :: iso_c_binding, only : c_associated, c_char, &
++           c_f_pointer, c_funptr, c_int32_t, c_int64_t, c_loc, &
++           c_null_char, c_null_funptr, c_null_ptr, c_ptr, &
++           c_f_procpointer
++
+       use m_List, only : List   ! Support for rList and iList components.
+ 
+       implicit none
+@@ -150,6 +155,40 @@
+                                      ! AVSharedIndicesOneType structure for a single type
+       public :: cleanSharedIndices   ! clean a AVSharedIndices structure
+       public :: cleanSharedIndicesOneType  ! clean a AVSharedIndicesOneType structure
++      public :: pycesm_mct_set_allocator_v1
++      public :: pycesm_mct_clear_allocator_v1
++
++    abstract interface
++      function pycesm_allocator_callback_v1(kind_code, allocation_id, &
++           item_bytes, attribute_count, point_count, field_names, status) &
++           result(address) bind(C)
++        import :: c_char, c_int32_t, c_int64_t, c_ptr
++        integer(c_int32_t), value, intent(in) :: kind_code
++        integer(c_int64_t), value, intent(in) :: allocation_id
++        integer(c_int32_t), value, intent(in) :: item_bytes
++        integer(c_int32_t), value, intent(in) :: attribute_count
++        integer(c_int64_t), value, intent(in) :: point_count
++        character(kind=c_char), intent(in) :: field_names(*)
++        integer(c_int32_t), intent(out) :: status
++        type(c_ptr) :: address
++      end function pycesm_allocator_callback_v1
++
++      subroutine pycesm_release_callback_v1(address, status) bind(C)
++        import :: c_int32_t, c_ptr
++        type(c_ptr), value, intent(in) :: address
++        integer(c_int32_t), intent(out) :: status
++      end subroutine pycesm_release_callback_v1
++    end interface
++
++    procedure(pycesm_allocator_callback_v1), pointer, save :: &
++         pycesm_allocator => null()
++    procedure(pycesm_release_callback_v1), pointer, save :: &
++         pycesm_releaser => null()
++    type(c_funptr), save :: pycesm_allocator_pointer = c_null_funptr
++    type(c_funptr), save :: pycesm_releaser_pointer = c_null_funptr
++    type(c_ptr), allocatable, save :: pycesm_owned_buffers(:)
++    integer(c_int64_t), save :: pycesm_allocation_sequence = 0_c_int64_t
++    integer, save :: pycesm_owned_buffer_count = 0
+ 
+ 
+     interface init   ; module procedure	&
+@@ -251,6 +290,142 @@
+ 
+  contains
+ 
++ subroutine pycesm_mct_set_allocator_v1(callback, release_callback, status) &
++      bind(C, name='pycesm_mct_set_allocator_v1')
++      type(c_funptr), value, intent(in) :: callback
++      type(c_funptr), value, intent(in) :: release_callback
++      integer(c_int32_t), intent(out) :: status
++
++      status = 0_c_int32_t
++      if (.not. c_associated(callback) .or. &
++           .not. c_associated(release_callback)) then
++         status = 1_c_int32_t
++         return
++      endif
++      if (pycesm_owned_buffer_count /= 0) then
++         status = 2_c_int32_t
++         return
++      endif
++      pycesm_allocator_pointer = callback
++      call c_f_procpointer(pycesm_allocator_pointer, pycesm_allocator)
++      pycesm_releaser_pointer = release_callback
++      call c_f_procpointer(pycesm_releaser_pointer, pycesm_releaser)
++      pycesm_allocation_sequence = 0_c_int64_t
++      if (allocated(pycesm_owned_buffers)) deallocate(pycesm_owned_buffers)
++ end subroutine pycesm_mct_set_allocator_v1
++
++ subroutine pycesm_mct_clear_allocator_v1(status) &
++      bind(C, name='pycesm_mct_clear_allocator_v1')
++      integer(c_int32_t), intent(out) :: status
++      integer(c_int32_t) :: release_status
++
++      status = 0_c_int32_t
++      ! Some long-lived CESM/MCT AttrVects deliberately survive their
++      ! component finalize routine and therefore never call clean_().  The
++      ! Python driver invokes this entry point only after the complete CESM
++      ! finalize plan has returned, which is the collective lifetime boundary
++      ! at which those remaining rank-local NumPy buffers are safe to release.
++      do while (pycesm_owned_buffer_count > 0)
++         release_status = 0_c_int32_t
++         if (associated(pycesm_releaser)) then
++            call pycesm_releaser(&
++                 pycesm_owned_buffers(pycesm_owned_buffer_count), &
++                 release_status)
++         endif
++         if (release_status /= 0_c_int32_t) then
++            status = 1_c_int32_t
++            return
++         endif
++         pycesm_owned_buffers(pycesm_owned_buffer_count) = c_null_ptr
++         pycesm_owned_buffer_count = pycesm_owned_buffer_count - 1
++      enddo
++      nullify(pycesm_allocator)
++      nullify(pycesm_releaser)
++      pycesm_allocator_pointer = c_null_funptr
++      pycesm_releaser_pointer = c_null_funptr
++      pycesm_allocation_sequence = 0_c_int64_t
++      if (allocated(pycesm_owned_buffers)) deallocate(pycesm_owned_buffers)
++ end subroutine pycesm_mct_clear_allocator_v1
++
++ subroutine pycesm_remember_buffer(address)
++      type(c_ptr), intent(in) :: address
++      type(c_ptr), allocatable :: grown(:)
++      integer :: capacity
++
++      if (.not. allocated(pycesm_owned_buffers)) then
++         allocate(pycesm_owned_buffers(128))
++         pycesm_owned_buffers = c_null_ptr
++      elseif (pycesm_owned_buffer_count == size(pycesm_owned_buffers)) then
++         capacity = 2 * size(pycesm_owned_buffers)
++         allocate(grown(capacity))
++         grown = c_null_ptr
++         grown(1:pycesm_owned_buffer_count) = &
++              pycesm_owned_buffers(1:pycesm_owned_buffer_count)
++         call move_alloc(grown, pycesm_owned_buffers)
++      endif
++      pycesm_owned_buffer_count = pycesm_owned_buffer_count + 1
++      pycesm_owned_buffers(pycesm_owned_buffer_count) = address
++ end subroutine pycesm_remember_buffer
++
++ logical function pycesm_forget_buffer(address)
++      type(c_ptr), intent(in) :: address
++      integer :: index
++      integer(c_int32_t) :: release_status
++
++      pycesm_forget_buffer = .false.
++      do index = 1, pycesm_owned_buffer_count
++         if (c_associated(address, pycesm_owned_buffers(index))) then
++            release_status = 0_c_int32_t
++            if (associated(pycesm_releaser)) then
++               call pycesm_releaser(address, release_status)
++            endif
++            pycesm_owned_buffers(index) = &
++                 pycesm_owned_buffers(pycesm_owned_buffer_count)
++            pycesm_owned_buffers(pycesm_owned_buffer_count) = c_null_ptr
++            pycesm_owned_buffer_count = pycesm_owned_buffer_count - 1
++            pycesm_forget_buffer = .true.
++            return
++         endif
++      enddo
++ end function pycesm_forget_buffer
++
++ subroutine pycesm_request_buffer(kind_code, item_bytes, attribute_count, &
++      point_count, names, address, status)
++      integer(c_int32_t), intent(in) :: kind_code
++      integer(c_int32_t), intent(in) :: item_bytes
++      integer, intent(in) :: attribute_count
++      integer, intent(in) :: point_count
++      character(len=*), intent(in) :: names
++      type(c_ptr), intent(out) :: address
++      integer(c_int32_t), intent(out) :: status
++      character(kind=c_char), allocatable :: c_names(:)
++      integer :: index, name_length
++
++      address = c_null_ptr
++      status = 0_c_int32_t
++      if (.not. associated(pycesm_allocator)) then
++         status = 1_c_int32_t
++         return
++      endif
++      name_length = len_trim(names)
++      allocate(c_names(name_length + 1))
++      do index = 1, name_length
++         c_names(index) = names(index:index)
++      enddo
++      c_names(name_length + 1) = c_null_char
++      pycesm_allocation_sequence = pycesm_allocation_sequence + 1_c_int64_t
++      address = pycesm_allocator(&
++           kind_code, pycesm_allocation_sequence, item_bytes, &
++           int(attribute_count, c_int32_t), int(point_count, c_int64_t), &
++           c_names, status)
++      deallocate(c_names)
++      if (status == 0_c_int32_t .and. c_associated(address)) then
++         call pycesm_remember_buffer(address)
++      elseif (status == 0_c_int32_t) then
++         status = 2_c_int32_t
++      endif
++ end subroutine pycesm_request_buffer
++
+ !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ !     Math and Computer Science Division, Argonne National Laboratory  !
+ !BOP -------------------------------------------------------------------
+@@ -316,6 +491,9 @@
+ !
+   character(len=*),parameter :: myname_=myname//'::init_'
+   integer :: nIA,nRA,n,ier
++  integer(c_int32_t) :: pycesm_status
++  type(c_ptr) :: pycesm_address
++  logical :: python_integer_storage, python_real_storage
+ 
+        ! Initially, nullify all pointers in the AttrVect aV:
+ 
+@@ -342,12 +520,42 @@
+   n=0
+   if(present(lsize)) n=lsize
+ 
+-  allocate( aV%iAttr(nIA,n),aV%rAttr(nRA,n),	stat=ier)
+-  if(ier /= 0) call die(myname_,'allocate()',ier)
++  python_integer_storage = .false.
++  python_real_storage = .false.
++
++  if (associated(pycesm_allocator) .and. nIA > 0 .and. n > 0) then
++     call pycesm_request_buffer(1_c_int32_t, &
++          int(storage_size(0) / 8, c_int32_t), nIA, n, iList, &
++          pycesm_address, pycesm_status)
++     if (pycesm_status /= 0_c_int32_t) then
++        call die(myname_,'Python integer allocation',int(pycesm_status))
++     endif
++     call c_f_pointer(pycesm_address, aV%iAttr, (/nIA,n/))
++     python_integer_storage = .true.
++  else
++     allocate(aV%iAttr(nIA,n), stat=ier)
++     if(ier /= 0) call die(myname_,'allocate(iAttr)',ier)
++  endif
++
++  if (associated(pycesm_allocator) .and. nRA > 0 .and. n > 0) then
++     call pycesm_request_buffer(2_c_int32_t, &
++          int(storage_size(0.0_FP) / 8, c_int32_t), nRA, n, rList, &
++          pycesm_address, pycesm_status)
++     if (pycesm_status /= 0_c_int32_t) then
++        call die(myname_,'Python real allocation',int(pycesm_status))
++     endif
++     call c_f_pointer(pycesm_address, aV%rAttr, (/nRA,n/))
++     python_real_storage = .true.
++  else
++     allocate(aV%rAttr(nRA,n), stat=ier)
++     if(ier /= 0) call die(myname_,'allocate(rAttr)',ier)
++  endif
+ 
+ #ifdef MALL_ON
+-	call mall_ci(size(transfer(aV%iAttr,(/1/)),myname_)
+-	call mall_ci(size(transfer(aV%rAttr,(/1/)),myname_)
++	if (.not. python_integer_storage) &
++	     call mall_ci(size(transfer(aV%iAttr,(/1/)),myname_)
++	if (.not. python_real_storage) &
++	     call mall_ci(size(transfer(aV%rAttr,(/1/)),myname_)
+ #endif
+ 
+  end subroutine init_
+@@ -603,6 +811,7 @@
+ 
+   character(len=*),parameter :: myname_=myname//'::clean_'
+   integer :: ier
++  logical :: python_storage
+ 
+ 	! Note that an undefined pointer may either crash the process
+ 	! or return either .true. or .false. to the associated() test.
+@@ -641,18 +850,28 @@
+ 
+   if(associated(aV%iAttr)) then
+ 
++     python_storage = .false.
++     if (size(aV%iAttr) > 0) then
++        python_storage = pycesm_forget_buffer(c_loc(aV%iAttr(1,1)))
++     endif
++
++     if (python_storage) then
++        nullify(aV%iAttr)
++     else
++
+ #ifdef MALL_ON
+-     call mall_co(size(transfer(aV%iAttr,(/1/)),myname_)
++        call mall_co(size(transfer(aV%iAttr,(/1/)),myname_)
+ #endif
+ 
+-     deallocate(aV%iAttr,stat=ier)
++        deallocate(aV%iAttr,stat=ier)
+ 
+-     if(ier /= 0) then
+-	if(present(stat)) then
+-	   stat=ier
+-	else
+-	   call warn(myname_,'deallocate(aV%iAttr)',ier)
+-	endif
++        if(ier /= 0) then
++	   if(present(stat)) then
++	      stat=ier
++	   else
++	      call warn(myname_,'deallocate(aV%iAttr)',ier)
++	   endif
++        endif
+      endif
+ 
+   endif ! if(associated(aV%iAttr))...
+@@ -661,18 +880,28 @@
+ 
+   if(associated(aV%rAttr)) then
+ 
++     python_storage = .false.
++     if (size(aV%rAttr) > 0) then
++        python_storage = pycesm_forget_buffer(c_loc(aV%rAttr(1,1)))
++     endif
++
++     if (python_storage) then
++        nullify(aV%rAttr)
++     else
++
+ #ifdef MALL_ON
+-     call mall_co(size(transfer(aV%rAttr,(/1/)),myname_)
++        call mall_co(size(transfer(aV%rAttr,(/1/)),myname_)
+ #endif
+ 
+-     deallocate(aV%rAttr,stat=ier)
++        deallocate(aV%rAttr,stat=ier)
+ 
+-     if(ier /= 0) then
+-	if(present(stat)) then
+-	   stat=ier
+-	else
+-	   call warn(myname_,'deallocate(aV%rAttr)',ier)
+-	endif
++        if(ier /= 0) then
++	   if(present(stat)) then
++	      stat=ier
++	   else
++	      call warn(myname_,'deallocate(aV%rAttr)',ier)
++	   endif
++        endif
+      endif
+ 
+   endif ! if(associated(aV%rAttr))...
+@@ -4132,7 +4361,3 @@
+ 
+  end module m_AttrVect
+ !.
+-
+-
+-
+-

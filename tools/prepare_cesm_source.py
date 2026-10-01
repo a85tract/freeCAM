@@ -189,7 +189,7 @@ def compare(prepared: Path, checkout: Path, as_of: datetime, *, variant: str = "
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--variant", default="cases", choices=("cases", "state"))
+    parser.add_argument("--variant", default="cases", choices=("cases", "state", "provider"))
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--compare-with", type=Path, help="a hand-made checkout the prepared tree must reproduce")
     parser.add_argument("--as-of", help="when that checkout's case was built (ISO time): later edits are read from its git")

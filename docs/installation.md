@@ -127,8 +127,9 @@ than producing its own.
    [`tools/prepare_cesm_source.py`](../tools/prepare_cesm_source.py)
    prepares: the pinned submodule with the patches
    [`native/pi_cam/cesm_source/source.yaml`](../native/pi_cam/cesm_source/source.yaml)
-   lists (the `ne16_g16` grid, a river-model fix, and for the python-state
-   case `-fPIC` objects):
+   lists (the `ne16_g16` grid, a river-model fix, for the python-state case
+   `-fPIC` objects, and for the online coupler library its driver and MCT
+   storage):
 
    ```bash
    uv run python tools/prepare_cesm_source.py --output DIR [--variant state]
@@ -137,8 +138,8 @@ than producing its own.
    The admitted cases were made by hand from checkouts that held the same
    changes as local commits. `--compare-with CHECKOUT --as-of TIME` checks a
    prepared tree file by file against such a checkout as it was when its case
-   was built; `validation/pi_cam_cesm_source_{oracle,state,pycesm}_case.json`
-   record that for the three cases, with the few files the recipe leaves
+   was built; `validation/pi_cam_cesm_source_*.json` record that for the
+   three cases and the coupler library, with the few files the recipe leaves
    different on purpose and why.
 3. FTorch, once, on a login node:
 

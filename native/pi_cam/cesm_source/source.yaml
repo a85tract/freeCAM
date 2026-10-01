@@ -45,6 +45,24 @@ variants:
         why: "an earlier control patch; compiled from the generated SourceMods or the prepared control source"
       - path: components/cam/src/cpl/atm_comp_mct.F90
         why: "an earlier control patch; compiled from the prepared control source"
+  provider:
+    for: "the online coupler library, which compiles the driver and MCT storage from this source"
+    patches:
+      - component: cime
+        file: patches/cime-provider-driver.patch
+        why: "the driver the coupler library compiles (cesm_comp_mod, component_mod) and MCT's Python-owned attribute storage (m_AttrVect), as validation/pi_cam_external_atm_build.json records them"
+    # The pyCESM checkout was edited after its case was built; none of it reaches the coupler
+    # library, which compiles with the case build's own logged commands, reads only the three
+    # files above from this source, and links CAM from the freeCAM image.
+    known_differences:
+      - path: cime/config/cesm/machines/config_compilers.xml
+        why: "-fPIC, added after the pyCESM case was built; the coupler library compiles with that build's logged commands"
+      - path: components/cam/src/control/cam_comp.F90
+        why: "a control patch; the coupler library links CAM from the freeCAM image"
+      - path: components/cam/src/physics/cam/physpkg.F90
+        why: "a control patch; the coupler library links CAM from the freeCAM image"
+      - path: components/cam/src/cpl/atm_comp_mct.F90
+        why: "a control patch; the coupler library links CAM from the freeCAM image"
 # files the prepared tree leaves at the public tag on purpose, and why (a variant may add its own)
 known_differences:
   - path: cime/config/cesm/machines/template.st_archive

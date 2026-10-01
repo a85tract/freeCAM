@@ -73,6 +73,34 @@ def test_the_state_variant_is_the_cases_source_with_pic_objects() -> None:
     assert set(cesm.known_differences(recipe, "cases")) < set(cesm.known_differences(recipe, "state"))
 
 
+def test_every_variant_has_its_reconstruction_recorded() -> None:
+    recorded = {json.loads(path.read_text())["variant"]
+                for path in (REPO / "validation").glob("pi_cam_cesm_source_*.json")}
+
+    assert recorded == set(cesm.load_recipe()["variants"])
+
+
+def test_the_provider_variant_is_the_source_the_coupler_library_was_compiled_from(tmp_path: Path) -> None:
+    # The library's build record names the sha256 of the three files it compiles from this source.
+    if not (SUBMODULE / "cime").is_dir():
+        pytest.skip("the iCESM submodule is not checked out")
+    build = json.loads((REPO / "validation/pi_cam_external_atm_build.json").read_text())
+    files = {"control_source": "src/drivers/mct/main/cesm_comp_mod.F90",
+             "component_source": "src/drivers/mct/main/component_mod.F90",
+             "mct_source": "src/externals/mct/mct/m_AttrVect.F90"}
+    cime = tmp_path / "cime"
+    for relative in files.values():
+        (cime / relative).parent.mkdir(parents=True, exist_ok=True)
+        (cime / relative).write_bytes((SUBMODULE / "cime" / relative).read_bytes())
+    patches = [patch for patch in cesm._patches(cesm.load_recipe(), "provider")
+               if patch["file"] == "patches/cime-provider-driver.patch"]
+
+    cesm.apply_patch(cesm.RECIPE.parent / patches[0]["file"], cime)
+
+    for key, relative in files.items():
+        assert cesm._sha256((cime / relative).read_bytes()) == build[f"{key}_sha256"], relative
+
+
 def test_an_unknown_variant_is_refused() -> None:
     with pytest.raises(SystemExit, match="unknown variant"):
         cesm._patches(cesm.load_recipe(), "pcols32")
@@ -192,7 +220,7 @@ def test_a_file_edited_after_the_build_is_read_from_git(tmp_path: Path) -> None:
     assert result["problems"] == ["changed after 2020-01-01T00:00:00 and not in git: cime/new.txt"]
 
 
-@pytest.mark.parametrize("record", sorted((REPO / "validation").glob("pi_cam_cesm_source_*_case.json")),
+@pytest.mark.parametrize("record", sorted((REPO / "validation").glob("pi_cam_cesm_source_*.json")),
                          ids=lambda path: path.stem)
 def test_the_recorded_reconstructions_are_of_the_patches_in_the_recipe(record: Path) -> None:
     # An edited patch is a different source: its reconstruction has to be shown again.
