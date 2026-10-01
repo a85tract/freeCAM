@@ -15,8 +15,14 @@ def main() -> int:
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--components", default="cam",
+        help="comma-separated components whose output is compared, e.g. cam,clm2,cice,cpl (default cam)",
+    )
     args = parser.parse_args()
-    result = compare_pi_cam_directories(args.reference, args.candidate)
+    result = compare_pi_cam_directories(
+        args.reference, args.candidate, components=tuple(args.components.split(","))
+    )
     text = json.dumps(result.to_payload(), indent=2, default=str) + "\n"
     if args.output is None:
         print(text, end="")
