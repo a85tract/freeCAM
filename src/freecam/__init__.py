@@ -2,6 +2,9 @@
 
 from .pi_cam import (
     CASES,
+    Build,
+    BuildOptions,
+    build,
     CAMBoundaryProvider,
     CESMOnlineBoundaryProvider,
     CaseConfig,
@@ -46,6 +49,9 @@ from .pi_cam import (
 
 __all__ = [
     "CASES",
+    "Build",
+    "BuildOptions",
+    "build",
     "NativeModel",
     "CAMBoundaryProvider",
     "CESMOnlineBoundaryProvider",

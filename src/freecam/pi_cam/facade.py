@@ -1708,6 +1708,7 @@ class Driver:
         timeline: bool | str | Path = False,
         ntasks: int | None = None,
         exploratory: bool = False,
+        build: Any = None,
     ) -> None:
         if int(nsteps) < 1:
             raise ValueError("nsteps must be positive")
@@ -1735,10 +1736,20 @@ class Driver:
                     f"unsupported base case {case_key!r}; available cases: "
                     + ", ".join(self._CASE_CONFIGS)
                 ) from exc
+        #: the build the model runs from: the installed one unless ``build=fc.build(...)`` says otherwise
+        self.build = build
+        if build is not None and not build.installed:
+            config = build.config_for(config)
+            inputs = build.driver_inputs()
+            reference_case = reference_case or inputs["reference_case"]
+            reference_run = reference_run or inputs["reference_run"]
+            online_library = online_library or inputs["online_library"]
         self.config_path = Path(config).expanduser().resolve()
         self.config = PICAMConfig.from_yaml(self.config_path)
         #: an exploration: a run outside the admitted configuration, recorded as such
         self.exploratory = bool(exploratory)
+        if build is not None and not build.installed:
+            self._check_build(build, boundary)
         #: the ranks asked for when they are not the configuration's (the provider lays drv_in out over them)
         self._chosen_ranks = self._choose_ranks(ntasks)
         self._derived_ranks = self._chosen_ranks
@@ -1893,6 +1904,28 @@ class Driver:
         #: the physics processes as Python classes, bound to this run: see :class:`ProcessTable`
         self.processes = ProcessTable(self)
 
+    def _check_build(self, build: Any, boundary: Any) -> None:
+        """A build other than the installed one runs only when it is consistent and, unless exploring, validated."""
+
+        from .. import site
+
+        if not build.validated and not self.exploratory:
+            raise ValueError(
+                f"{build!r} has not passed its online gate (see build.status()); "
+                "pass exploratory=True to run it anyway"
+            )
+        external = site.setting("FREECAM_NATIVE_MANIFEST", repo=self.repo)
+        if external and Path(external).expanduser().resolve() != build.native_manifest.resolve():
+            raise ValueError(
+                f"FREECAM_NATIVE_MANIFEST names {external}, but build= is {build.native_manifest}; "
+                "unset one of them"
+            )
+        if self.config.boundary_mode == "replay" and boundary is None:
+            raise ValueError(
+                "the replay boundaries were captured with the installed build; "
+                f"{build!r} runs the online case"
+            )
+
     def _choose_ranks(self, ntasks: int | None) -> int | None:
         """The run's MPI ranks when they are not the configuration's, after checking it may run on them.
 
@@ -1995,6 +2028,7 @@ class Driver:
             "case": self.case.name if isinstance(self.case, CaseConfig) else self.case.key,
             "mpi_ranks": self.config.mpi_size,
             "exploratory": self.exploratory,
+            "build": "installed" if self.build is None or self.build.installed else self.build.root.name,
             "launch_mode": self.launch_mode,
             "processes": self.processes.describe(),
             "pbs_account": self.account,
@@ -2337,6 +2371,7 @@ class Driver:
                 f"{library}. Build it under this repository or set "
                 "FREECAM_CESM_PROVIDER_LIBRARY."
             )
+        self._check_pairing(library)
         seed_run = self._resolve_online_seed_run()
         provider_run = run_dir.parent / "cesm-provider-run"
         self.boundary = CESMOnlineBoundaryProvider.from_seed_run(
@@ -2347,6 +2382,42 @@ class Driver:
             **({} if self._chosen_ranks is None else {"ranks": self._chosen_ranks}),
         )
         return self.boundary
+
+    def _coupler_record(self, library: Path) -> Path | None:
+        """The build record of the coupler library: a build's own, or the repository's for the installed one."""
+
+        if self.build is not None and not self.build.installed:
+            record = self.build.root / "provider/external_atm_build.json"
+            return record if library == self.build.online_library.resolve() else None
+        record = self.repo / "validation/pi_cam_external_atm_build.json"
+        if record.is_file():
+            output = Path(json.loads(record.read_text()).get("output", ""))
+            if (output if output.is_absolute() else self.repo / output).resolve() == library:
+                return record
+        return None
+
+    def _check_pairing(self, library: Path) -> None:
+        """The coupler library was linked for the image's grid: CAM's derived types cross it by their shapes."""
+
+        from .image_grid import image_grid
+
+        record = self._coupler_record(library)
+        linked = None if record is None or not record.is_file() else json.loads(record.read_text()).get("cam_dimensions")
+        if linked is None:
+            if self.build is not None and not self.build.installed:
+                raise ValueError(f"no build record says which image {library} was linked for; build= needs its own")
+            return              # the installed pair, recorded before the grid was
+        manifest = self.config.native_manifest
+        grid = image_grid(json.loads(Path(manifest).read_text())) if manifest and Path(manifest).is_file() else {}
+        mismatched = {name: (linked[name], grid[name]) for name in ("pcols", "pver", "pcnst")
+                      if name in linked and name in grid and int(linked[name]) != int(grid[name])}
+        if mismatched:
+            raise ValueError(
+                f"the coupler library {library} was linked for an image with "
+                + ", ".join(f"{name}={a}" for name, (a, _) in mismatched.items())
+                + "; this run's image has "
+                + ", ".join(f"{name}={b}" for name, (_, b) in mismatched.items())
+            )
 
     def _prepare_run_dir(self) -> Path:
         if self._run_dir is not None:

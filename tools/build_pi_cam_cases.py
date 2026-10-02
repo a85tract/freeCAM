@@ -2,10 +2,10 @@
 """Make the PI-atm CESM cases from the repository's recipe, under one build root.
 
     tools/build_pi_cam_cases.py --root DIR source              # each variant's CESM source, and the control source
-    tools/build_pi_cam_cases.py --root DIR create [--case NAME ...]
+    tools/build_pi_cam_cases.py --root DIR create [--case NAME ...] [--pcols N]
     tools/build_pi_cam_cases.py --root DIR compare --with CASES [--record JSON]
     tools/build_pi_cam_cases.py --root DIR build [--case NAME ...]   # case.build: inside a CPU job
-    tools/build_pi_cam_cases.py --root DIR run --case oracle         # case.submit: the 50-step run
+    tools/build_pi_cam_cases.py --root DIR run --case oracle [--no-batch]   # case.submit: the 50-step run
 
 The recipe is native/pi_cam/cesm_source/cases.yaml.  The root holds
 
@@ -49,6 +49,8 @@ CONFIGURATION_FILES = ("Macros.make", "env_mach_specific.xml")
 LOCATIONS = ("CASEROOT", "SRCROOT", "CIMEROOT", "CIME_OUTPUT_ROOT", "ATM_DOMAIN_PATH")
 #: the generated SourceMod the state case's own build leaves out
 STATE_BUILD_EXCLUDES = ("physpkg.F90",)
+#: CAM's columns a chunk when its configure is not told otherwise
+DEFAULT_PCOLS = 16
 
 
 def load_recipe(path: Path = RECIPE) -> dict[str, Any]:
@@ -136,8 +138,12 @@ def prepare_sources(layout: Layout, *, force: bool = False) -> None:
     _run([sys.executable, str(REPO / "tools/prepare_pi_cam_source.py"), "--output", str(layout.control)], REPO)
 
 
-def create(layout: Layout, key: str) -> Path:
-    """Make one case: create_newcase (or create_clone), its settings, case.setup, its namelists."""
+def create(layout: Layout, key: str, *, pcols: int | None = None) -> Path:
+    """Make one case: create_newcase (or create_clone), its settings, case.setup, its namelists.
+
+    ``pcols`` other than CAM's default (16) is appended to CAM_CONFIG_OPTS before case.setup;
+    a clone takes it from the case it clones.
+    """
 
     case = layout.recipe["cases"][key]
     directory = layout.case(key)
@@ -157,6 +163,8 @@ def create(layout: Layout, key: str) -> Path:
               "--project", values["ACCOUNT"]], layout.root)
         for command in xmlchange_commands(layout.recipe, values):
             _run(command, directory)
+        if pcols is not None and int(pcols) != DEFAULT_PCOLS:
+            _run(["./xmlchange", f"CAM_CONFIG_OPTS=-pcols {int(pcols)}", "--append"], directory)
         _run(["./case.setup"], directory)
         for component, lines in layout.recipe["user_nl"].items():
             with (directory / f"user_nl_{component}").open("a") as handle:
@@ -194,12 +202,15 @@ def build(layout: Layout, key: str) -> None:
     _run(["./case.build"], layout.case(key))
 
 
-def submit(layout: Layout, key: str, queue: str | None = None) -> None:
-    """case.submit; ``queue`` replaces the recipe's, which only says where the run waits."""
+def submit(layout: Layout, key: str, queue: str | None = None, *, no_batch: bool = False) -> None:
+    """case.submit; ``queue`` replaces the recipe's, which only says where the run waits.
+
+    ``no_batch`` runs the case in this shell -- inside a job that already holds its nodes.
+    """
 
     if queue:
         _run(["./xmlchange", f"JOB_QUEUE={queue}", "--force"], layout.case(key))
-    _run(["./case.submit"], layout.case(key))
+    _run(["./case.submit", *(["--no-batch"] if no_batch else [])], layout.case(key))
 
 
 def _env_items(directory: Path) -> Iterator[tuple[str, str, str]]:
@@ -283,6 +294,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--record", type=Path, help="compare: write the result here (JSON)")
     parser.add_argument("--force", action="store_true", help="source: replace prepared trees")
     parser.add_argument("--queue", help="run: the PBS queue (develop takes at most two CPU nodes; 512 ranks need main)")
+    parser.add_argument("--no-batch", action="store_true", help="run: in this shell, inside a job holding the nodes")
+    parser.add_argument("--pcols", type=int, help="create: CAM's columns a chunk (default 16, CAM's own)")
     arguments = parser.parse_args(argv)
     recipe = load_recipe()
     layout = Layout(arguments.root, recipe)
@@ -291,13 +304,13 @@ def main(argv: list[str] | None = None) -> int:
         prepare_sources(layout, force=arguments.force)
     elif arguments.stage == "create":
         for key in keys:
-            create(layout, key)
+            create(layout, key, pcols=arguments.pcols)
     elif arguments.stage == "build":
         for key in keys:
             build(layout, key)
     elif arguments.stage == "run":
         for key in keys:
-            submit(layout, key, arguments.queue)
+            submit(layout, key, arguments.queue, no_batch=arguments.no_batch)
     else:
         if arguments.hand_made is None:
             raise SystemExit("compare needs --with")

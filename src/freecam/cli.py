@@ -1,7 +1,8 @@
 """Command-line entry point.
 
 ``freecam ui`` serves the Workflow Builder page; ``freecam timeline DIR`` serves (or
-writes, with ``--html``) the viewer of a run's action timeline; every other
+writes, with ``--html``) the viewer of a run's action timeline; ``freecam build``
+makes the model for compile-time options (:mod:`freecam.pi_cam.build`); every other
 invocation is the MPI rank command line of :mod:`freecam.pi_cam.cli`.
 """
 
@@ -18,6 +19,10 @@ def main(argv: list[str] | None = None) -> int:
         from .pi_cam.workflow_builder.ui import main as ui_main
 
         return ui_main(arguments[1:])
+    if arguments and arguments[0] == "build":
+        from .pi_cam.build import main as build_main
+
+        return build_main(arguments[1:])
     if arguments and arguments[0] == "timeline":
         from .pi_cam.timeline_view import main as timeline_main
 

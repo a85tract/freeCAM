@@ -24,6 +24,17 @@ from _pi_cam_coupler_build import (
 )
 
 
+def _image_dimensions(cam_library: Path) -> dict[str, int] | None:
+    """The grid of the image beside ``cam_library``, from its manifest; None without one."""
+
+    from freecam.pi_cam.image_grid import image_grid
+
+    manifest = cam_library.parent / "native_cam_manifest.json"
+    if not manifest.is_file():
+        return None
+    return image_grid(json.loads(manifest.read_text())) or None
+
+
 def _component_compile_command(
     build_root: Path, source_name: str
 ) -> tuple[Path, list[str]]:
@@ -406,6 +417,9 @@ def main() -> None:
         "component_source_sha256": _sha256(component_source),
         "cam_library": str(cam_library),
         "cam_library_sha256": _sha256(cam_library),
+        # the grid the image was compiled for: the library passes CAM's derived types by their
+        # compiled shapes, so it runs only with an image of the same (freecam.pi_cam.facade checks)
+        "cam_dimensions": _image_dimensions(cam_library),
         "cam_module_dir": str(cam_module_dir),
         "adapter": str(adapter),
         "adapter_sha256": _sha256(adapter),

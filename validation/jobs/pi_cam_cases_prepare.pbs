@@ -1,0 +1,31 @@
+#!/bin/bash
+# Prepare the CESM sources and make the PI-atm cases under a build root (tools/build_pi_cam_cases.py):
+#
+#   validation/jobs/submit.sh validation/jobs/pi_cam_cases_prepare.pbs \
+#     -v FREECAM_BUILD_ROOT=DIR[,FREECAM_BUILD_PCOLS=N]
+#
+# FREECAM_BUILD_PCOLS other than 16 is appended to the cases' CAM_CONFIG_OPTS.
+# freecam.pi_cam.build submits this as the first stage of a build.
+#PBS -N freecam-cases-prepare
+#PBS -q develop
+#PBS -l select=1:ncpus=4:mpiprocs=1:ompthreads=1:mem=20GB
+#PBS -l walltime=01:00:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+set -euo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+trap 'status=$?; echo "PI-atm cases prepare exit status: ${status}"' EXIT
+
+root=${FREECAM_BUILD_ROOT:?set FREECAM_BUILD_ROOT to the build root}
+pcols=()
+if [ -n "${FREECAM_BUILD_PCOLS:-}" ]; then
+  pcols=(--pcols "${FREECAM_BUILD_PCOLS}")
+fi
+
+cd "${FREECAM_REPO}"
+mkdir -p "${root}/logs"
+"${FREECAM_PYTHON}" tools/build_pi_cam_cases.py --root "${root}" source --force
+"${FREECAM_PYTHON}" tools/build_pi_cam_cases.py --root "${root}" create "${pcols[@]}"
