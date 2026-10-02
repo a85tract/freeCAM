@@ -199,9 +199,10 @@ def test_a_builds_coupler_library_needs_its_record(tmp_path: Path) -> None:
 
 def test_a_job_is_found_live_without_x_and_finished_with_it(monkeypatch) -> None:
     # Derecho's qstat answers "Unknown Job Id" to -x for a live job, and plain -f forgets a finished one
+    import importlib
     import subprocess
 
-    from freecam.pi_cam import build as module
+    module = importlib.import_module("freecam.pi_cam.build")    # the package's ``build`` is the function
 
     jobs = {"1": ("live", "    job_state = R\n"), "2": ("finished", "    job_state = F\n    Exit_status = 271\n")}
 
