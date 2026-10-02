@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "what": "The PI-atm CESM cases made from the repository's recipe (native/pi_cam/cesm_source, tools/build_pi_cam_cases.py) beside the hand-made cases they replace: every configured value after case.build, and the rebuilt oracle's 50-step run against the oracle run, bit for bit.",
+  "what": "The PI-atm CESM cases made from the repository's recipe (native/pi_cam/cesm_source, tools/build_pi_cam_cases.py) beside the hand-made cases they replace: every configured value after case.build, and the rebuilt oracle's and pyCESM case's 50-step runs against theirs, bit for bit.",
   "git_commit": "2c83f692d72627516b245b9a4c2cd1ed1b491c2a",
   "build_root": "${FREECAM_SCRATCH}/freeCAM/builds/b1-pcols16",
   "hand_made_cases": "${FREECAM_CASES}",
@@ -51,5 +51,25 @@
     "extra_in_candidate": [],
     "first_difference": null,
     "docn_restart": "byte for byte the same apart from the 8 bytes of its 'File created' timestamp"
+  },
+  "pycesm_run": {
+    "pbs_job_id": "7671374.desched1",
+    "steps": 50,
+    "ranks": 512,
+    "reference": "${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-50step-run1/run",
+    "candidate": "${FREECAM_SCRATCH}/freeCAM/builds/b1-pcols16/output/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/run",
+    "components": [
+      "cam",
+      "clm2",
+      "cice",
+      "cpl"
+    ],
+    "bfb": true,
+    "reference_files": 9,
+    "candidate_files": 9,
+    "compared_files": 9,
+    "missing_in_candidate": [],
+    "extra_in_candidate": [],
+    "first_difference": null
   }
 }
