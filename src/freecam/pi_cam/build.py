@@ -159,8 +159,12 @@ def submit_job(repo: Path, job: str, environment: Mapping[str, str], after: str 
 def inspect_job(job_id: str) -> tuple[str, int | None]:
     """A job's state (queued, running, finished, unknown) and, once finished, its exit status."""
 
-    result = subprocess.run(["qstat", "-x", "-f", job_id], capture_output=True, text=True)
-    if result.returncode:
+    # Derecho's qstat finds a live job only without -x and a finished one only with it
+    for flags in (["-f"], ["-x", "-f"]):
+        result = subprocess.run(["qstat", *flags, job_id], capture_output=True, text=True)
+        if result.returncode == 0 and "job_state" in result.stdout:
+            break
+    else:
         return "unknown", None
     state = re.search(r"job_state = (\w)", result.stdout)
     status = re.search(r"Exit_status = (-?\d+)", result.stdout)

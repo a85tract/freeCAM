@@ -195,3 +195,23 @@ def test_a_builds_coupler_library_needs_its_record(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="no build record"):
         driver._check_pairing(_products(made, linked_pcols=None))
+
+
+def test_a_job_is_found_live_without_x_and_finished_with_it(monkeypatch) -> None:
+    # Derecho's qstat answers "Unknown Job Id" to -x for a live job, and plain -f forgets a finished one
+    import subprocess
+
+    from freecam.pi_cam import build as module
+
+    jobs = {"1": ("live", "    job_state = R\n"), "2": ("finished", "    job_state = F\n    Exit_status = 271\n")}
+
+    def qstat(command, **_):
+        kind, text = jobs.get(command[-1], ("gone", ""))
+        found = (kind == "live") == ("-x" not in command)
+        return subprocess.CompletedProcess(command, 0 if found else 153, text if found else "", "")
+
+    monkeypatch.setattr(module.subprocess, "run", qstat)
+
+    assert module.inspect_job("1") == ("running", None)
+    assert module.inspect_job("2") == ("finished", 271)
+    assert module.inspect_job("3") == ("unknown", None)
