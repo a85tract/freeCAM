@@ -17,7 +17,16 @@ repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
 case_root=${FREECAM_REFERENCE_CASE}
 cam_reference=${FREECAM_REFERENCE_RUN}
-cesm_reference=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-50step-run1/run
+# Overridable, so the gate runs on an image and a coupler library built beside the ones in use:
+#   FREECAM_CESM_REFERENCE_RUN  the original coupled model's 50-step run (its namelists)
+#   PYCAM_NATIVE_MANIFEST       the image (default: the configuration's)
+#   PYCAM_RUN_TAG               names the records, validation/pi_cam_exact_cesm_online_<tag>_50step*.json
+cesm_reference=${FREECAM_CESM_REFERENCE_RUN:-${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-50step-run1/run}
+tag=${PYCAM_RUN_TAG:+_${PYCAM_RUN_TAG}}
+manifest_flags=()
+if [ -n "${PYCAM_NATIVE_MANIFEST:-}" ]; then
+  manifest_flags=(--native-manifest "${PYCAM_NATIVE_MANIFEST}")
+fi
 oracle=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
 library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
 root=${FREECAM_SCRATCH}/pyCAM/PI-cam/exact-cesm-online-50step-${PBS_JOBID}
@@ -66,10 +75,11 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --run-dir "${cam_run}" \
   --steps 50 \
   --memory-sample-every 10 \
-  --summary validation/pi_cam_exact_cesm_online_50step.json \
+  "${manifest_flags[@]}" \
+  --summary "validation/pi_cam_exact_cesm_online${tag}_50step.json" \
   > "${cam_run}/freecam.log" 2>&1
 
 "${python}" tools/verify_pi_cam.py \
   --reference "${cam_reference}" \
   --candidate "${cam_run}" \
-  --output validation/pi_cam_exact_cesm_online_50step_bfb.json
+  --output "validation/pi_cam_exact_cesm_online${tag}_50step_bfb.json"

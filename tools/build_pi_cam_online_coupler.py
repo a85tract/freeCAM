@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 import subprocess
 
+from freecam.site import spell_site_paths
+
 from _pi_cam_coupler_build import (
     REPOSITORY_ROOT,
     _commands_from_build_logs,
@@ -138,6 +140,12 @@ def main() -> None:
         default=REPOSITORY_ROOT / "validation/pi_cam_external_atm_build.json",
     )
     parser.add_argument(
+        "--mct-source",
+        type=Path,
+        help="MCT's m_AttrVect.F90 (default: the case's own source); the driver's source tree holds "
+             "the Python-owned attribute storage when the case was built from an unedited one",
+    )
+    parser.add_argument(
         "--source-patch",
         type=Path,
         action="append",
@@ -179,7 +187,11 @@ def main() -> None:
     adapter = args.adapter.resolve()
     main_source = args.main_source.resolve()
     allocator_interposer = args.allocator_interposer.resolve()
-    mct_source = source_root / "cime/src/externals/mct/mct/m_AttrVect.F90"
+    mct_source = (
+        args.mct_source.resolve()
+        if args.mct_source is not None
+        else source_root / "cime/src/externals/mct/mct/m_AttrVect.F90"
+    )
     for source in (
         control_source,
         component_source,
@@ -424,6 +436,8 @@ def main() -> None:
         "link_command": link_command,
     }
     args.manifest.parent.mkdir(parents=True, exist_ok=True)
+    # the record names no site directory: paths through the site's variables, or this checkout's
+    manifest = spell_site_paths(manifest, repo=REPOSITORY_ROOT)
     args.manifest.write_text(json.dumps(manifest, indent=2) + "\n")
     print(json.dumps(manifest, indent=2))
 

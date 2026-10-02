@@ -9,7 +9,7 @@
 
 The recipe is native/pi_cam/cesm_source/cases.yaml.  The root holds
 
-    source/<variant>/     tools/prepare_cesm_source.py's tree for each variant the cases use
+    source/<variant>/     tools/prepare_cesm_source.py's tree for each variant (provider: the coupler library's)
     source/control/       tools/prepare_pi_cam_source.py's tree, which the state SourceMods are made from
     cases/<case name>/    the case directories
     output/<output>/      each case's CIME_OUTPUT_ROOT: its bld/ and run/
@@ -124,11 +124,11 @@ def _run(command: list[str], cwd: Path, **options: Any) -> None:
 
 
 def prepare_sources(layout: Layout, *, force: bool = False) -> None:
-    """Each variant's CESM source the cases use, and the control source the state SourceMods read."""
+    """Every variant's CESM source (the cases', and the coupler library's), and the control source."""
 
     import prepare_cesm_source
 
-    for variant in sorted({case["variant"] for case in layout.recipe["cases"].values()}):
+    for variant in prepare_cesm_source.load_recipe()["variants"]:
         prepare_cesm_source.prepare(layout.source(variant), variant=variant, force=force)
     if layout.control.exists() and not force:
         raise SystemExit(f"{layout.control} exists; pass --force to replace it")
