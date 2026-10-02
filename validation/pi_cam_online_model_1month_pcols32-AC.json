@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "what": "One allocation's online PI-atm month (1488 steps, 512 ranks), legs back to back: the original Fortran, freeCAM with nothing replaced, and freeCAM with a model in the kernel's slot. Every component is live in every leg (online coupling, not the offline replay). Times are the coupling loop; the model legs are not bit-for-bit by construction, their drift and health are recorded instead.",
+  "boundary": "online",
+  "steps": 1488,
+  "ranks": 512,
+  "pbs_job_id": "7681915.desched1",
+  "git_commit": "22cdeae8eeb4c9e4eb556e73adc3b4a17db5e4b6",
+  "hardware": "select=4:ncpus=128:mpiprocs=128:ompthreads=1:mem=235GB place=scatter:exclhost",
+  "gpu_mps": null,
+  "root": "freeCAM/PI-cam/online-model-1month-pcols32-AC-7681915.desched1",
+  "order": "AC",
+  "kernel": "compute_uwshcu_inv",
+  "legs": {
+    "A": {
+      "what": "the original Fortran model (the pyCESM case executable), every component live",
+      "position": 1,
+      "completed": true,
+      "coupling_loop_seconds": 222.741486,
+      "init_seconds": 14.607502,
+      "final_seconds": 0.003217,
+      "lifecycle_seconds": 237.35220500000003,
+      "executable_sha256": "80d43ddc885a8cd379a2d122cd78e9488f6c26418d4d06f61b40ffd873127bb6",
+      "timing_source": "GPTL CPL:RUN_LOOP in timing/cesm_timing.000"
+    },
+    "C": {
+      "what": "freeCAM online (live CLM, CICE, DOCN, RTM and coupler), the stage classes installed, nothing replaced",
+      "position": 2,
+      "completed": true,
+      "steps": 1488,
+      "coupling_loop_seconds": 221.00919216400007,
+      "init_seconds": 17.417118988999846,
+      "final_seconds": 0.31251516900010756,
+      "lifecycle_seconds": 238.8027351859996,
+      "sypd": 33.20261080514511,
+      "boundary_mode": "online",
+      "boundary_provider": "CESMOnlineBoundaryProvider",
+      "native_manifest": "${FREECAM_SCRATCH}/freeCAM/builds/pcols32-e26c6fabb601/image/native_cam_manifest.json",
+      "native_library_sha256": "854b508395e943175e18804f6cb8bd0656f13087ef34d0e3785a380e20515abd",
+      "python_stages": [
+        "shallow_convection"
+      ],
+      "cloud_macro_micro_python": true,
+      "stage_execution_modes": {
+        "cloud_macro_microphysics_python": "native-whole",
+        "shallow_convection_python": "native-whole"
+      },
+      "kernel_models": null,
+      "model": {
+        "calls": 762880,
+        "modeled": 0,
+        "original": 762880,
+        "ranks": 512
+      },
+      "mps": null,
+      "bfb": false,
+      "bfb_files": 18,
+      "peak_rank_rss_bytes": 1010438144,
+      "total_rss_bytes": 322923261952,
+      "health": {
+        "big_error": 0,
+        "isotopic_mass_error": 0,
+        "qneg3_macro": 0,
+        "qneg3_total": 0,
+        "tracebacks": 0
+      },
+      "drift": null
+    }
+  },
+  "ratios": {
+    "C/A": 0.992222850502129
+  }
+}

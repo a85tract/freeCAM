@@ -45,7 +45,7 @@
     "first_difference": null
   },
   "pcols32_oracle_vs_pcols16_oracle": {
-    "note": "CAM's physics is column by column, so the chunk size does not reach the answer: the pcols-32 oracle's 50 steps are bit-for-bit with the pcols-16 oracle's in every component. The gate's proof that freeCAM ran 32-column chunks is the image's grid and CAM's own PCOLS line above.",
+    "note": "Their 50 steps are bit-for-bit in every component, so the gate's proof that freeCAM ran 32-column chunks is the image's grid and CAM's own PCOLS line above. Over a month the chunk size does reach the answer: the two part between days 6.25 and 8.33 (validation/pi_cam_build_pcols32_online_month_bfb.json).",
     "components": [
       "cam",
       "clm2",
