@@ -1,0 +1,63 @@
+{
+  "as_of": "2026-08-01T18:34:00",
+  "compared_with": "iCESM1.3.1_PI_atm_pycesm",
+  "identical": true,
+  "known": {
+    "cime/config/cesm/machines/template.st_archive": "a site-specific short-term-archive hook, commented out in the checkouts; the cases archive nothing (DOUT_S=FALSE)",
+    "cime/scripts/Tools/case.submit": "one blank line"
+  },
+  "known_differences": 2,
+  "problems": [],
+  "same": 6622,
+  "schema_version": 1,
+  "source": {
+    "base": "external/iCESM1.3.1_fzhu",
+    "patches": [
+      {
+        "component": "cime",
+        "file": "patches/cime-ne16-grid.patch",
+        "sha256": "120602ab366611461851daaeb96491da01a5adb1900cbc5858e9afc8a4e82020"
+      },
+      {
+        "component": "cime",
+        "file": "patches/cime-batch-priority.patch",
+        "sha256": "02003f6d9ca34a01d2c9b3f541794e1a04f090798e03b3d6e61dd27d923987fb"
+      },
+      {
+        "component": "components/rtm",
+        "file": "patches/rtm-rtmmod.patch",
+        "sha256": "15407417e9892ea19353a0f253225a7cc7b35d41c2d65110465ea4ac45470ed6"
+      },
+      {
+        "component": "components/pop",
+        "file": "patches/pop-wiso-flux.patch",
+        "sha256": "b7c965f37037ddf8b8f96edc3a19ca599e51661ccb308e324f0ba7990353b3d5"
+      }
+    ],
+    "recipe": "native/pi_cam/cesm_source/source.yaml",
+    "revisions": {
+      ".": "556ad1c112af6606299f8270ad6f8b9b16540332",
+      "cime": "763b4a09d54c08bc0cc840af293e4ae79fa48fc6",
+      "components/cam": "09c8a19c463122fad488e6fd1bbc0fcd0f410130",
+      "components/cice": "8609c71127dba2e25ded6cf4f1eed6e6cd9c77e4",
+      "components/clm": "5cc5a9838a05739dc4b97e2fce247a30967b9527",
+      "components/pop": "dc1c67eb2bdbbcd4d54273a28c98e107316ee865",
+      "components/rtm": "88fed403904f6fca99ab68117f11f29fb0ce726f"
+    },
+    "schema_version": 1,
+    "variant": "cases"
+  },
+  "taken_from_git": 9,
+  "taken_from_git_files": [
+    "cime/config/cesm/machines/config_compilers.xml",
+    "cime/src/drivers/mct/main/cesm_comp_mod.F90",
+    "cime/src/drivers/mct/main/component_mod.F90",
+    "cime/src/drivers/mct/main/t_driver_timers_mod.F90",
+    "cime/src/externals/mct/mct/m_AttrVect.F90",
+    "cime/src/share/util/shr_pio_mod.F90",
+    "components/cam/src/control/cam_comp.F90",
+    "components/cam/src/cpl/atm_comp_mct.F90",
+    "components/cam/src/physics/cam/physpkg.F90"
+  ],
+  "variant": "cases"
+}

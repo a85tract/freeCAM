@@ -675,21 +675,30 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         verify_shadow_atmosphere: bool = False,
         python_owned_internal: bool = False,
         oracle: str | Path | None = None,
+        ranks: int = 512,
     ) -> "CESMOnlineBoundaryProvider":
         """Prepare a private CESM run directory and return an online provider.
 
         The seed contributes only configuration and input files.  History,
         restart, log, and timing output is deliberately not copied into the
-        live provider directory.
+        live provider directory.  On a count other than the admitted 512 the
+        copy's drv_in lays the components out over ``ranks``
+        (:func:`freecam.pi_cam.layout.component_layout`); the seed's own is
+        left as it is.
         """
 
+        from .layout import ADMITTED_RANKS, lay_out
+
         prepared = prepare_cesm_online_run(seed_run, run_dir)
+        if int(ranks) != ADMITTED_RANKS:
+            lay_out(prepared / "drv_in", int(ranks))
         return cls(
             library=library,
             run_dir=prepared,
             verify_shadow_atmosphere=verify_shadow_atmosphere,
             python_owned_internal=python_owned_internal,
             oracle=oracle,
+            ranks=ranks,
         )
 
     @contextmanager

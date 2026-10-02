@@ -32,6 +32,7 @@ from freecam.pi_cam.state_codegen import (  # noqa: E402
     load_state_bridge,
 )
 from freecam.pi_cam.hooks import HOOKS, load_hooks  # noqa: E402
+from freecam.pi_cam.image_grid import grid_from_commands  # noqa: E402
 from freecam.pi_cam.kernel_codegen import (  # noqa: E402
     generate_direct_kernel_module,
     load_direct_kernels,
@@ -1301,6 +1302,8 @@ def main() -> int:
         "state_bridge_description": str(args.state_bridge.resolve()),
         "state_bridge_include": str(state_include),
         "compile_commands": compile_commands,
+        # CAM's compile-time grid, as every compile command defines it: what a configuration must match
+        "dimensions": grid_from_commands(compile_commands),
         "adapter_compile_command": adapter_compile,
         "public_adapter_compile_command": public_adapter_compile,
         "leaf_adapter_compile_command": leaf_adapter_compile,

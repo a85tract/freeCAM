@@ -231,6 +231,10 @@ class NativeCAMDevice:
         payload = json.loads(self.manifest_path.read_text())
         if int(payload.get("schema_version", 1)) != 1:
             raise NativeCAMError("unsupported native CAM manifest schema")
+        from .image_grid import image_grid
+
+        #: the grid the image was compiled for (pcols, pver, pcnst, psubcols), from its manifest
+        self.grid = image_grid(payload)
         library = Path(payload["library"])
         if not library.is_absolute():
             library = self.manifest_path.parent / library

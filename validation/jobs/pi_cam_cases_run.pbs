@@ -1,0 +1,28 @@
+#!/bin/bash
+# Run the PI-atm cases tools/build_pi_cam_cases.py made and built, inside this job's nodes:
+# the oracle's 50 steps and the original coupled model's 50 steps.
+#
+#   validation/jobs/submit.sh validation/jobs/pi_cam_cases_run.pbs -v FREECAM_BUILD_ROOT=DIR
+#
+# FREECAM_BUILD_CASES names a subset (space-separated; default oracle pycesm).  512 ranks on
+# four whole CPU nodes, one a core; the develop queue takes at most two nodes.
+#PBS -N freecam-cases-run
+#PBS -q main
+#PBS -l select=4:ncpus=128:mpiprocs=128:ompthreads=1
+#PBS -l walltime=01:00:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+set -euo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+trap 'status=$?; echo "PI-atm cases run exit status: ${status}"' EXIT
+
+root=${FREECAM_BUILD_ROOT:?set FREECAM_BUILD_ROOT to the build root}
+read -r -a cases <<< "${FREECAM_BUILD_CASES:-oracle pycesm}"
+
+cd "${FREECAM_REPO}"
+for case in "${cases[@]}"; do
+  "${FREECAM_PYTHON}" tools/build_pi_cam_cases.py --root "${root}" run --case "${case}" --no-batch
+done

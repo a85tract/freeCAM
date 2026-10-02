@@ -271,7 +271,8 @@ BIND_STATUS = {1: "no such hook", 2: "the hook takes no model (hooks.yaml has no
                3: "the hook is armed for a Python replacement", 4: "the path is empty or too long",
                5: "the image has no model entry: it was built without FTorch",
                6: "the image has no plugin entry: it was built before plugins",
-               7: "the device is neither the host nor CUDA"}
+               7: "the device is neither the host nor CUDA",
+               8: "the image's levels or constituents are not the ones the packed layout was computed for"}
 #: what pycam_hooks_arm_v1 answers when a hook cannot be armed
 ARM_STATUS = {1: "no such hook", 3: "a model is bound at the hook", 5: "the hook has no frame (a Fortran-bound hook cannot pause)"}
 

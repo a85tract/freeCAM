@@ -1,0 +1,32 @@
+diff --git a/config/cesm/machines/config_compilers.xml b/config/cesm/machines/config_compilers.xml
+index dc81a31..5501ace 100644
+--- a/config/cesm/machines/config_compilers.xml
++++ b/config/cesm/machines/config_compilers.xml
+@@ -150,7 +150,8 @@ using a fortran linker.
+     <append DEBUG="FALSE"> -O </append>
+   </FFLAGS>
+   <FFLAGS_NOOPT>
+-    <base> -O0 </base>
++    <!-- This isolated Python-driver tree links CAM objects into a .so. -->
++    <base> -O0 -fPIC </base>
+   </FFLAGS_NOOPT>
+   <FIXEDFLAGS>
+     <base>  -ffixed-form </base>
+@@ -701,6 +702,17 @@ using a fortran linker.
+ </compiler>
+ 
+ <compiler MACH="derecho">
++  <CFLAGS>
++    <append> -fPIC </append>
++  </CFLAGS>
++  <FFLAGS>
++    <append> -fPIC </append>
++  </FFLAGS>
++  <FFLAGS_NOOPT>
++    <!-- FFLAGS_NOOPT replaces the normal optimization flag set for a few
++         radiation sources, so PIC must be stated here as well. -->
++    <append> -fPIC </append>
++  </FFLAGS_NOOPT>
+   <CPPDEFS>
+     <!-- these flags enable nano timers -->
+     <append MODEL="gptl"> -DHAVE_NANOTIME -DBIT64 -DHAVE_VPRINTF -DHAVE_BACKTRACE -DHAVE_SLASHPROC -DHAVE_COMM_F2C -DHAVE_TIMES -DHAVE_GETTIMEOFDAY </append>

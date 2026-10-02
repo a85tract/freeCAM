@@ -29,6 +29,60 @@ in the same MPI processes as CAM. The rank-local MCT x2a/a2x arrays are exposed
 as zero-copy NumPy views; there is no shadow atmosphere and no
 Fortran-to-Python callback.
 
+### Other rank counts
+
+The admitted case runs on 512 MPI ranks. The online case can run on another
+count without a rebuild -- CAM decomposes its grid when it starts, and CESM
+reads its layout from `drv_in` -- but only as an exploration:
+
+```python
+with fc.Driver(case="PI-atm", nsteps=48, ntasks=256, exploratory=True) as driver:
+    result = driver.run()
+```
+
+CAM and the coupler run on every rank, CLM on `min(N/2, N-160)`, CICE on its
+compiled 128 tasks after it and DOCN on 32 after that
+([`freecam.pi_cam.layout`](../src/freecam/pi_cam/layout.py)); the provider's
+copy of `drv_in` is rewritten, its seed is not. The answers are not
+bit-for-bit with the 512-rank oracle (CESM's own are not either), which is why
+a count other than 512 needs `exploratory=True`, and `driver.status` and
+`driver.diagnose()` say so. A replay case keeps the ranks it was captured on.
+
+### Other compile-time options
+
+CAM's columns a chunk (`pcols`) and the device FTorch is linked for are
+compiled in, so changing one means building the model again. `fc.build`
+does that:
+
+```python
+build = fc.build(pcols=32)       # submits the build's CPU jobs and returns at once
+build.status()                   # each stage: pending, queued, running, done or failed
+build.wait()
+with fc.Driver(case="PI-atm", build=build, nsteps=48) as driver:
+    result = driver.run()
+```
+
+The default options are the installed model: `fc.build()` returns it and
+builds nothing. Any other options get a root of their own under
+`$FREECAM_SCRATCH/freeCAM/builds/` and six jobs, each waiting on the one
+before ([`freecam.pi_cam.build`](../src/freecam/pi_cam/build.py)):
+
+1. the CESM sources and cases from the recipe, with `-pcols` in CAM's configure;
+2. `case.build` of the three cases;
+3. the oracle's 50 steps and the original coupled model's;
+4. the native image from that oracle's own objects;
+5. the online coupler library linked to that image;
+6. the exact online 50 steps, bit for bit against the build's own oracle.
+
+Calling `fc.build` with the same options again resumes: a stage whose product
+exists is skipped, and a failed one is submitted again with everything after
+it. A build is validated once its online gate is bit-for-bit;
+`Driver(build=...)` runs an unvalidated one only with `exploratory=True`. It
+uses the build's image, oracle case and run and coupler library, refuses a
+`FREECAM_NATIVE_MANIFEST` that names another image, and refuses a coupler
+library linked for another grid. The replay cases keep the installed build.
+From a shell: `freecam build --pcols 32 [--plan | --status | --wait]`.
+
 ### Offline replay
 
 Select a replay case when x2a should come from a captured boundary dataset

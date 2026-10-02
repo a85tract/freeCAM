@@ -1031,6 +1031,13 @@ class PICAMDriver:
     ) -> None:
         if not 0 <= rank < size:
             raise PICAMConfigurationError("rank must be in the MPI communicator")
+        grid = getattr(backend, "grid", None)
+        if grid:
+            # pcols and pver are CAM compile-time parameters: the state pool is sized from the
+            # configuration, the image's arrays from its own ppgrid, and the two must agree
+            from .image_grid import check_config_grid
+
+            check_config_grid(config, grid)
         self.config = config
         self.boundary = boundary
         self.backend = backend

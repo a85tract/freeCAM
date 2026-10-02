@@ -30,6 +30,7 @@ from .namelist import (
     load_catalog,
 )
 from .native import NativeCAMDevice
+from ..site import spell_site_paths
 
 
 def _namelist_requests(items: list[str]) -> dict[str, str]:
@@ -1534,9 +1535,8 @@ def main(argv: list[str] | None = None) -> int:
             leaf_device = manifest_payload.get("leaf_device", {})
             repo_root = Path(__file__).resolve().parents[3]
             native_evidence = {
-                # repo-relative when the image lives under this checkout: a record names no site directory
-                "native_manifest": (str(manifest_path.relative_to(repo_root)) if manifest_path.is_relative_to(repo_root)
-                                    else str(manifest_path)),
+                # repo-relative under this checkout, else through the site's variables: a record names no site directory
+                "native_manifest": spell_site_paths(str(manifest_path), repo=repo_root),
                 "native_library_sha256": manifest_payload.get("library_sha256"),
                 "native_state_ownership": (
                     state_bridge.get("ownership")

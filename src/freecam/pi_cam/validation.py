@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from netCDF4 import Dataset
 import numpy as np
@@ -30,17 +30,20 @@ class PICAMBFBResult:
         return asdict(self)
 
 
-def _logical_name(path: Path) -> str | None:
-    marker = path.name.find(".cam.")
+def _logical_name(path: Path, component: str = "cam") -> str | None:
+    marker = path.name.find(f".{component}.")
     return None if marker < 0 else path.name[marker + 1 :]
 
 
-def _cam_files(root: Path) -> dict[str, Path]:
+def _cam_files(root: Path, components: Sequence[str] = ("cam",)) -> dict[str, Path]:
+    """A run's NetCDF output of ``components``, by name without the case's."""
+
     result: dict[str, Path] = {}
-    for path in sorted(root.glob("*.cam.*.nc")):
-        name = _logical_name(path)
-        if name is not None:
-            result[name] = path
+    for component in components:
+        for path in sorted(root.glob(f"*.{component}.*.nc")):
+            name = _logical_name(path, component)
+            if name is not None:
+                result[name] = path
     return result
 
 
@@ -94,17 +97,17 @@ def _compare_netcdf(reference: Path, candidate: Path) -> dict[str, Any] | None:
             right = np.asarray(right_variable[:])
             if np.array_equal(left, right):
                 continue
-            different = np.argwhere(left != right)
-            if different.size:
-                index = tuple(int(item) for item in different[0])
-            else:
+            unequal = left != right
+            if np.issubdtype(left.dtype, np.floating):
                 # NaNs compare unequal even when their payload bits match.
-                left_bits = left.view(np.dtype(f"u{left.dtype.itemsize}"))
-                right_bits = right.view(np.dtype(f"u{right.dtype.itemsize}"))
-                bit_difference = np.argwhere(left_bits != right_bits)
-                if not bit_difference.size:
-                    continue
-                index = tuple(int(item) for item in bit_difference[0])
+                unsigned = np.dtype(f"u{left.dtype.itemsize}")
+                unequal &= ~(
+                    np.isnan(left) & np.isnan(right) & (left.view(unsigned) == right.view(unsigned))
+                )
+            different = np.argwhere(unequal)
+            if not different.size:
+                continue
+            index = tuple(int(item) for item in different[0])
             return {
                 "kind": "value",
                 "variable": name,
@@ -116,10 +119,15 @@ def _compare_netcdf(reference: Path, candidate: Path) -> dict[str, Any] | None:
 
 
 def compare_pi_cam_directories(
-    reference_root: str | Path, candidate_root: str | Path
+    reference_root: str | Path,
+    candidate_root: str | Path,
+    *,
+    components: Sequence[str] = ("cam",),
 ) -> PICAMBFBResult:
-    reference = _cam_files(Path(reference_root))
-    candidate = _cam_files(Path(candidate_root))
+    """Every stored variable of two runs' output, bit for bit: CAM's, or ``components``'."""
+
+    reference = _cam_files(Path(reference_root), components)
+    candidate = _cam_files(Path(candidate_root), components)
     common = sorted(set(reference) & set(candidate))
     first_difference = None
     for name in common:

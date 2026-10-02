@@ -85,9 +85,9 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "type(torch_tensor) :: in_t(19), out_t(8)" in text
     # the scalar k travels as a one-element real tensor; arrays are wrapped where they live
     assert "s_k(1) = real(k, c_double)" in text
-    assert "call c_f_pointer(c_loc(p_in(1)), v_p_in, (/ 16 /))" in text
+    assert "call c_f_pointer(c_loc(p_in(1)), v_p_in, (/ hk_pcols /))" in text
     # the live columns are written back, the padding lanes left as CAM had them
-    assert "hk_n = min(int(ncol), 16)" in text and "t_out(1:hk_n) = o_t_out(1:hk_n)" in text
+    assert "hk_n = min(int(ncol), hk_pcols)" in text and "t_out(1:hk_n) = o_t_out(1:hk_n)" in text
     # only the hooks with a model block have the branch; the others cannot be bound
     table = load_hooks()
     flags = lambda values: "(/ " + ", ".join(".true." if v else ".false." for v in values) + " /)"  # noqa: E731
@@ -109,7 +109,7 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "l_tnd_qsnow = tnd_qsnow(1:pcols, 1:pver)" in text
     assert "w_qc(1:hk_n, :) = o_qc(1:hk_n, :)" in text and "w_prect(1:hk_n) = o_prect(1:hk_n)" in text
     # the bind(C) hook keeps the contract's fixed extents (module arrays of pcols)
-    assert "call c_f_pointer(c_loc(p_in(1)), v_p_in, (/ 16 /))" in text
+    assert "call c_f_pointer(c_loc(p_in(1)), v_p_in, (/ hk_pcols /))" in text
     assert "if (associated(tnd_qsnow)) then" in text and "errstring = ' '" in text
     # arming refuses a hook without a frame
     assert "if (flag /= 0_c_int .and. .not. can_pause(hook)) then" in text
@@ -134,7 +134,7 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     # input tensors are made on the model's device; the output tensor stays on the host
     assert "if (.not. plugged(4)) call torch_tensor_from_array(in_t(1), sp_deltatin, model_device(4), model_device_index(4))" in text
     assert "if (.not. plugged(4)) call torch_tensor_from_array(out_t(1), op_qc, torch_kCPU)" in text
-    assert "real(c_double), target :: z_tn(16, 30)" in text and "real(c_double), target :: y_rflx(16, 31)" in text
+    assert "real(c_double), target :: z_tn(hk_pcols, hk_pver)" in text and "real(c_double), target :: y_rflx(hk_pcols, hk_pverp)" in text
     assert "warm_ticks(hook) = w1 - w0" in text and "warm_seconds = real(warm_ticks(hook), c_double)" in text
     # in shadow the original is timed too, on the same calls: both prices from one run
     assert "original_ticks(4) = original_ticks(4) + (h1 - h0)" in text and text.count("original_ticks(") == 2 * len(table.hooks)

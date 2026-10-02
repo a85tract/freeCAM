@@ -15,6 +15,14 @@ source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
 repo=${FREECAM_REPO}
 case_root=${FREECAM_PYCESM_CASE}
 source_root=${FREECAM_ICESM_SOURCE}
+# The image it links, where it is written and its build record; each overridable so a
+# library can be built beside the one in use, from cases tools/build_pi_cam_cases.py made:
+#   FREECAM_IMAGE_ROOT       the image's directory (libfreecam_pi_cam.so, nonpic_objects/)
+#   FREECAM_PROVIDER_ROOT    callback_free_build/ and production-components/ go here
+#   FREECAM_PROVIDER_RECORD  the build record (JSON)
+image_root=${FREECAM_IMAGE_ROOT:-${repo}/build/pi_cam_promoted}
+provider_root=${FREECAM_PROVIDER_ROOT:-${repo}/build/cesm/pi_atm}
+provider_record=${FREECAM_PROVIDER_RECORD:-${repo}/validation/pi_cam_external_atm_build.json}
 
 source "${case_root}/.env_mach_specific.sh"
 cd "${repo}"
@@ -23,8 +31,12 @@ cd "${repo}"
   --case "${case_root}" \
   --control-source "${source_root}/cime/src/drivers/mct/main/cesm_comp_mod.F90" \
   --component-source "${source_root}/cime/src/drivers/mct/main/component_mod.F90" \
-  --cam-library "${repo}/build/pi_cam_promoted/libfreecam_pi_cam.so" \
-  --cam-module-dir "${repo}/build/pi_cam_promoted/nonpic_objects" \
+  --mct-source "${source_root}/cime/src/externals/mct/mct/m_AttrVect.F90" \
+  --cam-library "${image_root}/libfreecam_pi_cam.so" \
+  --cam-module-dir "${image_root}/nonpic_objects" \
+  --build-dir "${provider_root}/callback_free_build" \
+  --output "${provider_root}/production-components/libpycesm_external_atm.so" \
+  --manifest "${provider_record}" \
   --source-patch "${repo}/native/pi_cam/control_patches/0032-callback-free-external-atm.patch" \
   --source-patch "${repo}/native/pi_cam/control_patches/0033-single-cam-online-coupler.patch" \
   --source-patch "${repo}/native/pi_cam/control_patches/0034-single-cam-coupler-driver.patch"

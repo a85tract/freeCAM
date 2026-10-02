@@ -122,6 +122,43 @@ than producing its own.
    * the **python-state** case (`FREECAM_STATE_CASE`): supplies `.mod` files
      and the control shells, its `SourceMods/src.cam` written by
      [`tools/generate_pi_cam_python_state_source.py`](../tools/generate_pi_cam_python_state_source.py).
+
+   Both are built from the CESM source
+   [`tools/prepare_cesm_source.py`](../tools/prepare_cesm_source.py)
+   prepares: the pinned submodule with the patches
+   [`native/pi_cam/cesm_source/source.yaml`](../native/pi_cam/cesm_source/source.yaml)
+   lists (the `ne16_g16` grid, a river-model fix, for the python-state case
+   `-fPIC` objects, and for the online coupler library its driver and MCT
+   storage):
+
+   ```bash
+   uv run python tools/prepare_cesm_source.py --output DIR [--variant state]
+   ```
+
+   The admitted cases were made by hand from checkouts that held the same
+   changes as local commits. `--compare-with CHECKOUT --as-of TIME` checks a
+   prepared tree file by file against such a checkout as it was when its case
+   was built; `validation/pi_cam_cesm_source_*.json` record that for the
+   three cases and the coupler library, with the few files the recipe leaves
+   different on purpose and why.
+
+   [`tools/build_pi_cam_cases.py`](../tools/build_pi_cam_cases.py) makes the
+   cases themselves from
+   [`native/pi_cam/cesm_source/cases.yaml`](../native/pi_cam/cesm_source/cases.yaml),
+   everything under one build root:
+
+   ```bash
+   uv run python tools/build_pi_cam_cases.py --root DIR source   # the sources above
+   uv run python tools/build_pi_cam_cases.py --root DIR create   # create_newcase/clone, case.setup
+   uv run python tools/build_pi_cam_cases.py --root DIR compare --with "$FREECAM_CASES"
+   validation/jobs/submit.sh validation/jobs/pi_cam_cases_build.pbs -v FREECAM_BUILD_ROOT=DIR
+   uv run python tools/build_pi_cam_cases.py --root DIR run --case oracle   # the 50-step oracle
+   ```
+
+   `compare` sets every configured value of each case beside the hand-made
+   case of the same name, with each case's own roots, account and user read
+   as names. The domain and mapping files come from `FREECAM_PI_ATM_MAPPINGS`
+   (unset, the reference case's).
 3. FTorch, once, on a login node:
 
    ```bash
@@ -201,8 +238,13 @@ than producing its own.
    * `build_pi_cam_devices.py` generates the adapters, compiles them non-PIC,
      links the fixed-address image (with FTorch and libtorch, from
      `--ftorch-root`, default `build/ftorch`), retypes it, and writes
-     `native_cam_manifest.json`: every compile and link command, and the
-     sha256 of what they produced.
+     `native_cam_manifest.json`: every compile and link command, the
+     sha256 of what they produced, and the grid CAM was compiled for
+     (`dimensions`: `pcols`, `pver`, `pcnst`, `psubcols`, as every compile
+     command's `-DPCOLS`/`-DPLEV`/`-DPCNST`/`-DPSUBCOLS` defines them).  A
+     run refuses a configuration whose `pcols` or `pver` differs from its
+     image's, and the hook module takes its extents from CAM's own `ppgrid`,
+     so a hook array always has the image's shape.
 
 That the pipeline reproduces the image in use is checked rather than assumed:
 [`validation/pi_cam_native_image_rebuild.json`](../validation/pi_cam_native_image_rebuild.json)

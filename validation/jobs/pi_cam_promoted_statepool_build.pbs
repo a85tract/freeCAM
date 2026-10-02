@@ -19,12 +19,14 @@ case_root=${FREECAM_STATE_CASE}
 # Reuse the machine code from the admitted BFB oracle build.  The
 # python-state case supplies replacement .mod files and control shells only;
 # using its rebuilt libatm.a would change the numerical object boundary.
-numerical_build=${FREECAM_SCRATCH}/pyCAM/PI-cam/${FREECAM_REFERENCE_CASE_NAME}/bld
-# Both are overridable so a rebuild can be checked against the image in use
-# instead of replacing it:
+numerical_build=${FREECAM_NUMERICAL_BUILD:-${FREECAM_SCRATCH}/pyCAM/PI-cam/${FREECAM_REFERENCE_CASE_NAME}/bld}
+# These are overridable so a rebuild can be checked against the image in use
+# instead of replacing it, or an image built from cases
+# tools/build_pi_cam_cases.py made:
 #   FREECAM_IMAGE_ROOT=$SCRATCH/verify-image validation/jobs/submit.sh ...
 output_root=${FREECAM_IMAGE_ROOT:-${repo}/build/pi_cam_promoted}
 prepared_source=${FREECAM_PREPARED_SOURCE:-${repo}/build/iCESM1.3.1_PI_cam_only}
+direct_kernels=${FREECAM_DIRECT_KERNELS:-${repo}/native/pi_cam/direct_kernels_promoted.yaml}
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 export PYTHONPATH=${repo}/src
@@ -40,8 +42,13 @@ rm -rf "${prepared_source}"
 "${python}" tools/generate_pi_cam_python_state_source.py \
   --source-root "${prepared_source}" \
   --output-dir "${case_root}/SourceMods/src.cam"
+# The generator keeps each kernel's action id from the list it rewrites; a list
+# written anywhere else starts from the committed one, so its ids are the same.
+if [ ! -f "${direct_kernels}" ]; then
+  cp "${repo}/native/pi_cam/direct_kernels_promoted.yaml" "${direct_kernels}"
+fi
 "${python}" tools/build_pi_cam_promoted_kernels.py \
-  --output native/pi_cam/direct_kernels_promoted.yaml
+  --output "${direct_kernels}"
 
 "${python}" tools/build_pi_cam_devices.py \
   --ftorch-root "${FREECAM_FTORCH_ROOT:-${repo}/build/ftorch}" \
@@ -49,7 +56,7 @@ rm -rf "${prepared_source}"
   --source-root "${prepared_source}" \
   --zero-copy-state \
   --numerical-build "${numerical_build}" \
-  --direct-kernels "${repo}/native/pi_cam/direct_kernels_promoted.yaml" \
+  --direct-kernels "${direct_kernels}" \
   --output "${output_root}/libfreecam_pi_cam.so" \
   --capture-executable "${output_root}/pi_cam_capture.exe" \
   --manifest "${output_root}/native_cam_manifest.json" \

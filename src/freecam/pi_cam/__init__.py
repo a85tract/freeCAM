@@ -37,6 +37,7 @@ from .errors import (
     PICAMError,
     PICAMStateError,
 )
+from .build import Build, BuildError, BuildOptions, build
 from .facade import (
     CASES,
     CaseConfig,
@@ -115,7 +116,11 @@ __all__ = [
     "CASES",
     "CaseConfig",
     "CaseRegistry",
+    "Build",
+    "BuildError",
+    "BuildOptions",
     "Driver",
+    "build",
     "FreeCAM",
     "FreeCAMProfiler",
     "HeldSurfaceModel",

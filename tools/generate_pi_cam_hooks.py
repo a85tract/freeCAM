@@ -38,6 +38,12 @@ C_TYPES = {"float64": "real(c_double)", "int32": "integer(c_int)", "int64": "int
 DTYPE_CODE = {"float64": 1, "int32": 2, "int64": 2}
 INTENT_CODE = {"in": 0, "out": 1, "inout": 2}
 ROLE_INTENT = {"structural": "in", "input": "in", "inout": "inout", "output": "out", "workspace": "inout", "result": "out"}
+#: contract axes the module takes from CAM itself (ppgrid, constituents), renamed so a hook's own dummies
+#: called ``pcols`` or ``pver`` never collide with them: the hooks follow the image's grid, not the contract's numbers
+GRID = {"pcols": "hk_pcols", "pver": "hk_pver", "pverp": "hk_pverp", "pcnst": "hk_pcnst"}
+#: the grid extents a packed model's layout is computed with (widths, offsets, loop bounds); a bound model
+#: checks the image has these, since the layout would not fit another
+LAYOUT_AXES = ("pver", "pverp", "pcnst")
 
 
 def _contract(hook: Hook) -> FunctionSpec:
@@ -65,7 +71,19 @@ def _axis(hook: Hook, spec: FunctionSpec, axis: str) -> str:
             return axis
         if axis.endswith("p") and axis[:-1] in ints:
             return f"{axis[:-1]}+1"
-    return str(spec.dimensions[axis])
+    return _sym(spec, axis)
+
+
+def _sym(spec: FunctionSpec, axis) -> str:
+    """One extent as Fortran: CAM's own grid name for a grid axis, else the contract's number."""
+
+    if str(axis) in GRID and str(axis) in spec.dimensions:
+        return GRID[str(axis)]
+    return str(_dim(spec, axis))
+
+
+def _syms(spec: FunctionSpec, axes) -> list[str]:
+    return [_sym(spec, axis) for axis in axes]
 
 
 def _shape3(hook: Hook, spec: FunctionSpec, item) -> str:
@@ -79,7 +97,7 @@ def _shape3(hook: Hook, spec: FunctionSpec, item) -> str:
 
 def _extents(spec: FunctionSpec, item, hook: Hook | None = None) -> str:
     if hook is None:
-        return ", ".join(str(spec.dimensions[axis]) for axis in item.native_shape)
+        return ", ".join(_syms(spec, item.native_shape))
     return ", ".join(_axis(hook, spec, axis) for axis in item.native_shape)
 
 
@@ -201,7 +219,7 @@ def _hook_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     lines.append("    frame_shapes = 0_c_int64_t")
     for item in dummies:
         first = f"{item.name}(1)" if item.rank else item.name
-        extents = ", ".join(f"int({spec.dimensions[axis]}, c_int64_t)" for axis in item.native_shape)
+        extents = ", ".join(f"int({extent}, c_int64_t)" for extent in _syms(spec, item.native_shape))
         lines.append("    slot = slot + 1")
         lines.append(f"    frame_ptrs(slot) = c_loc({first})")
         lines.append(f"    frame_ndims(slot) = {item.rank}_c_int")
@@ -518,6 +536,27 @@ def _warm_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     return "\n".join(lines)
 
 
+def _layout_check(table: HookTable) -> str:
+    """layout_fits(hook): the image's levels and constituents are the ones a packed model's layout was computed for.
+
+    Widths, offsets and loop bounds of the model branch are numbers from the contract; pcols is not
+    among them (every array follows the image's own), the vertical and constituent extents are.
+    """
+
+    lines = ["  logical function layout_fits(hook)", "    integer(c_int), intent(in) :: hook", "    layout_fits = .true.",
+             "    select case (hook)"]
+    for index, hook in enumerate(table.hooks, start=1):
+        if not hook.takes_model:
+            continue
+        spec = _contract(hook)
+        tests = [f"{GRID[axis]} /= {_dim(spec, axis)}" for axis in LAYOUT_AXES if axis in spec.dimensions]
+        if tests:
+            lines.append(f"    case ({index})")
+            lines.append(f"      layout_fits = .not. ({' .or. '.join(tests)})")
+    lines += ["    end select", "  end function layout_fits"]
+    return "\n".join(lines)
+
+
 def _warm_dispatch(table: HookTable) -> str:
     """warm_model(hook): the bound model's warm-up by hook index."""
 
@@ -571,7 +610,7 @@ def _frame_original(hook: Hook, spec: FunctionSpec, index: int) -> str:
     lines = [f"    case ({index})"]
     for slot, item in enumerate(dummies, start=1):
         if item.rank:
-            extents = ", ".join(str(spec.dimensions[axis]) for axis in item.native_shape)
+            extents = ", ".join(_syms(spec, item.native_shape))
             lines.append(f"      call c_f_pointer(frame_ptrs({slot}), p{slot}_{item.dtype[0]}{item.rank}, (/ {extents} /))")
         else:
             lines.append(f"      call c_f_pointer(frame_ptrs({slot}), s{slot}_{item.dtype[0]})")
@@ -628,8 +667,8 @@ def _batch_outputs(spec: FunctionSpec):
     return [item for item in _dummies(spec) if ROLE_INTENT[item.role] in ("out", "inout")]
 
 
-def _rest(spec: FunctionSpec, item) -> list[int]:
-    return [_dim(spec, axis) for axis in item.native_shape[1:]]
+def _rest(spec: FunctionSpec, item) -> list[str]:
+    return _syms(spec, item.native_shape[1:])
 
 
 def _batch_declarations(table: HookTable) -> str:
@@ -682,7 +721,7 @@ def _batch_procedures(hook: Hook, spec: FunctionSpec, index: int) -> str:
     every_output = _batch_outputs(spec)
     model_inputs, outputs = _model_arguments(hook, spec)
     width = sum(_width(spec, o, hook) for o in outputs)
-    lead = _dim(spec, "pcols")
+    lead = _sym(spec, "pcols")
     cols, chunk = hook.batch_columns, hook.batch_chunk
     out = []
 
@@ -863,11 +902,8 @@ def _batch_procedures(hook: Hook, spec: FunctionSpec, index: int) -> str:
     return "\n".join(out)
 
 
-def _prod(values) -> int:
-    result = 1
-    for value in values:
-        result *= value
-    return result
+def _prod(values) -> str:
+    return " * ".join(str(value) for value in values) or "1"
 
 
 def _batch_api(table: HookTable) -> str:
@@ -959,6 +995,8 @@ def render(table: HookTable) -> str:
             procedures.append("")
     procedures.append(_warm_dispatch(table))
     procedures.append("")
+    procedures.append(_layout_check(table))
+    procedures.append("")
     has_model = ", ".join(".true." if hook.takes_model else ".false." for hook in table.hooks)
     original_cases = "\n".join(_frame_original(hook, spec, index) for index, (hook, spec) in enumerate(zip(table.hooks, specs), start=1)
                                if hook.pausable)
@@ -984,6 +1022,9 @@ module pycam_hooks
                                          c_funptr, c_null_funptr, c_f_procpointer
   use ftorch, only: torch_model, torch_tensor, torch_kCPU, torch_kCUDA, torch_model_load, torch_model_forward, &
                     torch_tensor_from_array, torch_delete
+  ! the image's own grid: every hook array is shaped by it, whatever numbers its contract was reviewed at
+  use ppgrid, only: hk_pcols => pcols, hk_pver => pver, hk_pverp => pverp
+  use constituents, only: hk_pcnst => pcnst
   implicit none
   private
   public :: pycam_hooks_arm_v1, pycam_hooks_counts_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
@@ -1129,6 +1170,9 @@ contains
     do i = 1, length
       filename(i:i) = path(i)
     end do
+    if (.not. layout_fits(hook)) then
+      status = 8_c_int; return           ! the packed layout was laid out for other levels or constituents
+    end if
     if (device_type /= torch_kCPU .and. device_type /= torch_kCUDA) then
       status = 7_c_int; return
     end if
@@ -1174,6 +1218,9 @@ contains
     if (hook < 1 .or. hook > nhooks) return
     if (.not. has_model(hook)) then
       status = 2_c_int; return
+    end if
+    if (.not. layout_fits(hook)) then
+      status = 8_c_int; return
     end if
     if (armed(hook)) then
       status = 3_c_int; return

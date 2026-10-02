@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "what": "fc.build(pcols=32) end to end on CPU nodes: its own CESM cases (CAM configured with -pcols 32), its oracle's 50 steps, the native image from that oracle's objects, the coupler library linked to it, and the exact online 50 steps on them, bit for bit against the build's own oracle.",
+  "git_commit": "869d4b14cc0e2eb1685e3f13866d45513d28d810",
+  "build": "pcols32-e26c6fabb601",
+  "options": {
+    "pcols": 32,
+    "device": "cpu"
+  },
+  "fingerprint": "e26c6fabb601",
+  "stages": {
+    "cases": "7679701.desched1",
+    "cases-build": "7679702.desched1",
+    "runs": "7679703.desched1",
+    "image": "7679704.desched1",
+    "coupler": "7679705.desched1",
+    "online-gate": "7679706.desched1"
+  },
+  "image_dimensions": {
+    "pcnst": 57,
+    "pcols": 32,
+    "psubcols": 1,
+    "pver": 30
+  },
+  "coupler_linked_for": {
+    "pcnst": 57,
+    "pcols": 32,
+    "psubcols": 1,
+    "pver": 30
+  },
+  "pcols_in_the_runs": {
+    "oracle atm.log": "PHYS_GRID_INIT:  Using PCOLS=  32",
+    "freeCAM gate freecam.log": "PHYS_GRID_INIT:  Using PCOLS=  32"
+  },
+  "online_gate": {
+    "pbs_job_id": "7679706.desched1",
+    "mpi_ranks": 512,
+    "steps": 50,
+    "boundary_mode": "online",
+    "native_manifest": "${FREECAM_SCRATCH}/freeCAM/builds/pcols32-e26c6fabb601/image/native_cam_manifest.json",
+    "bfb": true,
+    "reference_files": 4,
+    "candidate_files": 4,
+    "compared_files": 4,
+    "first_difference": null
+  },
+  "pcols32_oracle_vs_pcols16_oracle": {
+    "note": "Their 50 steps are bit-for-bit in every component, so the gate's proof that freeCAM ran 32-column chunks is the image's grid and CAM's own PCOLS line above. Over a month the chunk size does reach the answer: the two part between days 6.25 and 8.33 (validation/pi_cam_build_pcols32_online_month_bfb.json).",
+    "components": [
+      "cam",
+      "clm2",
+      "cice",
+      "cpl"
+    ],
+    "bfb": true,
+    "compared_files": 9,
+    "first_difference": null
+  }
+}
