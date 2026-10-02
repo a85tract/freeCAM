@@ -57,6 +57,8 @@
 #                          CUDA FTorch for G)
 #   PYCAM_GPU_MPS_MODE     own (default) or site: whose MPS server G's ranks reach
 #   PYCAM_RUN_TAG          names the record (default the legs)
+#   PYCAM_CONFIG           the freeCAM legs' case configuration (default the exact online month's;
+#                          a build's own, from freecam.pi_cam.build, carries its pcols and image)
 #   FREECAM_PYCESM_EXECUTABLE  A's executable (default the pyCESM case's cesm.exe); with
 #                          FREECAM_PYCESM_CASE, FREECAM_CESM_PROVIDER_LIBRARY and
 #                          PYCAM_NATIVE_MANIFEST, a month of cases tools/build_pi_cam_cases.py made
@@ -96,7 +98,7 @@ oracle_run=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-1month/run
 library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
 root=${FREECAM_SCRATCH}/freeCAM/PI-cam/online-model-1month-${tag}-${PBS_JOBID}
 seed=${root}/seed
-config=configs/pi_cam_icesm131_exact_online_1month.yaml
+config=${PYCAM_CONFIG:-${repo}/configs/pi_cam_icesm131_exact_online_1month.yaml}
 steps=${PYCAM_STEPS:-1488}
 ntasks=${PYCAM_NTASKS:-512}
 nodes=$(sort -u "${PBS_NODEFILE}" | wc -l)
@@ -127,7 +129,7 @@ prepare_seed() {
     # the run's length and its layout over ntasks ranks (freecam.pi_cam.layout: the
     # admitted layout at 512), and a copy of the configuration with that mpi_size
     "${python}" -m freecam.pi_cam.layout "${seed}/drv_in" "${ntasks}" --steps "${steps}" \
-      --config "${repo}/${config}" --derived "${root}/config.yaml"
+      --config "${config}" --derived "${root}/config.yaml"
     config=${root}/config.yaml
   fi
 }
