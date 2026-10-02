@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "what": "The online month of the pcols=32 build (fc.build(pcols=32)): A, the build's own original executable, is its month oracle; C, freeCAM on the build's image and coupler library with nothing replaced, is bit for bit with it.",
+  "what": "The online month of the pcols=32 build (fc.build(pcols=32)): A, the build's own original executable, is its month oracle; C, freeCAM on the build's image and coupler library with nothing replaced, is bit for bit with it: CAM's output, and CLM's, CICE's and the coupler's from its live surface components.",
   "git_commit": "22cdeae8eeb4c9e4eb556e73adc3b4a17db5e4b6",
   "pbs_job_id": "7681915.desched1",
   "steps": 1488,
@@ -45,5 +45,20 @@
     },
     "note": "The chunk size reaches the answer after all, rarely: the two originals are identical through day 6.25, part between days 6.25 and 8.33 (a difference in almost every temperature value by day 8.33, relative RMS 2.8e-4) and drift apart as weather does after (7.7e-2 by day 29). Their 50 steps are identical (validation/pi_cam_build_pcols32_online_50step_bfb.json). The month record's C bfb false is against that pcols-16 oracle; against its own, C is bit for bit."
   },
-  "month_record": "validation/pi_cam_online_model_1month_pcols32-AC.json"
+  "month_record": "validation/pi_cam_online_model_1month_pcols32-AC.json",
+  "C_surface_vs_A": {
+    "components": [
+      "clm2",
+      "cice",
+      "cpl"
+    ],
+    "candidate": "C's cesm-provider-run",
+    "bfb": true,
+    "reference_files": 20,
+    "candidate_files": 20,
+    "compared_files": 20,
+    "missing_in_candidate": [],
+    "extra_in_candidate": [],
+    "first_difference": null
+  }
 }
