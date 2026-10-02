@@ -29,6 +29,25 @@ in the same MPI processes as CAM. The rank-local MCT x2a/a2x arrays are exposed
 as zero-copy NumPy views; there is no shadow atmosphere and no
 Fortran-to-Python callback.
 
+### Other rank counts
+
+The admitted case runs on 512 MPI ranks. The online case can run on another
+count without a rebuild -- CAM decomposes its grid when it starts, and CESM
+reads its layout from `drv_in` -- but only as an exploration:
+
+```python
+with fc.Driver(case="PI-atm", nsteps=48, ntasks=256, exploratory=True) as driver:
+    result = driver.run()
+```
+
+CAM and the coupler run on every rank, CLM on `min(N/2, N-160)`, CICE on its
+compiled 128 tasks after it and DOCN on 32 after that
+([`freecam.pi_cam.layout`](../src/freecam/pi_cam/layout.py)); the provider's
+copy of `drv_in` is rewritten, its seed is not. The answers are not
+bit-for-bit with the 512-rank oracle (CESM's own are not either), which is why
+a count other than 512 needs `exploratory=True`, and `driver.status` and
+`driver.diagnose()` say so. A replay case keeps the ranks it was captured on.
+
 ### Offline replay
 
 Select a replay case when x2a should come from a captured boundary dataset

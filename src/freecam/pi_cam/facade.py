@@ -1706,6 +1706,8 @@ class Driver:
         trace_limit: int | None = DEFAULT_TRACE_LIMIT,
         namelist: Mapping[str, Any] | None = None,
         timeline: bool | str | Path = False,
+        ntasks: int | None = None,
+        exploratory: bool = False,
     ) -> None:
         if int(nsteps) < 1:
             raise ValueError("nsteps must be positive")
@@ -1735,6 +1737,11 @@ class Driver:
                 ) from exc
         self.config_path = Path(config).expanduser().resolve()
         self.config = PICAMConfig.from_yaml(self.config_path)
+        #: an exploration: a run outside the admitted configuration, recorded as such
+        self.exploratory = bool(exploratory)
+        #: the ranks asked for when they are not the configuration's (the provider lays drv_in out over them)
+        self._chosen_ranks = self._choose_ranks(ntasks)
+        self._derived_ranks = self._chosen_ranks
         if (
             self.config.boundary_mode == "replay"
             and int(nsteps) > self.config.stop_n
@@ -1886,6 +1893,42 @@ class Driver:
         #: the physics processes as Python classes, bound to this run: see :class:`ProcessTable`
         self.processes = ProcessTable(self)
 
+    def _choose_ranks(self, ntasks: int | None) -> int | None:
+        """The run's MPI ranks when they are not the configuration's, after checking it may run on them.
+
+        A rank count is a run-time choice -- CAM decomposes its grid when it starts and CESM
+        reads its layout from drv_in -- so nothing is rebuilt.  But only the admitted 512
+        ranks reproduce the oracle: another count gives other answers (CESM's own do too),
+        so it runs only as an exploration.
+        """
+
+        from dataclasses import replace
+
+        from .layout import ADMITTED_RANKS, component_layout
+
+        if ntasks is None or int(ntasks) == self.config.mpi_size:
+            return None
+        ranks = int(ntasks)
+        component_layout(ranks)                     # refuses a count the components cannot run on
+        if self.config.boundary_mode != "online":
+            raise ValueError(
+                f"ntasks={ranks}: the {self.config.boundary_mode} boundary was captured on "
+                f"{self.config.mpi_size} ranks, rank by rank; another count needs the online case"
+            )
+        if ranks != ADMITTED_RANKS and not self.exploratory:
+            raise ValueError(
+                f"ntasks={ranks}: only {ADMITTED_RANKS} ranks reproduce the oracle bit for bit; "
+                f"pass exploratory=True to run on {ranks} as an exploration"
+            )
+        self.config = replace(self.config, mpi_size=ranks)
+        return ranks
+
+    @property
+    def ntasks(self) -> int:
+        """The MPI ranks the run uses: every one runs CAM and the coupler."""
+
+        return self.config.mpi_size
+
     @property
     def running(self) -> bool:
         return self._session is not None and bool(self._session.running)
@@ -1899,6 +1942,7 @@ class Driver:
         status = dict(self._live_session().status)
         # who computes each process this run was asked about: the Fortran, or what its slots hold
         status["processes"] = self.processes.describe()
+        status["exploratory"] = self.exploratory
         return status
 
     @property
@@ -1950,6 +1994,7 @@ class Driver:
             ),
             "case": self.case.name if isinstance(self.case, CaseConfig) else self.case.key,
             "mpi_ranks": self.config.mpi_size,
+            "exploratory": self.exploratory,
             "launch_mode": self.launch_mode,
             "processes": self.processes.describe(),
             "pbs_account": self.account,
@@ -2203,6 +2248,14 @@ class Driver:
     def _live_session(self) -> PICAMNotebookSession:
         if self._session is None:
             run_dir = self._prepare_run_dir()
+            if self._derived_ranks is not None:
+                # the session launches as many ranks as its configuration says
+                from .layout import derive_config
+
+                self.config_path = derive_config(
+                    self.config_path, run_dir.parent / "config.yaml", mpi_size=self._derived_ranks
+                ).resolve()
+                self._derived_ranks = None
             boundary = self._prepare_online_boundary(run_dir)
             timeline_options = {} if self.timeline is False else {
                 "timeline_dir": (Path(run_dir) / "timeline") if self.timeline is True else Path(self.timeline).resolve()}
@@ -2291,6 +2344,7 @@ class Driver:
             seed_run=seed_run,
             run_dir=provider_run,
             oracle=self._online_oracle,
+            **({} if self._chosen_ranks is None else {"ranks": self._chosen_ranks}),
         )
         return self.boundary
 

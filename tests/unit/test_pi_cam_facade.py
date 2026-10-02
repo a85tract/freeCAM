@@ -1404,3 +1404,71 @@ def test_the_process_table_attaches_a_stage_when_its_slot_is_filled_and_detaches
                      ("enable", "cam_run1.radiation")]
     assert driver.processes.describe()["radiation"] == {"computed_by": "fortran", "installed": False}
     assert "processes" in driver.status
+
+
+def _online_tree(tmp_path: Path) -> tuple[dict[str, Path], Path, Path]:
+    from freecam.pi_cam.layout import component_layout
+
+    paths = _driver_tree(tmp_path)
+    paths["config"].write_text(paths["config"].read_text() + "boundary_mode: online\n")
+    library = tmp_path / "libpycesm_external_atm.so"
+    library.write_bytes(b"test library")
+    seed = tmp_path / "cesm-seed"
+    seed.mkdir()
+    (seed / "drv_in").write_text(
+        "&ccsm_pes\n" + "".join(f"  {k} = {v}\n" for k, v in component_layout(512).items()) + "/\n"
+    )
+    (seed / "SEMapping.nc").write_bytes(b"mapping")
+    return paths, library, seed
+
+
+def _online_driver(paths, library, seed, tmp_path, **options) -> Driver:
+    return Driver(
+        case="PI-atm", nsteps=2, repo=paths["repo"], config=paths["config"], scratch=tmp_path / "scratch",
+        reference_case=paths["reference_case"], reference_run=paths["reference_run"],
+        online_library=library, online_seed_run=seed, python_executable="/usr/bin/python3",
+        session_factory=FakeSession, **options,
+    )
+
+
+def test_a_rank_count_other_than_the_admitted_one_runs_only_as_an_exploration(tmp_path) -> None:
+    from freecam.pi_cam.layout import component_layout, read_layout
+
+    paths, library, seed = _online_tree(tmp_path)
+    with pytest.raises(ValueError, match="exploratory=True"):
+        _online_driver(paths, library, seed, tmp_path, ntasks=256)
+
+    driver = _online_driver(paths, library, seed, tmp_path, ntasks=256, exploratory=True)
+    assert driver.ntasks == 256
+    assert driver.diagnose()["mpi_ranks"] == 256 and driver.diagnose()["exploratory"] is True
+    _ = driver.cam.state
+
+    # the session launches from a derived configuration, the provider lays its drv_in out
+    session = FakeSession.instances[-1]
+    assert session.config == driver.run_dir.parent / "config.yaml"
+    assert "mpi_size: 256" in session.config.read_text()
+    assert driver.boundary.ranks == 256
+    assert read_layout((driver.boundary.run_dir / "drv_in").read_text()) == component_layout(256)
+    assert read_layout((seed / "drv_in").read_text()) == component_layout(512)   # the seed is untouched
+    assert driver.status["exploratory"] is True
+    driver.close()
+
+
+def test_the_admitted_rank_count_needs_no_exploration(tmp_path) -> None:
+    paths, library, seed = _online_tree(tmp_path)
+    driver = _online_driver(paths, library, seed, tmp_path, ntasks=512)
+    _ = driver.cam.state
+
+    assert driver.exploratory is False and driver.boundary.ranks == 512
+    assert (driver.boundary.run_dir / "drv_in").read_text() == (seed / "drv_in").read_text()
+    driver.close()
+
+
+def test_a_replayed_boundary_keeps_the_ranks_it_was_captured_on(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    paths["config"].write_text(paths["config"].read_text() + "boundary_mode: replay\n")
+
+    with pytest.raises(ValueError, match="captured on 1 ranks"):
+        Driver(case="PI-atm", nsteps=2, repo=paths["repo"], config=paths["config"], scratch=tmp_path / "s",
+               reference_case=paths["reference_case"], reference_run=paths["reference_run"],
+               boundary=paths["boundary"], session_factory=FakeSession, ntasks=256, exploratory=True)

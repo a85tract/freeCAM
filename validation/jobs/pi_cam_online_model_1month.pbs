@@ -57,6 +57,9 @@
 #                          CUDA FTorch for G)
 #   PYCAM_GPU_MPS_MODE     own (default) or site: whose MPS server G's ranks reach
 #   PYCAM_RUN_TAG          names the record (default the legs)
+#   FREECAM_PYCESM_EXECUTABLE  A's executable (default the pyCESM case's cesm.exe); with
+#                          FREECAM_PYCESM_CASE, FREECAM_CESM_PROVIDER_LIBRARY and
+#                          PYCAM_NATIVE_MANIFEST, a month of cases tools/build_pi_cam_cases.py made
 
 set -euo pipefail
 
@@ -88,7 +91,7 @@ if [[ "${legs}" == *[MGNH]* ]]; then
 fi
 pycesm_case=${FREECAM_PYCESM_CASE}
 reference_case=${FREECAM_REFERENCE_CASE}
-executable=${FREECAM_SCRATCH}/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/bld/cesm.exe
+executable=${FREECAM_PYCESM_EXECUTABLE:-${FREECAM_SCRATCH}/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/bld/cesm.exe}
 oracle_run=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-1month/run
 library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
 root=${FREECAM_SCRATCH}/freeCAM/PI-cam/online-model-1month-${tag}-${PBS_JOBID}
@@ -121,31 +124,10 @@ prepare_seed() {
     --exclude 'rpointer.*' --exclude 'timing/' "${oracle_run}/" "${seed}/"
   cp "${oracle_run}/SEMapping.nc" "${seed}/" 2>/dev/null || true
   if [ "${steps}" != 1488 ] || [ "${ntasks}" != 512 ]; then
-    # the run's length and its layout: every component inside ntasks ranks, CICE on its
-    # compiled 128 tasks and DOCN on 32 after the land (the admitted layout at 512)
-    "${python}" - "${seed}/drv_in" "${ntasks}" "${steps}" "${repo}/${config}" "${root}/config.yaml" <<'PY'
-import re, sys
-drv_in, n, steps, config, derived = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4], sys.argv[5]
-if n >= 192:
-    lnd = min(n // 2, n - 160); ice_root = lnd; ocn_root = lnd + 128
-else:
-    lnd, ice_root, ocn_root = n, 0, 0
-other = min(128, lnd)
-values = {"atm_ntasks": n, "cpl_ntasks": n, "lnd_ntasks": lnd, "ice_ntasks": 128, "ice_rootpe": ice_root,
-          "ocn_ntasks": 32, "ocn_rootpe": ocn_root, "rof_ntasks": other, "glc_ntasks": other, "wav_ntasks": other,
-          "stop_n": steps, "restart_n": steps}
-text = open(drv_in).read()
-for name, value in values.items():
-    text, count = re.subn(rf"(\b{name}\s*=\s*)-?\d+", rf"\g<1>{value}", text)
-    assert count == 1, name
-open(drv_in, "w").write(text)
-text = open(config).read()
-for name, value in (("mpi_size", n), ("stop_n", steps)):
-    text, count = re.subn(rf"^{name}: \d+$", f"{name}: {value}", text, flags=re.M)
-    assert count == 1, name
-open(derived, "w").write(text)
-print("layout:", {k: v for k, v in values.items()})
-PY
+    # the run's length and its layout over ntasks ranks (freecam.pi_cam.layout: the
+    # admitted layout at 512), and a copy of the configuration with that mpi_size
+    "${python}" -m freecam.pi_cam.layout "${seed}/drv_in" "${ntasks}" --steps "${steps}" \
+      --config "${repo}/${config}" --derived "${root}/config.yaml"
     config=${root}/config.yaml
   fi
 }
