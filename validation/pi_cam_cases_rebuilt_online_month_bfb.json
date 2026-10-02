@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "what": "The online month of the cases, image and coupler library rebuilt from the repository's recipe (validation/pi_cam_cases_rebuilt_oracle_50step_bfb.json), against the original CESM month: A, the rebuilt pyCESM case's own executable, and C, freeCAM on the rebuilt image and coupler library with nothing replaced, each bit for bit with the oracle month.",
+  "git_commit": "d18c76253cf78d07f7db0ec128f470a04f23b9d8",
+  "pbs_job_id": "7671412.desched1",
+  "steps": 1488,
+  "ranks": 512,
+  "hardware": "select=4:ncpus=128:mpiprocs=128:ompthreads=1:mem=235GB place=scatter:exclhost",
+  "oracle_month": "${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-1month/run",
+  "A": {
+    "executable": "${FREECAM_SCRATCH}/freeCAM/builds/b1-pcols16/output/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/bld/cesm.exe",
+    "components": [
+      "cam",
+      "clm2",
+      "cice",
+      "cpl"
+    ],
+    "bfb": true,
+    "reference_files": 38,
+    "candidate_files": 38,
+    "compared_files": 38,
+    "missing_in_candidate": [],
+    "extra_in_candidate": [],
+    "first_difference": null
+  },
+  "C": {
+    "native_manifest": "${FREECAM_SCRATCH}/freeCAM/builds/b1-pcols16/image/native_cam_manifest.json",
+    "coupler_library": "${FREECAM_SCRATCH}/freeCAM/builds/b1-pcols16/provider/production-components/libpycesm_external_atm.so",
+    "coupler_build_record": "validation/pi_cam_external_atm_build_b1-rebuilt.json",
+    "bfb": true,
+    "compared_files": 18
+  },
+  "month_record": "validation/pi_cam_online_model_1month_b1-rebuilt-AC.json"
+}
