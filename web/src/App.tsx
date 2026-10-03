@@ -303,6 +303,7 @@ function Editor({ mode, snapshot, service: initialService, client }: { mode: Mod
         <Canvas
           document={state.document}
           groups={snapshot.rules.parent_leaf_groups}
+          phases={snapshot.phases}
           selected={state.selected}
           showControl={state.showControl}
           onSelect={(id) => dispatch({ type: "select", id })}
@@ -313,6 +314,8 @@ function Editor({ mode, snapshot, service: initialService, client }: { mode: Mod
         <Inspector
           node={selectedNode}
           entry={selectedNode ? state.catalog.get(selectedNode.id) ?? null : null}
+          parent={selectedNode?.parent_stage ? state.catalog.get(selectedNode.parent_stage) ?? null : null}
+          phases={snapshot.phases}
           addable={addable}
           theme={theme}
           onConfigure={(id, changes) => dispatch({ type: "configure", id, changes })}

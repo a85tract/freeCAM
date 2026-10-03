@@ -99,6 +99,7 @@ input:focus, select:focus, button:focus-visible, textarea:focus, .row:focus-visi
 .row .actions { display: flex; gap: 4px; }
 .row .actions button { padding: 2px 6px; }
 .phase-marker { margin: 10px 0 4px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.phase-marker .phase-code { margin-left: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-transform: none; letter-spacing: 0; opacity: 0.8; }
 
 .inspector .field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
 .inspector .field label { color: var(--muted); font-size: 12.5px; }
@@ -106,6 +107,18 @@ input:focus, select:focus, button:focus-visible, textarea:focus, .row:focus-visi
 .inspector table, .bottom table { width: 100%; border-collapse: collapse; }
 .inspector td, .inspector th, .bottom td, .bottom th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .inspector .editor { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.inspector h4 { margin: 14px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.science { line-height: 1.45; }
+.science p { margin: 6px 0; }
+.inspector .science-title { margin: 4px 0 6px; font-size: 15px; text-transform: none; letter-spacing: 0; color: var(--text); }
+.science .equation-block { margin: 8px 0 10px; }
+.science .equation { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.science .equation .katex-display { margin: 0; }
+.science .katex { font-size: 1.08em; }
+.science figcaption { margin-top: 2px; }
+.science .references { padding-left: 20px; margin: 4px 0; font-size: 12.5px; }
+.science .references li { margin-bottom: 4px; }
+.science a { color: var(--accent); }
 
 .issues { list-style: none; margin: 0; padding: 0; }
 .issues li { padding: 4px 0; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: baseline; }

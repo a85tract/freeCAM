@@ -5,7 +5,8 @@ the process library with its reasons, the kernel capabilities, the audited
 parameters and the control rules, stamped with the commit and a content
 hash.  It carries no path, account, weight, log or state array -- a test
 checks that.  Run after anything that changes the step plan, the physics
-catalog, the process-support record or the parameter table:
+catalog, the process-support record, the parameter table or the science
+record (src/freecam/pi_cam/data/pi_cam_process_science.yaml):
 
     uv run python tools/export_workflow_catalog.py
     uv run python tools/export_workflow_catalog.py --check    # is the committed file current?

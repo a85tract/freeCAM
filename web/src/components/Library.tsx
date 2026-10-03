@@ -54,7 +54,7 @@ export function Library(props: Props) {
     const state = availability(entry, present);
     if (show === "addable" && state !== "addable") return false;
     const needle = query.trim().toLowerCase();
-    if (needle && !`${entry.display_name} ${entry.qualified_name} ${entry.operation} ${entry.description ?? ""}`.toLowerCase().includes(needle)) return false;
+    if (needle && !`${entry.display_name} ${entry.qualified_name} ${entry.operation} ${entry.description ?? ""} ${entry.science?.title ?? ""}`.toLowerCase().includes(needle)) return false;
     return true;
   });
   return (

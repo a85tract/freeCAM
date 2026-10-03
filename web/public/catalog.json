@@ -383,11 +383,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "8c08455708333a3a91c7fef91a7785b31e458ce1a1be4dc458102fbbe431b365",
- "commit": "bbbc2fd1b8c32dea94ec0f6b26498d5aedd5cf10",
+ "catalog_hash": "688cd9b8031e6ad2cb2437520413abb860ce060168d5fc5ae6d026f390ab7343",
+ "commit": "c74be4670dcaba960f2831af7983e6f7039f0393",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "8c08455708333a3a91c7fef91a7785b31e458ce1a1be4dc458102fbbe431b365",
+  "catalog_version": "688cd9b8031e6ad2cb2437520413abb860ce060168d5fc5ae6d026f390ab7343",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -5501,6 +5501,15 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": {
+    "active": true,
+    "configuration": "In the online case the fields come from live CLM, CICE, DOCN and RTM components; in the replay cases from a recorded boundary dataset.",
+    "equations": [],
+    "references": [],
+    "routine": "atm_import (cpl/atm_import_export.F90)",
+    "summary": "Copies the coupler's merged surface fields into CAM's `cam_in`: surface fluxes of sensible and latent heat, moisture, momentum and dust, the radiative surface temperature, albedos, the 10 m wind and the land, ocean and sea-ice fractions. They stay fixed for the whole atmosphere step.",
+    "title": "Import from the coupler"
+   },
    "scientific": false,
    "source": null,
    "writes": []
@@ -5541,6 +5550,7 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": null,
    "scientific": false,
    "source": null,
    "writes": []
@@ -5555,7 +5565,7 @@
     "variables": []
    },
    "default_index": 2,
-   "description": "Original CAM process chem_emissions in cam_run2.",
+   "description": "Original CAM process chem_emissions, physics after surface coupling (cam_run2).",
    "display_name": "surface_fluxes_and_emissions",
    "enabled": true,
    "granularity": "stage",
@@ -5581,6 +5591,33 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "Prescribed surface emissions of SO\u2082, SOAG, black carbon, primary organic matter, sulfate and aerosol number from the 1850 AR5 (CMIP5) files, and DMS from the AeroCom climatology; dust (from CLM's dust flux) and sea salt (from the 10 m wind and the sea surface temperature) are computed online.",
+    "equations": [
+     {
+      "caption": "the condition qneg4 enforces on the bottom layer, where $F_q$ is the upward moisture flux and $\\Delta p_{\\text{bot}}$ the layer's pressure thickness",
+      "tex": "q_{\\text{bot}} + \\frac{g\\,\\Delta t\\,F_q}{\\Delta p_{\\text{bot}}} \\ge q_{\\min}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Liu, X., and Coauthors (2012). Toward a minimal representation of aerosols in climate models: description and evaluation in the Community Atmosphere Model CAM5. Geoscientific Model Development, 5(3), 709\u2013739.",
+      "doi": "10.5194/gmd-5-709-2012",
+      "key": "liu2012",
+      "url": "https://doi.org/10.5194/gmd-5-709-2012"
+     },
+     {
+      "citation": "Neale, R. B., and Coauthors (2012). Description of the NCAR Community Atmosphere Model (CAM 5.0). NCAR Technical Note NCAR/TN-486+STR.",
+      "doi": null,
+      "key": "neale2012",
+      "url": "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
+     }
+    ],
+    "routine": "chem_emissions (chemistry/mozart/chemistry.F90), qneg4 (physics/cam/qneg4.F90)",
+    "summary": "Adds the surface emissions of trace gases and aerosols to the constituent surface fluxes $F_q$ that vertical diffusion will apply. It then checks that the surface moisture flux cannot empty the lowest layer: where a downward flux (dew or frost) would take the bottom-level humidity below its minimum, the downward flux is cut to what the layer can supply, and the latent heat of that change is taken from the sensible heat flux, so the surface energy flux is unchanged.",
+    "title": "Surface emissions and moisture-flux check"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -5595,7 +5632,7 @@
     "variables": []
    },
    "default_index": 3,
-   "description": "Original CAM process tracers_chemistry in cam_run2.",
+   "description": "Original CAM process tracers_chemistry, physics after surface coupling (cam_run2).",
    "display_name": "tracers_and_chemistry",
    "enabled": true,
    "granularity": "stage",
@@ -5621,6 +5658,34 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [
+     {
+      "citation": "Emmons, L. K., and Coauthors (2010). Description and evaluation of the Model for Ozone and Related chemical Tracers, version 4 (MOZART-4). Geoscientific Model Development, 3(1), 43\u201367.",
+      "doi": "10.5194/gmd-3-43-2010",
+      "key": "emmons2010",
+      "url": "https://doi.org/10.5194/gmd-3-43-2010"
+     },
+     {
+      "citation": "Lamarque, J.-F., and Coauthors (2012). CAM-chem: description and evaluation of interactive atmospheric chemistry in the Community Earth System Model. Geoscientific Model Development, 5(2), 369\u2013411.",
+      "doi": "10.5194/gmd-5-369-2012",
+      "key": "lamarque2012",
+      "url": "https://doi.org/10.5194/gmd-5-369-2012"
+     },
+     {
+      "citation": "Liu, X., and Coauthors (2012). Toward a minimal representation of aerosols in climate models: description and evaluation in the Community Atmosphere Model CAM5. Geoscientific Model Development, 5(3), 709\u2013739.",
+      "doi": "10.5194/gmd-5-709-2012",
+      "key": "liu2012",
+      "url": "https://doi.org/10.5194/gmd-5-709-2012"
+     }
+    ],
+    "routine": "tracers_timestep_tend, aoa_tracers_timestep_tend, chem_timestep_tend",
+    "summary": "The sources and sinks of the advected constituents: test tracers, the age-of-air tracers and the chemical solver, applied in that order. By default the stage runs as its three leaves so each can be switched on its own; only the chemistry leaf changes the state in this configuration.",
+    "title": "Tracer sources and chemistry"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -5661,6 +5726,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": false,
+    "configuration": "No test tracers are defined (`tracers_flag` is false), so the routine returns at once.",
+    "equations": [],
+    "references": [],
+    "routine": "tracers_timestep_tend (physics/cam/tracers.F90)",
+    "summary": "Sources and sinks of idealised test tracers used to check transport.",
+    "title": "Test-tracer tendencies"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -5701,6 +5775,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": false,
+    "configuration": "`aoa_tracers_flag` is false, so the routine returns at once.",
+    "equations": [],
+    "references": [],
+    "routine": "aoa_tracers_timestep_tend (physics/cam/aoa_tracers.F90)",
+    "summary": "Sources and sinks of the age-of-air tracers, which diagnose how long air has been transported away from the surface.",
+    "title": "Age-of-air tracer tendencies"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -5762,6 +5845,43 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "`cam_chempkg = trop_mam3`: three log-normal modes (Aitken, accumulation, coarse); the oxidants OH, O\u2083, NO\u2083 and HO\u2082 from an 1850 climatology; 1850 elevated emissions of SO\u2082 and primary aerosol.",
+    "equations": [
+     {
+      "caption": "the chemical system for the species' number densities $\\mathbf{n}$, with production $\\mathbf{P}$ and loss $\\mathbf{L}$",
+      "tex": "\\frac{\\mathrm{d}\\mathbf{n}}{\\mathrm{d}t} = \\mathbf{P}(\\mathbf{n}) - \\mathbf{L}(\\mathbf{n})\\,\\mathbf{n}"
+     },
+     {
+      "caption": "the backward-Euler step the implicit solver closes with Newton\u2013Raphson iterations",
+      "tex": "\\begin{aligned}\n\\mathbf{n}^{t+\\Delta t} = \\mathbf{n}^{t} &+ \\Delta t\\,\\mathbf{P}(\\mathbf{n}^{t+\\Delta t}) \\\\\n&- \\Delta t\\,\\mathbf{L}(\\mathbf{n}^{t+\\Delta t})\\,\\mathbf{n}^{t+\\Delta t}\n\\end{aligned}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Emmons, L. K., and Coauthors (2010). Description and evaluation of the Model for Ozone and Related chemical Tracers, version 4 (MOZART-4). Geoscientific Model Development, 3(1), 43\u201367.",
+      "doi": "10.5194/gmd-3-43-2010",
+      "key": "emmons2010",
+      "url": "https://doi.org/10.5194/gmd-3-43-2010"
+     },
+     {
+      "citation": "Lamarque, J.-F., and Coauthors (2012). CAM-chem: description and evaluation of interactive atmospheric chemistry in the Community Earth System Model. Geoscientific Model Development, 5(2), 369\u2013411.",
+      "doi": "10.5194/gmd-5-369-2012",
+      "key": "lamarque2012",
+      "url": "https://doi.org/10.5194/gmd-5-369-2012"
+     },
+     {
+      "citation": "Liu, X., and Coauthors (2012). Toward a minimal representation of aerosols in climate models: description and evaluation in the Community Atmosphere Model CAM5. Geoscientific Model Development, 5(3), 709\u2013739.",
+      "doi": "10.5194/gmd-5-709-2012",
+      "key": "liu2012",
+      "url": "https://doi.org/10.5194/gmd-5-709-2012"
+     }
+    ],
+    "routine": "chem_timestep_tend (chemistry/mozart/chemistry.F90)",
+    "summary": "The trop_mam3 gas-phase chemistry and the MAM3 aerosol microphysics. The gas-phase mechanism carries SO\u2082, DMS, H\u2082O\u2082, H\u2082SO\u2084 and SOAG with prescribed oxidant fields; its stiff system is integrated by an explicit solver for the slow species and a backward-Euler (implicit) solver with Newton iterations for the rest. Soluble gases are washed out by precipitation, gases are dry-deposited at the surface, elevated emissions are added, and the aerosol step then exchanges mass between the gases and the aerosol modes: H\u2082SO\u2084 and SOAG condense, SO\u2082 is oxidised to sulfate in cloud water, new sulfate particles nucleate, and the Aitken mode coagulates into the accumulation mode.",
+    "title": "Tropospheric chemistry (trop_mam3)"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -5793,7 +5913,7 @@
     "variables": []
    },
    "default_index": 7,
-   "description": "Original CAM process vertical_diffusion_tend in cam_run2.",
+   "description": "Original CAM process vertical_diffusion_tend, physics after surface coupling (cam_run2).",
    "display_name": "vertical_diffusion",
    "enabled": true,
    "granularity": "stage",
@@ -5886,6 +6006,43 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "`eddy_scheme = diag_TKE`; turbulent mountain stress on (`do_tms`, `tms_z0fac` = 0.075, `tms_orocnst` = 1); no molecular diffusion, which only WACCM's high model top needs.",
+    "equations": [
+     {
+      "caption": "diffusion of a quantity $\\psi$ ($s$, $q$, $u$, $v$ or a tracer) in pressure coordinates, where $F$ is the upward turbulent flux and the surface flux $F_\\psi^{\\text{sfc}}$ is the lower boundary condition",
+      "tex": "\\begin{gathered}\n\\frac{\\partial \\psi}{\\partial t} = g\\,\\frac{\\partial F}{\\partial p},\n\\qquad F = g\\,\\rho^{2} K_\\psi\\,\\frac{\\partial \\psi}{\\partial p}, \\\\\nF(p_s) = F_\\psi^{\\text{sfc}}\n\\end{gathered}"
+     },
+     {
+      "caption": "the UW diffusivities for heat and momentum from the master length scale $\\ell$, the turbulent kinetic energy $e$ and the stability functions $S_{h,m}$",
+      "tex": "K_{h,m} = \\ell\\; e^{1/2}\\; S_{h,m}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Bretherton, C. S., & Park, S. (2009). A new moist turbulence parameterization in the Community Atmosphere Model. Journal of Climate, 22(12), 3422\u20133448.",
+      "doi": "10.1175/2008JCLI2556.1",
+      "key": "bretherton2009",
+      "url": "https://doi.org/10.1175/2008JCLI2556.1"
+     },
+     {
+      "citation": "Park, S., & Bretherton, C. S. (2009). The University of Washington shallow convection and moist turbulence schemes and their impact on climate simulations with the Community Atmosphere Model. Journal of Climate, 22(12), 3449\u20133469.",
+      "doi": "10.1175/2008JCLI2557.1",
+      "key": "park2009",
+      "url": "https://doi.org/10.1175/2008JCLI2557.1"
+     },
+     {
+      "citation": "Neale, R. B., and Coauthors (2012). Description of the NCAR Community Atmosphere Model (CAM 5.0). NCAR Technical Note NCAR/TN-486+STR.",
+      "doi": null,
+      "key": "neale2012",
+      "url": "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
+     }
+    ],
+    "routine": "vertical_diffusion_tend (physics/cam/vertical_diffusion.F90)",
+    "summary": "Mixes heat, moisture, momentum and every constituent vertically by boundary-layer and free-atmosphere turbulence, and applies the surface fluxes received from the coupler as the lower boundary condition. The University of Washington scheme diagnoses the turbulent kinetic energy $e$ of each turbulent layer, including cloud-topped and elevated ones, and sets the eddy diffusivities from it; moist conserved variables ($s_l$, $q_t$) make the mixing consistent through cloud. The diffusion equation is solved implicitly. Turbulent mountain stress adds a form drag from unresolved orography at the surface.",
+    "title": "Turbulent vertical diffusion (UW moist turbulence)"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -5900,7 +6057,7 @@
     "variables": []
    },
    "default_index": 8,
-   "description": "Original CAM process rayleigh_friction_tend in cam_run2.",
+   "description": "Original CAM process rayleigh_friction_tend, physics after surface coupling (cam_run2).",
    "display_name": "rayleigh_friction",
    "enabled": true,
    "granularity": "stage",
@@ -5926,6 +6083,27 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": false,
+    "configuration": "The decay time at the top, `raytau0`, is 0, so the drag is off (the log reports `otau0 = 0`) and the routine returns a zero tendency.",
+    "equations": [
+     {
+      "caption": "the drag, integrated implicitly, and the frictional heating that conserves energy",
+      "tex": "\\begin{gathered}\n\\frac{\\partial \\mathbf{u}}{\\partial t} = -\\frac{\\mathbf{u}}{\\tau(z)}, \\\\\n\\frac{\\partial s}{\\partial t} = \\frac{1}{2\\,\\Delta t}\\left(1 - \\frac{1}{(1+\\Delta t/\\tau)^{2}}\\right)|\\mathbf{u}|^{2}\n\\end{gathered}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Neale, R. B., and Coauthors (2012). Description of the NCAR Community Atmosphere Model (CAM 5.0). NCAR Technical Note NCAR/TN-486+STR.",
+      "doi": null,
+      "key": "neale2012",
+      "url": "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
+     }
+    ],
+    "routine": "rayleigh_friction_tend (physics/cam/rayleigh_friction.F90)",
+    "summary": "A linear drag on the winds near the model top, $\\partial\\mathbf{u}/\\partial t = -\\mathbf{u}/\\tau(z)$, used as a sponge; the kinetic energy removed is returned as heat. The stage also closes the energy and tracer budget checks of vertical diffusion.",
+    "title": "Rayleigh friction"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -5940,7 +6118,7 @@
     "variables": []
    },
    "default_index": 9,
-   "description": "Original CAM process aero_model_drydep in cam_run2.",
+   "description": "Original CAM process aero_model_drydep, physics after surface coupling (cam_run2).",
    "display_name": "aerosol_dry_deposition",
    "enabled": true,
    "granularity": "stage",
@@ -5966,6 +6144,28 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [
+     {
+      "citation": "Zhang, L., Gong, S., Padro, J., & Barrie, L. (2001). A size-segregated particle dry deposition scheme for an atmospheric aerosol module. Atmospheric Environment, 35(3), 549\u2013560.",
+      "doi": "10.1016/S1352-2310(00)00326-5",
+      "key": "zhang2001",
+      "url": "https://doi.org/10.1016/S1352-2310(00)00326-5"
+     },
+     {
+      "citation": "Liu, X., and Coauthors (2012). Toward a minimal representation of aerosols in climate models: description and evaluation in the Community Atmosphere Model CAM5. Geoscientific Model Development, 5(3), 709\u2013739.",
+      "doi": "10.5194/gmd-5-709-2012",
+      "key": "liu2012",
+      "url": "https://doi.org/10.5194/gmd-5-709-2012"
+     }
+    ],
+    "routine": "aero_model_drydep (chemistry/modal_aero/aero_model.F90)",
+    "summary": "Removes aerosol at the surface by turbulent deposition and gravitational settling, for the mass and number of every MAM3 mode, interstitial and cloud-borne. By default the stage runs as its two leaves; CARMA is not built into this case.",
+    "title": "Aerosol dry deposition"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6027,6 +6227,37 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "`aer_drydep_list`: bc, dust, sea salt, organic matter, sulfate and number in the three MAM3 modes.",
+    "equations": [
+     {
+      "caption": "the deposition velocity of Zhang et al. (2001): gravitational settling $v_g$ plus the aerodynamic resistance $R_a$ and surface resistance $R_s$ in series",
+      "tex": "v_d = v_g + \\frac{1}{R_a + R_s}"
+     },
+     {
+      "caption": "the downward flux of a mixing ratio $\\chi$ at the bottom level",
+      "tex": "F_{\\text{dep}} = -\\,v_d\\,\\rho\\,\\chi_{\\text{bot}}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Zhang, L., Gong, S., Padro, J., & Barrie, L. (2001). A size-segregated particle dry deposition scheme for an atmospheric aerosol module. Atmospheric Environment, 35(3), 549\u2013560.",
+      "doi": "10.1016/S1352-2310(00)00326-5",
+      "key": "zhang2001",
+      "url": "https://doi.org/10.1016/S1352-2310(00)00326-5"
+     },
+     {
+      "citation": "Liu, X., and Coauthors (2012). Toward a minimal representation of aerosols in climate models: description and evaluation in the Community Atmosphere Model CAM5. Geoscientific Model Development, 5(3), 709\u2013739.",
+      "doi": "10.5194/gmd-5-709-2012",
+      "key": "liu2012",
+      "url": "https://doi.org/10.5194/gmd-5-709-2012"
+     }
+    ],
+    "routine": "aero_model_drydep (chemistry/modal_aero/aero_model.F90)",
+    "summary": "Gravitational settling through the column and turbulent deposition at the surface for the MAM3 aerosol, interstitial and cloud-borne. The deposition velocity combines the settling velocity of the mode's particles with an aerodynamic and a surface resistance that depend on the friction velocity $u_*$ and Obukhov length $L$ computed by vertical diffusion, and on the land type.",
+    "title": "Aerosol dry deposition"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6067,6 +6298,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": false,
+    "configuration": "`carma_model = none`, so `carma_do_aerosol` is false and nothing runs.",
+    "equations": [],
+    "references": [],
+    "routine": "carma_timestep_tend (physics/carma/cam/carma_intr.F90)",
+    "summary": "The sectional aerosol model CARMA, when a CARMA model is built in.",
+    "title": "CARMA aerosol microphysics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6081,7 +6321,7 @@
     "variables": []
    },
    "default_index": 12,
-   "description": "Original CAM process charge_fix in cam_run2.",
+   "description": "Original CAM process charge_fix, physics after surface coupling (cam_run2).",
    "display_name": "charge_neutrality",
    "enabled": true,
    "granularity": "stage",
@@ -6107,6 +6347,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": false,
+    "configuration": "trop_mam3 carries no ions or electrons, so the routine changes nothing.",
+    "equations": [],
+    "references": [],
+    "routine": "charge_fix (chemistry/mozart/charge_neutrality.F90)",
+    "summary": "Sets the electron concentration to the sum of the positive ions, so the ionospheric chemistry stays electrically neutral.",
+    "title": "Charge neutrality"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6126,7 +6375,7 @@
     "variables": []
    },
    "default_index": 13,
-   "description": "Original CAM process gw_tend in cam_run2.",
+   "description": "Original CAM process gw_tend, physics after surface coupling (cam_run2).",
    "display_name": "gravity_wave_drag",
    "enabled": true,
    "granularity": "stage",
@@ -6174,6 +6423,41 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "Only the orographic source is on (`use_gw_oro`); no spectrum of non-orographic waves (`pgwv = 0`), no frontal or convective sources. The efficiency $\\varepsilon$ is `effgw_oro` = 0.125.",
+    "equations": [
+     {
+      "caption": "the launched stress, from the wind $U_0$, buoyancy frequency $N_0$ and density $\\rho_0$ averaged over the depth of the obstacle, with horizontal wavenumber $k$ and critical Froude number $F_c$",
+      "tex": "\\begin{gathered}\n\\tau_0 = \\tfrac{1}{2}\\,k\\,\\rho_0\\,N_0\\,U_0\\,\\min\\!\\left(h^{2},\\; F_c^{2}\\,\\frac{U_0^{2}}{N_0^{2}}\\right), \\\\\nh = 2\\,\\sigma_h\n\\end{gathered}"
+     },
+     {
+      "caption": "the stress profile, limited by saturation as the wave propagates up",
+      "tex": "\\begin{gathered}\n\\tau(z) = \\min\\!\\left(\\tau_{\\text{below}}\\,e^{-\\text{damping}},\\; \\tau_{\\text{sat}}\\right), \\\\\n\\tau_{\\text{sat}} = \\frac{F_c^{2}\\,k\\,\\rho\\,|U|^{3}}{2N}\n\\end{gathered}"
+     },
+     {
+      "caption": "the drag on the wind component $U > 0$ along the launch direction, where the stress $\\tau \\ge 0$ decreases upward",
+      "tex": "\\frac{\\partial U}{\\partial t} = -\\,\\varepsilon\\, g\\,\\frac{\\partial \\tau}{\\partial p}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "McFarlane, N. A. (1987). The effect of orographically excited gravity wave drag on the general circulation of the lower stratosphere and troposphere. Journal of the Atmospheric Sciences, 44(14), 1775\u20131800.",
+      "doi": "10.1175/1520-0469(1987)044<1775:TEOOEG>2.0.CO;2",
+      "key": "mcfarlane1987",
+      "url": "https://doi.org/10.1175/1520-0469(1987)044<1775:TEOOEG>2.0.CO;2"
+     },
+     {
+      "citation": "Neale, R. B., and Coauthors (2012). Description of the NCAR Community Atmosphere Model (CAM 5.0). NCAR Technical Note NCAR/TN-486+STR.",
+      "doi": null,
+      "key": "neale2012",
+      "url": "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
+     }
+    ],
+    "routine": "gw_tend (physics/cam/gw_drag.F90)",
+    "summary": "Unresolved mountains launch stationary gravity waves that carry momentum upward and deposit it where they break, decelerating the flow aloft. Following McFarlane (1987), the launched stress depends on the low-level wind, stability and density and on the subgrid standard deviation of the orography $\\sigma_h$. Going up, the stress is limited by the saturation stress, which shrinks where the wind weakens or the air thins; the stress lost between two levels decelerates the wind there, and the kinetic energy removed heats the air.",
+    "title": "Orographic gravity wave drag"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6188,7 +6472,7 @@
     "variables": []
    },
    "default_index": 14,
-   "description": "Original CAM process qbo_relax in cam_run2.",
+   "description": "Original CAM process qbo_relax, physics after surface coupling (cam_run2).",
    "display_name": "qbo_relaxation",
    "enabled": true,
    "granularity": "stage",
@@ -6214,6 +6498,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": false,
+    "configuration": "The CAM5 build uses the stub module, where `qbo_use_forcing` is a constant false and the routine only returns an empty tendency.",
+    "equations": [],
+    "references": [],
+    "routine": "qbo_relax (physics/cam/qbo.F90)",
+    "summary": "Nudges the tropical stratospheric winds toward an observed quasi-biennial oscillation, for models that cannot produce one.",
+    "title": "QBO relaxation"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6228,7 +6521,7 @@
     "variables": []
    },
    "default_index": 15,
-   "description": "Original CAM process iondrag_calc in cam_run2.",
+   "description": "Original CAM process iondrag_calc, physics after surface coupling (cam_run2).",
    "display_name": "ion_drag",
    "enabled": true,
    "granularity": "stage",
@@ -6254,6 +6547,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": false,
+    "configuration": "This low-top CAM5 build compiles the stub module; `iondrag_calc` has no body, and no WACCM-X ionosphere is present.",
+    "equations": [],
+    "references": [],
+    "routine": "iondrag_calc (physics/cam/iondrag.F90)",
+    "summary": "Drag and Joule heating from collisions between neutral air and ions in the thermosphere.",
+    "title": "Ion drag"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6268,7 +6570,7 @@
     "variables": []
    },
    "default_index": 16,
-   "description": "Original CAM process physics_dme_adjust in cam_run2.",
+   "description": "Original CAM process physics_dme_adjust, physics after surface coupling (cam_run2).",
    "display_name": "state_finalize",
    "enabled": true,
    "granularity": "stage",
@@ -6294,6 +6596,31 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "The dry-mass adjustment `physics_dme_adjust` returns at once for the SE core (it applies only to the finite-volume core); the SE core accounts for the change in water vapour when it applies the tendencies.",
+    "equations": [
+     {
+      "caption": "the temperature handed to the dynamics",
+      "tex": "T = T_{\\text{ini}} + \\Delta t\\,\\left(\\frac{\\partial T}{\\partial t}\\right)_{\\text{phys}}"
+     },
+     {
+      "caption": "the conversion of a dry mixing ratio to a moist one",
+      "tex": "q_{\\text{moist}} = q_{\\text{dry}}\\,\\frac{\\Delta p_{\\text{dry}}}{\\Delta p}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Neale, R. B., and Coauthors (2012). Description of the NCAR Community Atmosphere Model (CAM 5.0). NCAR Technical Note NCAR/TN-486+STR.",
+      "doi": null,
+      "key": "neale2012",
+      "url": "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
+     }
+    ],
+    "routine": "physics_dme_adjust (physics/cam/physics_types.F90) and its surroundings in tphysac",
+    "summary": "Closes the physics step before the state goes to the dynamical core. It stores the column's total energy for next step's energy fixer, sets the temperature from its initial value and the accumulated physics tendency, converts the dry-mass mixing ratios of the dry constituents back to moist ones as the dynamics expects, and writes the total physics tendencies (`PTTEND`, `PTEQ`, ...) to the history.",
+    "title": "End of the after-coupling physics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6334,6 +6661,7 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": null,
    "scientific": false,
    "source": null,
    "writes": []
@@ -6374,6 +6702,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": false,
+    "configuration": "No CARMA model is built in (`carma_model = none`).",
+    "equations": [],
+    "references": [],
+    "routine": "carma_accumulate_stats (physics/carma/cam/carma_intr.F90)",
+    "summary": "Accumulates CARMA's diagnostic statistics.",
+    "title": "CARMA statistics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6414,6 +6751,7 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": null,
    "scientific": false,
    "source": null,
    "writes": []
@@ -6454,6 +6792,7 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": null,
    "scientific": false,
    "source": null,
    "writes": []
@@ -6494,6 +6833,7 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": null,
    "scientific": false,
    "source": null,
    "writes": []
@@ -6508,7 +6848,7 @@
     "variables": []
    },
    "default_index": 22,
-   "description": "Original CAM process stepon_run2 in cam_run2.",
+   "description": "Original CAM process stepon_run2, physics after surface coupling (cam_run2).",
    "display_name": "physics_to_dynamics",
    "enabled": true,
    "granularity": "stage",
@@ -6534,6 +6874,33 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "`se_ftype = 2`: tracer and pressure forcing applied as an adjustment, $T$ and $\\mathbf{u}$ forcing applied within the dynamics steps. Physics and dynamics are time-split: each sees the other's result of the whole step.",
+    "equations": [
+     {
+      "caption": "the tracer mass of each layer and the surface pressure after the adjustment",
+      "tex": "\\begin{gathered}\n(\\Delta p\\,q)^{+} = \\Delta p\\;q^{\\text{phys}}, \\\\\np_s^{+} = p_s + \\sum_k \\Delta p_k\\,\\big(q_{v,k}^{\\text{phys}} - q_{v,k}\\big)\n\\end{gathered}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Williamson, D. L. (2002). Time-split versus process-split coupling of parameterizations and dynamical core. Monthly Weather Review, 130(8), 2024\u20132041.",
+      "doi": "10.1175/1520-0493(2002)130<2024:TSVPSC>2.0.CO;2",
+      "key": "williamson2002",
+      "url": "https://doi.org/10.1175/1520-0493(2002)130<2024:TSVPSC>2.0.CO;2"
+     },
+     {
+      "citation": "Dennis, J. M., Edwards, J., Evans, K. J., Guba, O., Lauritzen, P. H., Mirin, A. A., St-Cyr, A., Taylor, M. A., & Worley, P. H. (2012). CAM-SE: A scalable spectral element dynamical core for the Community Atmosphere Model. International Journal of High Performance Computing Applications, 26(1), 74\u201389.",
+      "doi": "10.1177/1094342011428142",
+      "key": "dennis2012",
+      "url": "https://doi.org/10.1177/1094342011428142"
+     }
+    ],
+    "routine": "stepon_run2 \u2192 p_d_coupling (dynamics/se/stepon.F90, dp_coupling.F90)",
+    "summary": "Hands the physics tendencies to the spectral-element grid. The physics columns are the unique GLL points of the SE elements, so the mapping is a copy followed by an exchange along element edges. The temperature and wind tendencies are kept as forcing terms $F_T$, $F_{\\mathbf{u}}$ that the dynamics applies during its steps; the tracer changes are applied at once, and the surface pressure changes by the mass of the water vapour the physics added or removed.",
+    "title": "Physics\u2013dynamics coupling, physics to dynamics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6548,7 +6915,7 @@
     "variables": []
    },
    "default_index": 23,
-   "description": "Original CAM process stepon_run3 in cam_run3.",
+   "description": "Original CAM process stepon_run3, dynamics (cam_run3).",
    "display_name": "dynamics",
    "enabled": true,
    "granularity": "stage",
@@ -6574,6 +6941,57 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "`ne16np4` (13,826 columns, about 2\u00b0 spacing), 30 levels; three 600 s dynamics steps per 1800 s physics step with the 5-stage, third-order Kinnmark\u2013Gray Runge\u2013Kutta (`tstep_type = 5`); vertical remap every three steps (`rsplit = 3`); hyperviscosity $\\nu = 7\\times10^{15}\\ \\mathrm{m^4\\,s^{-1}}$ ($\\nu_{\\text{div}} = 1.55\\times10^{16}\\ \\mathrm{m^4\\,s^{-1}}$), sponge $\\nu_{\\text{top}} = 2.5\\times10^{5}\\ \\mathrm{m^2\\,s^{-1}}$; the optimization-based limiter (`se_limiter_option = 8`).",
+    "equations": [
+     {
+      "caption": "momentum, in vector-invariant form",
+      "tex": "\\begin{aligned}\n\\frac{\\partial \\mathbf{u}}{\\partial t} &+ (\\zeta + f)\\,\\hat{\\mathbf{k}}\\times\\mathbf{u} + \\nabla\\!\\left(\\tfrac{1}{2}|\\mathbf{u}|^{2} + \\Phi\\right) \\\\\n&+ \\dot{\\eta}\\,\\frac{\\partial \\mathbf{u}}{\\partial \\eta} + \\frac{R\\,T_v}{p}\\,\\nabla p = \\mathbf{F}_{\\mathbf{u}}\n\\end{aligned}"
+     },
+     {
+      "caption": "thermodynamics",
+      "tex": "\\begin{aligned}\n\\frac{\\partial T}{\\partial t} &+ \\mathbf{u}\\cdot\\nabla T + \\dot{\\eta}\\,\\frac{\\partial T}{\\partial \\eta} \\\\\n&- \\frac{R\\,T_v}{c_p^{*}\\,p}\\,\\omega = F_T\n\\end{aligned}"
+     },
+     {
+      "caption": "mass, for the pressure thickness of a layer",
+      "tex": "\\begin{aligned}\n\\frac{\\partial}{\\partial t}\\!\\left(\\frac{\\partial p}{\\partial \\eta}\\right) &+ \\nabla\\cdot\\!\\left(\\frac{\\partial p}{\\partial \\eta}\\,\\mathbf{u}\\right) \\\\\n&+ \\frac{\\partial}{\\partial \\eta}\\!\\left(\\dot{\\eta}\\,\\frac{\\partial p}{\\partial \\eta}\\right) = 0\n\\end{aligned}"
+     },
+     {
+      "caption": "each tracer $q$; with vertically Lagrangian levels $\\dot\\eta = 0$ during the dynamics steps and the remap does the vertical transport",
+      "tex": "\\begin{aligned}\n\\frac{\\partial}{\\partial t}\\!\\left(\\frac{\\partial p}{\\partial \\eta}\\,q\\right) &+ \\nabla\\cdot\\!\\left(\\frac{\\partial p}{\\partial \\eta}\\,q\\,\\mathbf{u}\\right) \\\\\n&+ \\frac{\\partial}{\\partial \\eta}\\!\\left(\\dot{\\eta}\\,\\frac{\\partial p}{\\partial \\eta}\\,q\\right) = 0\n\\end{aligned}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Dennis, J. M., Edwards, J., Evans, K. J., Guba, O., Lauritzen, P. H., Mirin, A. A., St-Cyr, A., Taylor, M. A., & Worley, P. H. (2012). CAM-SE: A scalable spectral element dynamical core for the Community Atmosphere Model. International Journal of High Performance Computing Applications, 26(1), 74\u201389.",
+      "doi": "10.1177/1094342011428142",
+      "key": "dennis2012",
+      "url": "https://doi.org/10.1177/1094342011428142"
+     },
+     {
+      "citation": "Taylor, M. A., & Fournier, A. (2010). A compatible and conservative spectral element method on unstructured grids. Journal of Computational Physics, 229(17), 5879\u20135895.",
+      "doi": "10.1016/j.jcp.2010.04.008",
+      "key": "taylor2010",
+      "url": "https://doi.org/10.1016/j.jcp.2010.04.008"
+     },
+     {
+      "citation": "Guba, O., Taylor, M., & St-Cyr, A. (2014). Optimization-based limiters for the spectral element method. Journal of Computational Physics, 267, 176\u2013195.",
+      "doi": "10.1016/j.jcp.2014.02.029",
+      "key": "guba2014",
+      "url": "https://doi.org/10.1016/j.jcp.2014.02.029"
+     },
+     {
+      "citation": "Lin, S.-J. (2004). A \"vertically Lagrangian\" finite-volume dynamical core for global models. Monthly Weather Review, 132(10), 2293\u20132307.",
+      "doi": "10.1175/1520-0493(2004)132<2293:AVLFDC>2.0.CO;2",
+      "key": "lin2004",
+      "url": "https://doi.org/10.1175/1520-0493(2004)132<2293:AVLFDC>2.0.CO;2"
+     }
+    ],
+    "routine": "stepon_run3 \u2192 dyn_run \u2192 prim_run_subcycle (dynamics/se)",
+    "summary": "Solves the hydrostatic primitive equations on the cubed sphere with a continuous Galerkin spectral-element method: each of the 6 \u00d7 16 \u00d7 16 elements carries a 4 \u00d7 4 grid of Gauss\u2013Lobatto\u2013Legendre points, and neighbouring elements are joined by direct stiffness summation. Its spatial discretization conserves mass and energy. Fourth-order hyperviscosity removes grid-scale noise and a second-order sponge damps the top layers. Levels move with the flow (vertically Lagrangian) and are remapped to the hybrid levels; tracers are advected with a limiter that keeps them within their local bounds and conserves their mass.",
+    "title": "Spectral-element dynamical core (CAM-SE)"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6614,6 +7032,15 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [],
+    "routine": "wshist (control/cam_history.F90)",
+    "summary": "Writes the accumulated history fields to the history files when an output interval ends.",
+    "title": "History output"
+   },
    "scientific": false,
    "source": null,
    "writes": []
@@ -6654,6 +7081,15 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [],
+    "routine": "cam_write_restart (control/cam_restart.F90)",
+    "summary": "Writes the restart files at a restart time, so a run can be continued bit for bit.",
+    "title": "Restart output"
+   },
    "scientific": false,
    "source": null,
    "writes": []
@@ -6694,6 +7130,7 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": null,
    "scientific": false,
    "source": null,
    "writes": []
@@ -6734,6 +7171,7 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": null,
    "scientific": false,
    "source": null,
    "writes": []
@@ -6774,6 +7212,7 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": null,
    "scientific": false,
    "source": null,
    "writes": []
@@ -6814,6 +7253,7 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": null,
    "scientific": false,
    "source": null,
    "writes": []
@@ -6854,6 +7294,15 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [],
+    "routine": "advance_timestep (utils/time_manager.F90)",
+    "summary": "Moves the model time forward by one physics step, $\\Delta t = 1800$ s, between the dynamics of this step and the physics computed for the next.",
+    "title": "Advance the clock"
+   },
    "scientific": false,
    "source": null,
    "writes": []
@@ -6868,7 +7317,7 @@
     "variables": []
    },
    "default_index": 31,
-   "description": "Original CAM process stepon_run1 in cam_run1.",
+   "description": "Original CAM process stepon_run1, physics before surface coupling (cam_run1).",
    "display_name": "dynamics_to_physics",
    "enabled": true,
    "granularity": "stage",
@@ -6894,6 +7343,37 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [
+     {
+      "caption": "the interface pressures of the hybrid coordinate",
+      "tex": "p_{k+1/2} = A_{k+1/2}\\,p_0 + B_{k+1/2}\\,p_s"
+     },
+     {
+      "caption": "the dry static energy the physics works with, with $z$ the height above the surface and $\\Phi_s$ the surface geopotential",
+      "tex": "s = c_p\\,T + g\\,z + \\Phi_s"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Williamson, D. L. (2002). Time-split versus process-split coupling of parameterizations and dynamical core. Monthly Weather Review, 130(8), 2024\u20132041.",
+      "doi": "10.1175/1520-0493(2002)130<2024:TSVPSC>2.0.CO;2",
+      "key": "williamson2002",
+      "url": "https://doi.org/10.1175/1520-0493(2002)130<2024:TSVPSC>2.0.CO;2"
+     },
+     {
+      "citation": "Dennis, J. M., Edwards, J., Evans, K. J., Guba, O., Lauritzen, P. H., Mirin, A. A., St-Cyr, A., Taylor, M. A., & Worley, P. H. (2012). CAM-SE: A scalable spectral element dynamical core for the Community Atmosphere Model. International Journal of High Performance Computing Applications, 26(1), 74\u201389.",
+      "doi": "10.1177/1094342011428142",
+      "key": "dennis2012",
+      "url": "https://doi.org/10.1177/1094342011428142"
+     }
+    ],
+    "routine": "stepon_run1 \u2192 d_p_coupling (dynamics/se/stepon.F90, dp_coupling.F90)",
+    "summary": "Copies the state the dynamics produced, at the unique GLL points, into the physics columns, which are grouped into chunks of `pcols` columns for load balance. Each column gets its surface pressure, temperature, winds, vertical pressure velocity and tracers; the pressures at interfaces and mid-levels, the geopotential heights and the dry static energy are then derived from them.",
+    "title": "Physics\u2013dynamics coupling, dynamics to physics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6934,6 +7414,7 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": null,
    "scientific": false,
    "source": null,
    "writes": []
@@ -6948,7 +7429,7 @@
     "variables": []
    },
    "default_index": 33,
-   "description": "Original CAM process bc_init in cam_run1.",
+   "description": "Original CAM process bc_init, physics before surface coupling (cam_run1).",
    "display_name": "state_initialize",
    "enabled": true,
    "granularity": "stage",
@@ -6974,6 +7455,28 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "Water isotope tracers are on (`-water_tracer h2o_h216o_hdo_h218o`), so their fixer and limiter run here.",
+    "equations": [],
+    "references": [
+     {
+      "citation": "Brady, E., and Coauthors (2019). The connected isotopic water cycle in the Community Earth System Model version 1. Journal of Advances in Modeling Earth Systems, 11(8), 2547\u20132566.",
+      "doi": "10.1029/2019MS001663",
+      "key": "brady2019",
+      "url": "https://doi.org/10.1029/2019MS001663"
+     },
+     {
+      "citation": "Neale, R. B., and Coauthors (2012). Description of the NCAR Community Atmosphere Model (CAM 5.0). NCAR Technical Note NCAR/TN-486+STR.",
+      "doi": null,
+      "key": "neale2012",
+      "url": "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
+     }
+    ],
+    "routine": "beginning of tphysbc (physics/cam/physpkg.F90)",
+    "summary": "Prepares the state for the physics: the water-isotope mass fixer and ratio limiter, a check that clips negative constituent mixing ratios (`qneg3`), the state diagnostics written before any physics, and the initial tracer integrals that later budget checks compare against.",
+    "title": "Start of the before-coupling physics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -6988,7 +7491,7 @@
     "variables": []
    },
    "default_index": 34,
-   "description": "Original CAM process check_energy_fix in cam_run1.",
+   "description": "Original CAM process check_energy_fix, physics before surface coupling (cam_run1).",
    "display_name": "energy_fixer",
    "enabled": true,
    "granularity": "stage",
@@ -7014,6 +7517,43 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [
+     {
+      "caption": "the column total energy: dry static energy $s = c_pT + gz + \\Phi_s$, kinetic energy and the latent heat of vapour and liquid relative to ice",
+      "tex": "\\begin{aligned}\nE = \\int_{p_{\\text{top}}}^{p_s}\\Big(&s + \\tfrac{1}{2}|\\mathbf{u}|^{2} \\\\\n&+ (L_v + L_f)\\,q_v + L_f\\,q_l\\Big)\\,\\frac{\\mathrm{d}p}{g}\n\\end{aligned}"
+     },
+     {
+      "caption": "the uniform heating, where $\\overline{E}_{\\text{out}}$ is the global mean at the end of the last physics step and $\\overline{E}_{\\text{in}}$ at the start of this one",
+      "tex": "\\left(\\frac{\\partial s}{\\partial t}\\right)_{\\text{fix}} = -\\,\\frac{g}{\\overline{p_s} - p_{\\text{top}}}\\;\\frac{\\overline{E}_{\\text{in}} - \\overline{E}_{\\text{out}}}{\\Delta t}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Williamson, D. L., Olson, J. G., Hannay, C., Toniazzo, T., Taylor, M., & Yudin, V. (2015). Energy considerations in the Community Atmosphere Model (CAM). Journal of Advances in Modeling Earth Systems, 7(3), 1178\u20131188.",
+      "doi": "10.1002/2015MS000448",
+      "key": "williamson2015",
+      "url": "https://doi.org/10.1002/2015MS000448"
+     },
+     {
+      "citation": "Lauritzen, P. H., & Williamson, D. L. (2019). A total energy error analysis of dynamical cores and physics-dynamics coupling in the Community Atmosphere Model (CAM). Journal of Advances in Modeling Earth Systems, 11(5), 1309\u20131328.",
+      "doi": "10.1029/2018MS001549",
+      "key": "lauritzen2019",
+      "url": "https://doi.org/10.1029/2018MS001549"
+     },
+     {
+      "citation": "Neale, R. B., and Coauthors (2012). Description of the NCAR Community Atmosphere Model (CAM 5.0). NCAR Technical Note NCAR/TN-486+STR.",
+      "doi": null,
+      "key": "neale2012",
+      "url": "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
+     }
+    ],
+    "routine": "check_energy_fix (physics/cam/check_energy.F90)",
+    "summary": "The dynamical core does not conserve total energy exactly. The fixer measures the change in the global-mean column total energy between the end of the previous physics step and now, which is the dynamics' error, and gives it back as a uniform heating of every grid cell. It also records the initial temperature and water, from which the step's dynamical-core tendency `DTCORE` is diagnosed.",
+    "title": "Global energy fixer"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7033,7 +7573,7 @@
     "variables": []
    },
    "default_index": 35,
-   "description": "Original CAM process dadadj in cam_run1.",
+   "description": "Original CAM process dadadj, physics before surface coupling (cam_run1).",
    "display_name": "dry_adjustment",
    "enabled": true,
    "granularity": "stage",
@@ -7079,6 +7619,27 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "Applied to the top three layers only (`nlvdry = 3`); below them the convection and turbulence schemes remove instability.",
+    "equations": [
+     {
+      "caption": "the target state for an unstable pair of layers",
+      "tex": "\\begin{gathered}\n\\theta_k \\ge \\theta_{k+1}\\ \\text{after adjustment}, \\\\\nc_p\\,(T_k\\,\\Delta p_k + T_{k+1}\\,\\Delta p_{k+1})\\ \\text{unchanged}\n\\end{gathered}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Manabe, S., Smagorinsky, J., & Strickler, R. F. (1965). Simulated climatology of a general circulation model with a hydrologic cycle. Monthly Weather Review, 93(12), 769\u2013798.",
+      "doi": "10.1175/1520-0493(1965)093<0769:SCOAGC>2.3.CO;2",
+      "key": "manabe1965",
+      "url": "https://doi.org/10.1175/1520-0493(1965)093<0769:SCOAGC>2.3.CO;2"
+     }
+    ],
+    "routine": "dadadj (physics/cam/dadadj.F90)",
+    "summary": "Where the stratification of the top layers is unstable to dry convection, the lapse rate is adjusted to the dry adiabat while the layers' enthalpy is conserved: the GFDL-style adjustment that goes back to Manabe et al. (1965). It iterates until the column is stable, up to 15 times.",
+    "title": "Dry adiabatic adjustment"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7110,7 +7671,7 @@
     "variables": []
    },
    "default_index": 36,
-   "description": "Original CAM process convect_deep_tend in cam_run1.",
+   "description": "Original CAM process convect_deep_tend, physics before surface coupling (cam_run1).",
    "display_name": "deep_convection",
    "enabled": true,
    "granularity": "stage",
@@ -7237,6 +7798,47 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "CAPE threshold $70\\ \\mathrm{J\\,kg^{-1}}$, $\\tau = 3600$ s; autoconversion coefficients `zmconv_c0_lnd` = 0.0059 and `zmconv_c0_ocn` = 0.045; rain evaporation efficiencies `zmconv_ke` = 1e-6 (ocean) and `zmconv_ke_lnd` = 3e-6. The convective transport of aerosols and other tracers runs later, in the wet-deposition stage.",
+    "equations": [
+     {
+      "caption": "the closure for the cloud-base mass flux $M_b$",
+      "tex": "\\left(\\frac{\\partial\\,\\mathrm{CAPE}}{\\partial t}\\right)_{\\text{conv}} = -\\,\\frac{\\mathrm{CAPE}}{\\tau}"
+     },
+     {
+      "caption": "the updraft mass flux, with entrainment $\\varepsilon_u$ and detrainment $\\delta_u$",
+      "tex": "\\frac{\\partial M_u}{\\partial z} = (\\varepsilon_u - \\delta_u)\\,M_u"
+     },
+     {
+      "caption": "the heating by updraft ($u$) and downdraft ($d$) mass fluxes, with condensation $C$ and evaporation $E$",
+      "tex": "\\begin{aligned}\n\\frac{\\partial \\bar{s}}{\\partial t} = -\\,\\frac{1}{\\rho}\\,\\frac{\\partial}{\\partial z}\\Big[&M_u (s_u - \\bar{s}) \\\\\n&+ M_d (s_d - \\bar{s})\\Big] + L\\,(C - E)\n\\end{aligned}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Zhang, G. J., & McFarlane, N. A. (1995). Sensitivity of climate simulations to the parameterization of cumulus convection in the Canadian Climate Centre general circulation model. Atmosphere-Ocean, 33(3), 407\u2013446.",
+      "doi": "10.1080/07055900.1995.9649539",
+      "key": "zhang1995",
+      "url": "https://doi.org/10.1080/07055900.1995.9649539"
+     },
+     {
+      "citation": "Neale, R. B., Richter, J. H., & Jochum, M. (2008). The impact of convection on ENSO: From a delayed oscillator to a series of events. Journal of Climate, 21(22), 5904\u20135924.",
+      "doi": "10.1175/2008JCLI2244.1",
+      "key": "neale2008",
+      "url": "https://doi.org/10.1175/2008JCLI2244.1"
+     },
+     {
+      "citation": "Richter, J. H., & Rasch, P. J. (2008). Effects of convective momentum transport on the atmospheric circulation in the Community Atmosphere Model, version 3. Journal of Climate, 21(7), 1487\u20131499.",
+      "doi": "10.1175/2007JCLI1789.1",
+      "key": "richter2008",
+      "url": "https://doi.org/10.1175/2007JCLI1789.1"
+     }
+    ],
+    "routine": "convect_deep_tend (physics/cam/convect_deep.F90 \u2192 zm_conv_intr.F90)",
+    "summary": "Represents precipitating cumulus towers too small for the grid. The Zhang\u2013McFarlane scheme builds an ensemble of entraining updraft plumes and their downdrafts from the level of maximum moist static energy in the boundary layer. It triggers when the convective available potential energy (CAPE) of a dilute, entraining parcel exceeds a threshold, and its closure sets the cloud-base mass flux so that CAPE is consumed over a fixed time scale. The plumes transport heat, moisture and cloud water, condense and rain, evaporate precipitation below cloud, and transport momentum through convective pressure gradients.",
+    "title": "Deep convection (Zhang\u2013McFarlane)"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7260,7 +7862,7 @@
     "variables": []
    },
    "default_index": 37,
-   "description": "Original CAM process convect_shallow_tend in cam_run1.",
+   "description": "Original CAM process convect_shallow_tend, physics before surface coupling (cam_run1).",
    "display_name": "shallow_convection",
    "enabled": true,
    "granularity": "stage",
@@ -7339,6 +7941,37 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "`shallow_scheme = UW`, with penetrative entrainment `uwshcu_rpen` = 5.",
+    "equations": [
+     {
+      "caption": "the cloud-base mass flux: the upward flux of a Gaussian distribution of vertical velocities with variance from the boundary-layer mean TKE, counting only those faster than the critical velocity $w_c$ that overcomes the inhibition; $\\rho_0$ is the density at the boundary-layer top and $b$ a buoyancy-efficiency constant",
+      "tex": "\\begin{gathered}\nM_b = \\rho_0\\,\\frac{\\sigma_w}{\\sqrt{2\\pi}}\\,\\exp\\!\\left(-\\frac{w_c^{2}}{2\\,\\sigma_w^{2}}\\right), \\\\\nw_c = \\sqrt{2\\,b\\,\\mathrm{CIN}},\\qquad \\sigma_w^{2} \\approx \\bar{e}_{\\text{PBL}}\n\\end{gathered}"
+     },
+     {
+      "caption": "the plume, with entrainment and detrainment from buoyancy sorting",
+      "tex": "\\frac{\\partial M_u}{\\partial z} = (\\varepsilon - \\delta)\\,M_u"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Park, S., & Bretherton, C. S. (2009). The University of Washington shallow convection and moist turbulence schemes and their impact on climate simulations with the Community Atmosphere Model. Journal of Climate, 22(12), 3449\u20133469.",
+      "doi": "10.1175/2008JCLI2557.1",
+      "key": "park2009",
+      "url": "https://doi.org/10.1175/2008JCLI2557.1"
+     },
+     {
+      "citation": "Bretherton, C. S., McCaa, J. R., & Grenier, H. (2004). A new parameterization for shallow cumulus convection and its application to marine subtropical cloud-topped boundary layers. Part I: Description and 1D results. Monthly Weather Review, 132(4), 864\u2013882.",
+      "doi": "10.1175/1520-0493(2004)132<0864:ANPFSC>2.0.CO;2",
+      "key": "bretherton2004",
+      "url": "https://doi.org/10.1175/1520-0493(2004)132<0864:ANPFSC>2.0.CO;2"
+     }
+    ],
+    "routine": "convect_shallow_tend (physics/cam/convect_shallow.F90 \u2192 uwshcu.F90)",
+    "summary": "Represents non-precipitating and weakly precipitating cumulus such as trade-wind clouds. The UW scheme launches a single entraining-detraining plume from the top of the boundary layer. Its cloud-base mass flux depends on the convective inhibition (CIN) and the boundary layer's turbulent kinetic energy: only the fraction of updrafts whose vertical velocity can overcome the CIN rises. Lateral mixing is determined by buoyancy sorting of the mixtures of cloudy and environmental air; condensate is detrained and precipitation forms above a threshold.",
+    "title": "Shallow convection (University of Washington)"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7353,7 +7986,7 @@
     "variables": []
    },
    "default_index": 38,
-   "description": "Original CAM process sslt_rebin_adv in cam_run1.",
+   "description": "Original CAM process sslt_rebin_adv, physics before surface coupling (cam_run1).",
    "display_name": "sea_salt_rebin",
    "enabled": true,
    "granularity": "stage",
@@ -7379,6 +8012,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": false,
+    "configuration": "MAM3 carries sea salt in its modes, not the bulk constituents `SSLTA`/`SSLTC`, so `has_sslt` is false and the routine returns.",
+    "equations": [],
+    "references": [],
+    "routine": "sslt_rebin_adv (physics/cam/sslt_rebin.F90)",
+    "summary": "Redistributes the bulk aerosol model's sea salt among its size bins after advection, for the prescribed-aerosol (CAM4-style) sea salt.",
+    "title": "Sea-salt rebinning"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7410,7 +8052,7 @@
     "variables": []
    },
    "default_index": 39,
-   "description": "Original CAM process macro_microphysics in cam_run1.",
+   "description": "Original CAM process macro_microphysics, physics before surface coupling (cam_run1).",
    "display_name": "cloud_macro_microphysics",
    "enabled": true,
    "granularity": "stage",
@@ -7529,6 +8171,77 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "`macrop_scheme = park`, `microp_scheme = MG` (MG1.0, `micro_mg_version = 1`); one macro\u2013micro substep per physics step (`cld_macmic_num_steps = 1`); droplet activation from the MAM3 modes after Abdul-Razzak and Ghan (2000); ice nucleation after Liu and Penner (2005) and Liu et al. (2007).",
+    "equations": [
+     {
+      "caption": "the gamma size distribution of each hydrometeor class, whose parameters follow from the predicted mass and number",
+      "tex": "N(D) = N_0\\,D^{\\mu}\\,e^{-\\lambda D}"
+     },
+     {
+      "caption": "autoconversion of cloud water to rain (Khairoutdinov and Kogan 2000), with $N_c$ in $\\mathrm{cm^{-3}}$",
+      "tex": "\\left(\\frac{\\partial q_c}{\\partial t}\\right)_{\\text{auto}} = 1350\\; q_c^{2.47}\\, N_c^{-1.79}"
+     },
+     {
+      "caption": "the budget of each predicted mass or number $q$, with sedimentation at fall speed $V_q$",
+      "tex": "\\begin{aligned}\n\\frac{\\partial q}{\\partial t} = {}&\\left(\\frac{\\partial q}{\\partial t}\\right)_{\\text{macro}} + \\left(\\frac{\\partial q}{\\partial t}\\right)_{\\text{act/nuc}} \\\\\n&+ \\sum_{\\text{processes}} \\left(\\frac{\\partial q}{\\partial t}\\right)_{\\text{micro}} \\\\\n&- \\frac{1}{\\rho}\\,\\frac{\\partial (\\rho\\, V_q\\, q)}{\\partial z}\n\\end{aligned}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Park, S., Bretherton, C. S., & Rasch, P. J. (2014). Integrating cloud processes in the Community Atmosphere Model, version 5. Journal of Climate, 27(18), 6821\u20136856.",
+      "doi": "10.1175/JCLI-D-14-00087.1",
+      "key": "park2014",
+      "url": "https://doi.org/10.1175/JCLI-D-14-00087.1"
+     },
+     {
+      "citation": "Morrison, H., & Gettelman, A. (2008). A new two-moment bulk stratiform cloud microphysics scheme in the Community Atmosphere Model, version 3 (CAM3). Part I: Description and numerical tests. Journal of Climate, 21(15), 3642\u20133659.",
+      "doi": "10.1175/2008JCLI2105.1",
+      "key": "morrison2008",
+      "url": "https://doi.org/10.1175/2008JCLI2105.1"
+     },
+     {
+      "citation": "Gettelman, A., Morrison, H., & Ghan, S. J. (2008). A new two-moment bulk stratiform cloud microphysics scheme in the Community Atmosphere Model, version 3 (CAM3). Part II: Single-column and global results. Journal of Climate, 21(15), 3660\u20133679.",
+      "doi": "10.1175/2008JCLI2116.1",
+      "key": "gettelman2008",
+      "url": "https://doi.org/10.1175/2008JCLI2116.1"
+     },
+     {
+      "citation": "Gettelman, A., Liu, X., Ghan, S. J., Morrison, H., Park, S., Conley, A. J., Klein, S. A., Boyle, J., Mitchell, D. L., & Li, J.-L. F. (2010). Global simulations of ice nucleation and ice supersaturation with an improved cloud scheme in the Community Atmosphere Model. Journal of Geophysical Research, 115, D18216.",
+      "doi": "10.1029/2009JD013797",
+      "key": "gettelman2010",
+      "url": "https://doi.org/10.1029/2009JD013797"
+     },
+     {
+      "citation": "Abdul-Razzak, H., & Ghan, S. J. (2000). A parameterization of aerosol activation: 2. Multiple aerosol types. Journal of Geophysical Research, 105(D5), 6837\u20136844.",
+      "doi": "10.1029/1999JD901161",
+      "key": "abdulrazzak2000",
+      "url": "https://doi.org/10.1029/1999JD901161"
+     },
+     {
+      "citation": "Liu, X., & Penner, J. E. (2005). Ice nucleation parameterization for global models. Meteorologische Zeitschrift, 14(4), 499\u2013514.",
+      "doi": "10.1127/0941-2948/2005/0059",
+      "key": "liupenner2005",
+      "url": "https://doi.org/10.1127/0941-2948/2005/0059"
+     },
+     {
+      "citation": "Liu, X., Penner, J. E., Ghan, S. J., & Wang, M. (2007). Inclusion of ice microphysics in the NCAR Community Atmospheric Model version 3 (CAM3). Journal of Climate, 20(18), 4526\u20134547.",
+      "doi": "10.1175/JCLI4264.1",
+      "key": "liu2007",
+      "url": "https://doi.org/10.1175/JCLI4264.1"
+     },
+     {
+      "citation": "Khairoutdinov, M., & Kogan, Y. (2000). A new cloud physics parameterization in a large-eddy simulation model of marine stratocumulus. Monthly Weather Review, 128(1), 229\u2013243.",
+      "doi": "10.1175/1520-0493(2000)128<0229:ANCPPI>2.0.CO;2",
+      "key": "khairoutdinov2000",
+      "url": "https://doi.org/10.1175/1520-0493(2000)128<0229:ANCPPI>2.0.CO;2"
+     }
+    ],
+    "routine": "macrop_driver_tend (cldwat2m_macro.F90), microp_aero_run, microp_driver_tend (micro_mg1_0.F90)",
+    "summary": "Stratiform (large-scale) clouds and precipitation. The Park macrophysics computes the liquid and ice stratus fractions, from the relative humidity with a triangular distribution of subgrid humidity for liquid, and the condensation and evaporation that keep the cloud consistent with them; it also takes in the condensate detrained by convection. Aerosol activation then gives the droplet and ice crystal number sources, and the Morrison\u2013Gettelman microphysics, a two-moment bulk scheme, predicts the mass and number of cloud liquid and ice and diagnoses rain and snow: autoconversion, accretion, freezing and melting, the Bergeron\u2013Findeisen process, sedimentation and the evaporation of precipitation.",
+    "title": "Cloud macrophysics and microphysics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7569,6 +8282,22 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [
+     {
+      "citation": "Park, S., Bretherton, C. S., & Rasch, P. J. (2014). Integrating cloud processes in the Community Atmosphere Model, version 5. Journal of Climate, 27(18), 6821\u20136856.",
+      "doi": "10.1175/JCLI-D-14-00087.1",
+      "key": "park2014",
+      "url": "https://doi.org/10.1175/JCLI-D-14-00087.1"
+     }
+    ],
+    "routine": "tphysbc, macro_stage 1",
+    "summary": "The cloud stage stopped just before the Park macrophysics driver, so a Python transliteration of the driver can run in between; it resumes with the post leaf. Off by default.",
+    "title": "Cloud stage, up to the macrophysics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7609,6 +8338,28 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [
+     {
+      "citation": "Morrison, H., & Gettelman, A. (2008). A new two-moment bulk stratiform cloud microphysics scheme in the Community Atmosphere Model, version 3 (CAM3). Part I: Description and numerical tests. Journal of Climate, 21(15), 3642\u20133659.",
+      "doi": "10.1175/2008JCLI2105.1",
+      "key": "morrison2008",
+      "url": "https://doi.org/10.1175/2008JCLI2105.1"
+     },
+     {
+      "citation": "Gettelman, A., Morrison, H., & Ghan, S. J. (2008). A new two-moment bulk stratiform cloud microphysics scheme in the Community Atmosphere Model, version 3 (CAM3). Part II: Single-column and global results. Journal of Climate, 21(15), 3660\u20133679.",
+      "doi": "10.1175/2008JCLI2116.1",
+      "key": "gettelman2008",
+      "url": "https://doi.org/10.1175/2008JCLI2116.1"
+     }
+    ],
+    "routine": "tphysbc, macro_stage 2",
+    "summary": "Resumes the cloud stage after the macrophysics: applies the macrophysics tendency, then aerosol activation and the MG microphysics. Off by default.",
+    "title": "Cloud stage, after the macrophysics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7623,7 +8374,7 @@
     "variables": []
    },
    "default_index": 42,
-   "description": "Original CAM process aero_model_wetdep in cam_run1.",
+   "description": "Original CAM process aero_model_wetdep, physics before surface coupling (cam_run1).",
    "display_name": "wet_deposition",
    "enabled": true,
    "granularity": "stage",
@@ -7649,6 +8400,28 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [
+     {
+      "citation": "Liu, X., and Coauthors (2012). Toward a minimal representation of aerosols in climate models: description and evaluation in the Community Atmosphere Model CAM5. Geoscientific Model Development, 5(3), 709\u2013739.",
+      "doi": "10.5194/gmd-5-709-2012",
+      "key": "liu2012",
+      "url": "https://doi.org/10.5194/gmd-5-709-2012"
+     },
+     {
+      "citation": "Neale, R. B., and Coauthors (2012). Description of the NCAR Community Atmosphere Model (CAM 5.0). NCAR Technical Note NCAR/TN-486+STR.",
+      "doi": null,
+      "key": "neale2012",
+      "url": "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
+     }
+    ],
+    "routine": "aero_model_wetdep, convect_deep_tend_2 (tphysbc)",
+    "summary": "Removes aerosol by clouds and precipitation and carries the tracers through deep convective plumes. By default the stage runs as its four leaves.",
+    "title": "Aerosol wet removal and convective transport"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7689,6 +8462,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": false,
+    "configuration": "Runs only for prescribed (non-prognostic) modal aerosol; MAM3 here is prognostic, so the branch is skipped.",
+    "equations": [],
+    "references": [],
+    "routine": "modal_aero_calcsize_diag, modal_aero_wateruptake_dr",
+    "summary": "Diagnoses the modal aerosol sizes and their water uptake, for the prescribed modal aerosol.",
+    "title": "Aerosol size and water uptake"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7750,6 +8532,33 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "`aer_wetdep_list` names the species of the three modes; both their interstitial and cloud-borne forms are scavenged.",
+    "equations": [
+     {
+      "caption": "schematically, first-order removal with the scavenging coefficient $\\lambda$; in cloud, the activated fraction $f_{\\text{act}}$ times the rate $P$ at which cloud water $q_c$ is converted to precipitation",
+      "tex": "\\begin{gathered}\n\\left(\\frac{\\partial \\chi}{\\partial t}\\right)_{\\text{wet}} = -\\,\\lambda\\,\\chi, \\\\\n\\lambda_{\\text{in-cloud}} = f_{\\text{act}}\\,\\frac{P}{q_c}\n\\end{gathered}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Liu, X., and Coauthors (2012). Toward a minimal representation of aerosols in climate models: description and evaluation in the Community Atmosphere Model CAM5. Geoscientific Model Development, 5(3), 709\u2013739.",
+      "doi": "10.5194/gmd-5-709-2012",
+      "key": "liu2012",
+      "url": "https://doi.org/10.5194/gmd-5-709-2012"
+     },
+     {
+      "citation": "Neale, R. B., and Coauthors (2012). Description of the NCAR Community Atmosphere Model (CAM 5.0). NCAR Technical Note NCAR/TN-486+STR.",
+      "doi": null,
+      "key": "neale2012",
+      "url": "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
+     }
+    ],
+    "routine": "aero_model_wetdep (chemistry/modal_aero/aero_model.F90)",
+    "summary": "Scavenging of MAM3 aerosol by stratiform and convective clouds and their precipitation. In-cloud (nucleation) scavenging removes the aerosol activated in cloud drops at the rate the cloud water turns into precipitation; below-cloud (impaction) scavenging removes interstitial aerosol collected by falling rain and snow; aerosol is resuspended where precipitation evaporates. The aerosol water uptake and wet sizes are updated first.",
+    "title": "Aerosol wet deposition"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7790,6 +8599,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": false,
+    "configuration": "No CARMA model is built in (`carma_model = none`).",
+    "equations": [],
+    "references": [],
+    "routine": "carma_wetdep_tend (physics/carma/cam/carma_intr.F90)",
+    "summary": "Wet deposition of CARMA aerosol.",
+    "title": "CARMA wet deposition"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7853,6 +8671,33 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [
+     {
+      "caption": "the tendency of a tracer mixing ratio $\\chi$ from the convective mass fluxes",
+      "tex": "\\begin{aligned}\n\\frac{\\partial \\bar{\\chi}}{\\partial t} = -\\,\\frac{1}{\\rho}\\,\\frac{\\partial}{\\partial z}\\Big[&M_u (\\chi_u - \\bar{\\chi}) \\\\\n&+ M_d (\\chi_d - \\bar{\\chi})\\Big]\n\\end{aligned}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Zhang, G. J., & McFarlane, N. A. (1995). Sensitivity of climate simulations to the parameterization of cumulus convection in the Canadian Climate Centre general circulation model. Atmosphere-Ocean, 33(3), 407\u2013446.",
+      "doi": "10.1080/07055900.1995.9649539",
+      "key": "zhang1995",
+      "url": "https://doi.org/10.1080/07055900.1995.9649539"
+     },
+     {
+      "citation": "Liu, X., and Coauthors (2012). Toward a minimal representation of aerosols in climate models: description and evaluation in the Community Atmosphere Model CAM5. Geoscientific Model Development, 5(3), 709\u2013739.",
+      "doi": "10.5194/gmd-5-709-2012",
+      "key": "liu2012",
+      "url": "https://doi.org/10.5194/gmd-5-709-2012"
+     }
+    ],
+    "routine": "convect_deep_tend_2 \u2192 zm_conv_tend_2 \u2192 convtran (physics/cam/zm_conv_intr.F90)",
+    "summary": "Transports the aerosols and other tracers through the deep convective updrafts and downdrafts computed by the deep convection stage, with the same mass fluxes as heat and moisture; soluble aerosol is treated with the fraction that is not scavenged.",
+    "title": "Convective transport of tracers"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7867,7 +8712,7 @@
     "variables": []
    },
    "default_index": 47,
-   "description": "Original CAM process physics_diagnostics in cam_run1.",
+   "description": "Original CAM process physics_diagnostics, physics before surface coupling (cam_run1).",
    "display_name": "diagnostics",
    "enabled": true,
    "granularity": "stage",
@@ -7893,6 +8738,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [],
+    "routine": "diag_phys_writeout, diag_conv, cloud_diagnostics_calc",
+    "summary": "Diagnostic output only: the state, convective precipitation and cloud diagnostics written to the history. The state is not changed. By default the stage runs as its two leaves.",
+    "title": "Physics diagnostics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7933,6 +8787,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [],
+    "routine": "diag_phys_writeout, diag_conv (physics/cam/cam_diagnostics.F90)",
+    "summary": "Writes the state after convection and clouds (temperature, humidity, winds, geopotential, sea-level pressure, ...) and the convective and large-scale precipitation to the history. Changes nothing.",
+    "title": "State and convection diagnostics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7973,6 +8836,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [],
+    "routine": "cloud_diagnostics_calc (physics/cam/cloud_diagnostics.F90)",
+    "summary": "Diagnoses cloud water paths, effective radii and the total, low, middle and high cloud fractions (maximum-random overlap) for the history. Changes nothing.",
+    "title": "Cloud diagnostics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -7996,7 +8868,7 @@
     "variables": []
    },
    "default_index": 50,
-   "description": "Original CAM process radiation_tend in cam_run1.",
+   "description": "Original CAM process radiation_tend, physics before surface coupling (cam_run1).",
    "display_name": "radiation",
    "enabled": true,
    "granularity": "stage",
@@ -8061,6 +8933,49 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": "`radiation_scheme = rrtmg`; full radiative transfer every second step (`IRADSW` = `IRADLW` = 2, hourly), with the stored heating rates applied in between; 1850 greenhouse gases and ozone climatology; the solar spectrum fixed at 1850 (`solar_data_type = FIXED`).",
+    "equations": [
+     {
+      "caption": "the heating from the divergence of the net downward flux $F_{\\text{net}}$",
+      "tex": "\\left(\\frac{\\partial T}{\\partial t}\\right)_{\\text{rad}} = \\frac{g}{c_p}\\,\\frac{\\partial F_{\\text{net}}}{\\partial p}"
+     },
+     {
+      "caption": "the band fluxes as a quadrature over the cumulative distribution $g$ of absorption coefficients, each point solved as a monochromatic two-stream problem",
+      "tex": "F = \\sum_{\\text{bands}}\\;\\sum_{g} w_g\\, F_g"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Iacono, M. J., Delamere, J. S., Mlawer, E. J., Shephard, M. W., Clough, S. A., & Collins, W. D. (2008). Radiative forcing by long-lived greenhouse gases: Calculations with the AER radiative transfer models. Journal of Geophysical Research, 113, D13103.",
+      "doi": "10.1029/2008JD009944",
+      "key": "iacono2008",
+      "url": "https://doi.org/10.1029/2008JD009944"
+     },
+     {
+      "citation": "Mlawer, E. J., Taubman, S. J., Brown, P. D., Iacono, M. J., & Clough, S. A. (1997). Radiative transfer for inhomogeneous atmospheres: RRTM, a validated correlated-k model for the longwave. Journal of Geophysical Research, 102(D14), 16663\u201316682.",
+      "doi": "10.1029/97JD00237",
+      "key": "mlawer1997",
+      "url": "https://doi.org/10.1029/97JD00237"
+     },
+     {
+      "citation": "Pincus, R., Barker, H. W., & Morcrette, J.-J. (2003). A fast, flexible, approximate technique for computing radiative transfer in inhomogeneous cloud fields. Journal of Geophysical Research, 108(D13), 4376.",
+      "doi": "10.1029/2002JD003322",
+      "key": "pincus2003",
+      "url": "https://doi.org/10.1029/2002JD003322"
+     },
+     {
+      "citation": "Neale, R. B., and Coauthors (2012). Description of the NCAR Community Atmosphere Model (CAM 5.0). NCAR Technical Note NCAR/TN-486+STR.",
+      "doi": null,
+      "key": "neale2012",
+      "url": "https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf"
+     }
+    ],
+    "routine": "radiation_tend (physics/rrtmg/radiation.F90)",
+    "summary": "Solar (shortwave) and terrestrial (longwave) radiative transfer through gases, clouds and aerosols, giving the radiative heating rates and the surface fluxes. RRTMG is a correlated-$k$ model: 14 shortwave and 16 longwave bands, each integrated over its absorption coefficients by a small number of quadrature points. Subgrid cloud variability is sampled by McICA, which draws one random cloud profile per quadrature point consistent with the cloud fraction and its vertical overlap. Optical properties come from the prognostic water vapour and the MAM3 aerosol, prescribed ozone and fixed greenhouse gases.",
+    "title": "Radiation (RRTMG)"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -8101,6 +9016,22 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [
+     {
+      "citation": "Iacono, M. J., Delamere, J. S., Mlawer, E. J., Shephard, M. W., Clough, S. A., & Collins, W. D. (2008). Radiative forcing by long-lived greenhouse gases: Calculations with the AER radiative transfer models. Journal of Geophysical Research, 113, D13103.",
+      "doi": "10.1029/2008JD009944",
+      "key": "iacono2008",
+      "url": "https://doi.org/10.1029/2008JD009944"
+     }
+    ],
+    "routine": "tphysbc, rad_stage 1",
+    "summary": "The radiation stage stopped before the radiation driver, so a Python radiation can run in between; it binds the chunk's surface fields and returns. Off by default.",
+    "title": "Radiation stage, binding"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -8141,6 +9072,22 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [
+     {
+      "citation": "Iacono, M. J., Delamere, J. S., Mlawer, E. J., Shephard, M. W., Clough, S. A., & Collins, W. D. (2008). Radiative forcing by long-lived greenhouse gases: Calculations with the AER radiative transfer models. Journal of Geophysical Research, 113, D13103.",
+      "doi": "10.1029/2008JD009944",
+      "key": "iacono2008",
+      "url": "https://doi.org/10.1029/2008JD009944"
+     }
+    ],
+    "routine": "tphysbc, rad_stage 2",
+    "summary": "Resumes the radiation stage: applies the radiative heating produced in between and the net flux to the energy check. Off by default.",
+    "title": "Radiation stage, applying"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -8155,7 +9102,7 @@
     "variables": []
    },
    "default_index": 53,
-   "description": "Original CAM process cam_export in cam_run1.",
+   "description": "Original CAM process cam_export, physics before surface coupling (cam_run1).",
    "display_name": "state_export",
    "enabled": true,
    "granularity": "stage",
@@ -8181,6 +9128,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [],
+    "routine": "tropopause_output, cam_export, diag_export",
+    "summary": "Diagnoses the tropopause and fills `cam_out`, the fields the surface components will receive. By default the stage runs as its three leaves.",
+    "title": "Surface export fields"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -8221,6 +9177,27 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [
+     {
+      "caption": "the WMO criterion: the lowest level where the lapse rate falls to $2\\ \\mathrm{K\\,km^{-1}}$ and its average over the 2 km above stays at or below that",
+      "tex": "-\\frac{\\partial T}{\\partial z} \\le 2\\ \\mathrm{K\\,km^{-1}}"
+     }
+    ],
+    "references": [
+     {
+      "citation": "Reichler, T., Dameris, M., & Sausen, R. (2003). Determining the tropopause height from gridded data. Geophysical Research Letters, 30(20), 2042.",
+      "doi": "10.1029/2003GL018240",
+      "key": "reichler2003",
+      "url": "https://doi.org/10.1029/2003GL018240"
+     }
+    ],
+    "routine": "tropopause_output (physics/cam/tropopause.F90)",
+    "summary": "Finds the tropopause in every column with the WMO lapse-rate definition, using the algorithm of Reichler et al. (2003), and writes its pressure, temperature and height to the history. Changes nothing.",
+    "title": "Tropopause diagnosis"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -8261,6 +9238,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [],
+    "routine": "cam_export (physics/cam/camsrfexch.F90)",
+    "summary": "Fills `cam_out` from the bottom level of the state: temperature, humidity, winds, pressure, height, potential temperature and density, and the convective and large-scale rain and snow of this step. The downward surface radiation was set by radiation and the aerosol deposition fluxes by the aerosol stages.",
+    "title": "Fields for the surface"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -8301,6 +9287,15 @@
    "reads": [],
    "reason": null,
    "removable": true,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [],
+    "routine": "diag_export (physics/cam/cam_diagnostics.F90)",
+    "summary": "Writes the fields sent to the surface to the history. Changes nothing.",
+    "title": "Export diagnostics"
+   },
    "scientific": true,
    "source": null,
    "writes": []
@@ -8341,6 +9336,15 @@
    "reads": [],
    "reason": "a control action; always part of the step",
    "removable": false,
+   "science": {
+    "active": true,
+    "configuration": null,
+    "equations": [],
+    "references": [],
+    "routine": "atm_export (cpl/atm_import_export.F90)",
+    "summary": "Copies `cam_out` to the coupler: the bottom-level temperature, winds, humidity, pressure and height, convective and large-scale rain and snow, downward shortwave and longwave radiation at the surface, and the aerosol deposition fluxes. The surface components use them for their next step.",
+    "title": "Export to the coupler"
+   },
    "scientific": false,
    "source": null,
    "writes": []
@@ -8386,6 +9390,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/actdropl.F90",
    "writes": []
@@ -8430,6 +9435,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/gw_common.F90",
    "writes": []
@@ -8474,6 +9480,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/aer_rad_props.F90",
    "writes": []
@@ -8518,6 +9525,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/aer_rad_props.F90",
    "writes": []
@@ -8562,6 +9570,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radlw.F90",
    "writes": []
@@ -8606,6 +9615,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): nontrivial_c_representation, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/hb_diff.F90",
    "writes": []
@@ -8650,6 +9660,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/quickbeam/math_lib.f90",
    "writes": []
@@ -8694,6 +9705,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): missing_intent, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv.F90",
    "writes": []
@@ -8738,6 +9750,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): missing_intent, pointer_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv.F90",
    "writes": []
@@ -8785,6 +9798,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): optional_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/wv_saturation.F90",
    "writes": []
@@ -8829,6 +9843,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/pbl_utils.F90",
    "writes": []
@@ -8873,6 +9888,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/pbl_utils.F90",
    "writes": []
@@ -8917,6 +9933,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): fortran_io, missing_intent, nontrivial_c_representation, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/eddy_diff.F90",
    "writes": []
@@ -8961,6 +9978,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/eddy_diff.F90",
    "writes": []
@@ -9005,6 +10023,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/hb_diff.F90",
    "writes": []
@@ -9049,6 +10068,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radiation.F90",
    "writes": []
@@ -9093,6 +10113,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radiation.F90",
    "writes": []
@@ -9137,6 +10158,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/eddy_diff.F90",
    "writes": []
@@ -9181,6 +10203,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/hb_diff.F90",
    "writes": []
@@ -9226,6 +10249,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, missing_intent, nontrivial_c_representation, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/cloud_fraction.F90",
    "writes": []
@@ -9270,6 +10294,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): missing_intent, nontrivial_c_representation, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv.F90",
    "writes": []
@@ -9314,6 +10339,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/cloud_cover_diags.F90",
    "writes": []
@@ -9359,6 +10385,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): missing_intent, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv.F90",
    "writes": []
@@ -9404,6 +10431,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/cloud_fraction.F90",
    "writes": []
@@ -9448,6 +10476,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/hk_conv.F90",
    "writes": []
@@ -9492,6 +10521,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/cmparray_mod.F90",
    "writes": []
@@ -9536,6 +10566,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/cmparray_mod.F90",
    "writes": []
@@ -9582,6 +10613,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io, nontrivial_c_representation, optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/constituents.F90",
    "writes": []
@@ -9627,6 +10659,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/coagl.F90",
    "writes": []
@@ -9672,6 +10705,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/coagp.F90",
    "writes": []
@@ -9716,6 +10750,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io, nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/eddy_diff.F90",
    "writes": []
@@ -9760,6 +10795,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/hb_diff.F90",
    "writes": []
@@ -9804,6 +10840,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): function_result_abi, nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/molec_diff.F90",
    "writes": []
@@ -9848,6 +10885,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/pbl_utils.F90",
    "writes": []
@@ -9892,6 +10930,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/trb_mtn_stress.F90",
    "writes": []
@@ -9936,6 +10975,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/uwshcu.F90",
    "writes": []
@@ -9980,6 +11020,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/uwshcu.F90",
    "writes": []
@@ -10024,6 +11065,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, nontrivial_c_representation, optional_argument, optional_procedure_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/diffusion_solver.F90",
    "writes": []
@@ -10068,6 +11110,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): optional_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/uwshcu.F90",
    "writes": []
@@ -10112,6 +11155,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10156,6 +11200,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10200,6 +11245,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10244,6 +11290,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10288,6 +11335,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_modis_simulator.F90",
    "writes": []
@@ -10332,6 +11380,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10376,6 +11425,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10420,6 +11470,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10464,6 +11515,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10508,6 +11560,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10552,6 +11605,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10596,6 +11650,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): fortran_io, nontrivial_c_representation, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv.F90",
    "writes": []
@@ -10640,6 +11695,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp.F90",
    "writes": []
@@ -10684,6 +11740,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): nontrivial_c_representation, optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_stats.F90",
    "writes": []
@@ -10728,6 +11785,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10772,6 +11830,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10816,6 +11875,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -10860,6 +11920,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_isccp_simulator.F90",
    "writes": []
@@ -10904,6 +11965,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp.F90",
    "writes": []
@@ -10948,6 +12010,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_lidar.F90",
    "writes": []
@@ -10992,6 +12055,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/llnl/llnl_stats.F90",
    "writes": []
@@ -11036,6 +12100,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -11080,6 +12145,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -11124,6 +12190,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_misr_simulator.F90",
    "writes": []
@@ -11168,6 +12235,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_modis_simulator.F90",
    "writes": []
@@ -11212,6 +12280,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_modis_simulator.F90",
    "writes": []
@@ -11256,6 +12325,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_utils.F90",
    "writes": []
@@ -11300,6 +12370,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/llnl/cosp_radar.F90",
    "writes": []
@@ -11344,6 +12415,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -11388,6 +12460,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -11432,6 +12505,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -11476,6 +12550,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_simulator.F90",
    "writes": []
@@ -11520,6 +12595,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_stats.F90",
    "writes": []
@@ -11564,6 +12640,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -11608,6 +12685,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, optional_argument, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/cospsimulator_intr.F90",
    "writes": []
@@ -11653,6 +12731,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/csolve.F90",
    "writes": []
@@ -11700,6 +12779,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): optional_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/wv_saturation.F90",
    "writes": []
@@ -11745,6 +12825,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/downgevapply.F90",
    "writes": []
@@ -11790,6 +12871,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/downgxfer.F90",
    "writes": []
@@ -11834,6 +12916,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): nontrivial_c_representation, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/quickbeam/dsd.f90",
    "writes": []
@@ -11878,6 +12961,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, nontrivial_c_representation, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/ebert_curry.F90",
    "writes": []
@@ -11922,6 +13006,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, nontrivial_c_representation, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/ebert_curry.F90",
    "writes": []
@@ -11966,6 +13051,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/gw_common.F90",
    "writes": []
@@ -12011,6 +13097,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/evap_ingrp.F90",
    "writes": []
@@ -12056,6 +13143,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/evap_mono.F90",
    "writes": []
@@ -12101,6 +13189,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/evap_poly.F90",
    "writes": []
@@ -12146,6 +13235,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/evapp.F90",
    "writes": []
@@ -12190,6 +13280,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/eddy_diff.F90",
    "writes": []
@@ -12234,6 +13325,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/wv_saturation.F90",
    "writes": []
@@ -12278,6 +13370,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io, nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/wv_saturation.F90",
    "writes": []
@@ -12322,6 +13415,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/uwshcu.F90",
    "writes": []
@@ -12366,6 +13460,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, nontrivial_c_representation, optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -12410,6 +13505,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -12454,6 +13550,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -12498,6 +13595,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -12542,6 +13640,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_modis_simulator.F90",
    "writes": []
@@ -12586,6 +13685,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -12630,6 +13730,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -12674,6 +13775,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -12718,6 +13820,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -12762,6 +13865,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -12806,6 +13910,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_types.F90",
    "writes": []
@@ -12851,6 +13956,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/freezaerl_koop2000.F90",
    "writes": []
@@ -12896,6 +14002,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/freezaerl_mohler2010.F90",
    "writes": []
@@ -12941,6 +14048,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/freezaerl_tabazadeh2000.F90",
    "writes": []
@@ -12986,6 +14094,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/freezdropl.F90",
    "writes": []
@@ -13031,6 +14140,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/freezglaerl_murray2010.F90",
    "writes": []
@@ -13075,6 +14185,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/cloud_rad_props.F90",
    "writes": []
@@ -13119,6 +14230,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/cloud_rad_props.F90",
    "writes": []
@@ -13164,6 +14276,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/gasexchange.F90",
    "writes": []
@@ -13208,6 +14321,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): optional_argument, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/ext/rrtmg_mcica/mcica_subcol_gen_lw.f90",
    "writes": []
@@ -13252,6 +14366,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): optional_argument, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/ext/rrtmg_mcica/mcica_subcol_gen_sw.f90",
    "writes": []
@@ -13298,6 +14413,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/geopotential.F90",
    "writes": []
@@ -13342,6 +14458,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/aer_rad_props.F90",
    "writes": []
@@ -13386,6 +14503,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/cloud_rad_props.F90",
    "writes": []
@@ -13430,6 +14548,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/cloud_rad_props.F90",
    "writes": []
@@ -13474,6 +14593,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/cloud_rad_props.F90",
    "writes": []
@@ -13518,6 +14638,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/aer_rad_props.F90",
    "writes": []
@@ -13564,6 +14685,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/phys_grid.F90",
    "writes": []
@@ -13610,6 +14732,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/phys_grid.F90",
    "writes": []
@@ -13654,6 +14777,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/cloud_rad_props.F90",
    "writes": []
@@ -13698,6 +14822,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/gw_utils.F90",
    "writes": []
@@ -13742,6 +14867,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/aer_rad_props.F90",
    "writes": []
@@ -13786,6 +14912,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/aer_rad_props.F90",
    "writes": []
@@ -13830,6 +14957,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, function_result_abi",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/ext/rrtmg_mcica/mcica_random_numbers.f90",
    "writes": []
@@ -13874,6 +15002,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, function_result_abi",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/ext/rrtmg_mcica/mcica_random_numbers.f90",
    "writes": []
@@ -13919,6 +15048,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, optional_argument, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/wetr.F90",
    "writes": []
@@ -13964,6 +15094,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/growp.F90",
    "writes": []
@@ -14009,6 +15140,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, missing_intent, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/gsolve.F90",
    "writes": []
@@ -14053,6 +15185,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/gw_convect.F90",
    "writes": []
@@ -14097,6 +15230,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/gw_front.F90",
    "writes": []
@@ -14141,6 +15275,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/gw_diffusion.F90",
    "writes": []
@@ -14185,6 +15320,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/gw_common.F90",
    "writes": []
@@ -14229,6 +15365,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/gw_diffusion.F90",
    "writes": []
@@ -14273,6 +15410,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/gw_oro.F90",
    "writes": []
@@ -14317,6 +15455,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/gw_common.F90",
    "writes": []
@@ -14361,6 +15500,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/hirsbt.f90",
    "writes": []
@@ -14405,6 +15545,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/cloud_rad_props.F90",
    "writes": []
@@ -14449,6 +15590,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): fortran_io, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv.F90",
    "writes": []
@@ -14493,6 +15635,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): function_result_abi, optional_argument, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/quickbeam/array_lib.f90",
    "writes": []
@@ -14537,6 +15680,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/cloud_rad_props.F90",
    "writes": []
@@ -14581,6 +15725,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/cloud_rad_props.F90",
    "writes": []
@@ -14625,6 +15770,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/cloud_rad_props.F90",
    "writes": []
@@ -14669,6 +15815,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/quickbeam/load_hydrometeor_classes.f90",
    "writes": []
@@ -14713,6 +15860,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/quickbeam/optics_lib.f90",
    "writes": []
@@ -14757,6 +15905,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/quickbeam/optics_lib.f90",
    "writes": []
@@ -14802,6 +15951,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/maxconc.F90",
    "writes": []
@@ -14846,6 +15996,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/ext/rrtmg_mcica/mcica_subcol_gen_lw.f90",
    "writes": []
@@ -14890,6 +16041,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/ext/rrtmg_mcica/mcica_subcol_gen_sw.f90",
    "writes": []
@@ -14935,6 +16087,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/melticel.F90",
    "writes": []
@@ -14980,6 +16133,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, missing_intent, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/microfast.F90",
    "writes": []
@@ -15025,6 +16179,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/microslow.F90",
    "writes": []
@@ -15069,6 +16224,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/modal_aer_opt.F90",
    "writes": []
@@ -15113,6 +16269,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/modal_aer_opt.F90",
    "writes": []
@@ -15157,6 +16314,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/modal_aer_opt.F90",
    "writes": []
@@ -15201,6 +16359,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/MODIS_simulator/modis_simulator.F90",
    "writes": []
@@ -15245,6 +16404,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/gw_common.F90",
    "writes": []
@@ -15289,6 +16449,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/gw_common.F90",
    "writes": []
@@ -15333,6 +16494,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): nontrivial_c_representation, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv.F90",
    "writes": []
@@ -15378,6 +16540,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/newstate.F90",
    "writes": []
@@ -15423,6 +16586,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/newstate_calc.F90",
    "writes": []
@@ -15467,6 +16631,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/ext/rrtmg_mcica/mcica_random_numbers.f90",
    "writes": []
@@ -15514,6 +16679,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/wv_saturation.F90",
    "writes": []
@@ -15559,6 +16725,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/nsubsteps.F90",
    "writes": []
@@ -15603,6 +16770,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/quickbeam/format_input.f90",
    "writes": []
@@ -15647,6 +16815,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): fortran_io, missing_intent, pointer_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv.F90",
    "writes": []
@@ -15691,6 +16860,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/hb_diff.F90",
    "writes": []
@@ -15737,6 +16907,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): nontrivial_c_representation, optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/phys_control.F90",
    "writes": []
@@ -15787,6 +16958,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/physics_types.F90",
    "writes": []
@@ -15832,6 +17004,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/physics_types.F90",
    "writes": []
@@ -15882,6 +17055,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/physics_types.F90",
    "writes": []
@@ -15927,6 +17101,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/physics_types.F90",
    "writes": []
@@ -15972,6 +17147,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/physics_types.F90",
    "writes": []
@@ -16017,6 +17193,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/physics_types.F90",
    "writes": []
@@ -16062,6 +17239,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/physics_types.F90",
    "writes": []
@@ -16107,6 +17285,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/physics_types.F90",
    "writes": []
@@ -16151,6 +17330,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io, missing_intent, nontrivial_c_representation, optional_argument, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/phys_prop.F90",
    "writes": []
@@ -16195,6 +17375,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): fortran_io, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/vertical_diffusion.F90",
    "writes": []
@@ -16239,6 +17420,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): fortran_io, optional_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/uwshcu.F90",
    "writes": []
@@ -16284,6 +17466,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/prestep.F90",
    "writes": []
@@ -16329,6 +17512,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/psolve.F90",
    "writes": []
@@ -16373,6 +17557,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): missing_intent, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv.F90",
    "writes": []
@@ -16418,6 +17603,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io, nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/qneg3.F90",
    "writes": []
@@ -16465,6 +17651,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/wv_saturation.F90",
    "writes": []
@@ -16509,6 +17696,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv.F90",
    "writes": []
@@ -16555,6 +17743,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/wv_saturation.F90",
    "writes": []
@@ -16599,6 +17788,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/rad_constituents.F90",
    "writes": []
@@ -16643,6 +17833,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io, nontrivial_c_representation, optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/rad_constituents.F90",
    "writes": []
@@ -16687,6 +17878,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io, missing_intent, optional_argument, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/rad_constituents.F90",
    "writes": []
@@ -16731,6 +17923,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/radlw.F90",
    "writes": []
@@ -16775,6 +17968,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, nontrivial_c_representation, optional_argument, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/radsw.F90",
    "writes": []
@@ -16819,6 +18013,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radae.F90",
    "writes": []
@@ -16863,6 +18058,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, missing_intent, optional_argument, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/quickbeam/radar_simulator.f90",
    "writes": []
@@ -16907,6 +18103,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radlw.F90",
    "writes": []
@@ -16951,6 +18148,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radsw.F90",
    "writes": []
@@ -16995,6 +18193,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radsw.F90",
    "writes": []
@@ -17039,6 +18238,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radae.F90",
    "writes": []
@@ -17083,6 +18283,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): legacy_shared_storage",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radae.F90",
    "writes": []
@@ -17127,6 +18328,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radae.F90",
    "writes": []
@@ -17172,6 +18374,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/rhopart.F90",
    "writes": []
@@ -17216,6 +18419,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/uwshcu.F90",
    "writes": []
@@ -17260,6 +18464,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/radiation.F90",
    "writes": []
@@ -17304,6 +18509,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/ext/rrtmg_mcica/mcica_subcol_gen_lw.f90",
    "writes": []
@@ -17348,6 +18554,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/ext/rrtmg_mcica/mcica_subcol_gen_sw.f90",
    "writes": []
@@ -17392,6 +18599,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/radiation.F90",
    "writes": []
@@ -17436,6 +18644,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/rrtmg_state.F90",
    "writes": []
@@ -17481,6 +18690,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/setupbins.F90",
    "writes": []
@@ -17526,6 +18736,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/setupnuc.F90",
    "writes": []
@@ -17570,6 +18781,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/eddy_diff.F90",
    "writes": []
@@ -17614,6 +18826,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, nontrivial_c_representation, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/slingo.F90",
    "writes": []
@@ -17658,6 +18871,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, nontrivial_c_representation, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/slingo.F90",
    "writes": []
@@ -17703,6 +18917,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/smallconc.F90",
    "writes": []
@@ -17747,6 +18962,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/rrtmg/cloud_rad_props.F90",
    "writes": []
@@ -17792,6 +19008,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/step.F90",
    "writes": []
@@ -17837,6 +19054,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, function_result_abi",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/sulfate_utils.F90",
    "writes": []
@@ -17882,6 +19100,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, function_result_abi",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/sulfate_utils.F90",
    "writes": []
@@ -17927,6 +19146,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/sulfhetnucrate.F90",
    "writes": []
@@ -17972,6 +19192,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/sulfnuc.F90",
    "writes": []
@@ -18017,6 +19238,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/sulfnucrate.F90",
    "writes": []
@@ -18062,6 +19284,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/supersat.F90",
    "writes": []
@@ -18107,6 +19330,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/totalcondensate.F90",
    "writes": []
@@ -18151,6 +19375,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radae.F90",
    "writes": []
@@ -18195,6 +19420,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radae.F90",
    "writes": []
@@ -18239,6 +19465,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radae.F90",
    "writes": []
@@ -18283,6 +19510,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radae.F90",
    "writes": []
@@ -18327,6 +19555,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/radae.F90",
    "writes": []
@@ -18371,6 +19600,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, optional_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/tropopause.F90",
    "writes": []
@@ -18415,6 +19645,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, optional_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/tropopause.F90",
    "writes": []
@@ -18459,6 +19690,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/tropopause.F90",
    "writes": []
@@ -18503,6 +19735,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, optional_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/tropopause.F90",
    "writes": []
@@ -18547,6 +19780,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, optional_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/tropopause.F90",
    "writes": []
@@ -18591,6 +19825,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, optional_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/tropopause.F90",
    "writes": []
@@ -18635,6 +19870,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, optional_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/tropopause.F90",
    "writes": []
@@ -18679,6 +19915,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, optional_argument, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/tropopause.F90",
    "writes": []
@@ -18724,6 +19961,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, missing_intent, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/tsolve.F90",
    "writes": []
@@ -18768,6 +20006,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/tropopause.F90",
    "writes": []
@@ -18812,6 +20051,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/unicon_cam.F90",
    "writes": []
@@ -18857,6 +20097,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/upgxfer.F90",
    "writes": []
@@ -18902,6 +20143,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/vaporp.F90",
    "writes": []
@@ -18947,6 +20189,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/vaporp_h2o_buck1981.F90",
    "writes": []
@@ -18992,6 +20235,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/vaporp_h2o_goff1946.F90",
    "writes": []
@@ -19037,6 +20281,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/vaporp_h2o_murphy2005.F90",
    "writes": []
@@ -19082,6 +20327,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/vaporp_h2so4_ayers1980.F90",
    "writes": []
@@ -19127,6 +20373,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/versol.F90",
    "writes": []
@@ -19172,6 +20419,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/versub.F90",
    "writes": []
@@ -19217,6 +20465,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/vertadv.F90",
    "writes": []
@@ -19262,6 +20511,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/vertdif.F90",
    "writes": []
@@ -19307,6 +20557,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/vertical.F90",
    "writes": []
@@ -19352,6 +20603,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, function_result_abi",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/sulfate_utils.F90",
    "writes": []
@@ -19397,6 +20649,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, function_result_abi, nontrivial_c_representation, optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/water_tracers.F90",
    "writes": []
@@ -19442,6 +20695,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/water_tracers.F90",
    "writes": []
@@ -19487,6 +20741,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/water_tracers.F90",
    "writes": []
@@ -19531,6 +20786,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/water_tracers.F90",
    "writes": []
@@ -19575,6 +20831,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): fortran_io, nontrivial_c_representation",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/water_tracers.F90",
    "writes": []
@@ -19621,6 +20878,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/wv_sat_methods.F90",
    "writes": []
@@ -19665,6 +20923,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/quickbeam/zeff.f90",
    "writes": []
@@ -19709,6 +20968,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zenith.F90",
    "writes": []
@@ -19753,6 +21013,7 @@
    "reads": [],
    "reason": "not independently runnable (blocked): optional_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cosp/cosp_utils.F90",
    "writes": []
@@ -19798,6 +21059,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, wildcard_module_import",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/carma/base/zeromicro.F90",
    "writes": []
@@ -19842,6 +21104,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): fortran_io, missing_intent, nontrivial_c_representation, private_module_procedure",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/eddy_diff.F90",
    "writes": []
@@ -19887,6 +21150,7 @@
    "reads": [],
    "reason": "not independently runnable (candidate): candidate",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv.F90",
    "writes": []
@@ -19931,6 +21195,7 @@
    "reads": [],
    "reason": "not independently runnable (context_required): derived_or_unknown_type, fortran_io, missing_intent, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv_intr.F90",
    "writes": []
@@ -19975,12 +21240,13 @@
    "reads": [],
    "reason": "not independently runnable (blocked): missing_intent, nontrivial_c_representation, pointer_argument",
    "removable": true,
+   "science": null,
    "scientific": true,
    "source": "components/cam/src/physics/cam/zm_conv.F90",
    "writes": []
   }
  ],
- "generated_at": "2026-09-28T19:44:12+00:00",
+ "generated_at": "2026-10-03T05:51:54+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {
@@ -20060,6 +21326,38 @@
     "notes": "Orographic gravity-wave-drag efficiency."
    }
   ]
+ },
+ "phases": {
+  "cam_run1": {
+   "label": "Physics before surface coupling",
+   "routine": "tphysbc",
+   "summary": "The parameterizations computed from the state the dynamics produced: the energy fixer, convection, clouds, aerosol wet removal and radiation. It ends by computing the fields the atmosphere sends to the surface: the bottom-level state, precipitation and downward radiation."
+  },
+  "cam_run2": {
+   "label": "Physics after surface coupling",
+   "routine": "tphysac",
+   "summary": "The parameterizations that use the surface fluxes just received from the coupler: emissions, chemistry, turbulent vertical diffusion, dry deposition and gravity wave drag. It ends by handing the physics tendencies to the dynamical core."
+  },
+  "cam_run3": {
+   "label": "Dynamics",
+   "routine": "stepon_run3",
+   "summary": "The spectral-element dynamical core advances the resolved flow, mass and tracers over one physics step: three 600 s dynamics steps."
+  },
+  "cam_run4": {
+   "label": "Output",
+   "routine": "cam_run4",
+   "summary": "History and restart files."
+  },
+  "clock": {
+   "label": "Clock",
+   "routine": "advance_timestep",
+   "summary": "The model clock advances by one 1800 s step."
+  },
+  "coupling": {
+   "label": "Surface coupling",
+   "routine": "atm_import / atm_export",
+   "summary": "The atmosphere's exchange with the rest of CESM through the coupler. At the start of the step the fields from land (CLM), sea ice (CICE), the data ocean (DOCN) and runoff are copied into CAM; at the end, the atmosphere's surface state is handed back."
+  }
  },
  "rules": {
   "control_skeleton": [
