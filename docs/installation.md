@@ -4,7 +4,8 @@ freeCAM is installed from source. The Python package is only the control
 layer: running the model also needs the pinned iCESM source, a native image
 built from a configured CESM case, the online coupler library, and the case's
 input data. All of that lives on NCAR Derecho, where the supported PI-atm
-configuration runs on 512 MPI ranks.
+configuration runs on 512 MPI ranks (other rank counts and builds with other
+compile-time options are in [usage.md](usage.md#other-rank-counts)).
 
 ## The Python package
 
@@ -158,7 +159,13 @@ than producing its own.
    `compare` sets every configured value of each case beside the hand-made
    case of the same name, with each case's own roots, account and user read
    as names. The domain and mapping files come from `FREECAM_PI_ATM_MAPPINGS`
-   (unset, the reference case's).
+   (unset, the reference case's). Rebuilt this way, the cases carry all 346
+   configured values of the hand-made ones, the rebuilt oracle's and pyCESM
+   case's 50 steps are bit-for-bit with theirs, and so is the online month on
+   the rebuilt cases, image and coupler library
+   (`validation/pi_cam_cases_rebuilt_*_bfb.json`). `fc.build` runs this same
+   chain for other compile-time options, under a root of its own
+   ([usage.md](usage.md#other-compile-time-options)).
 3. FTorch, once, on a login node:
 
    ```bash

@@ -3,7 +3,8 @@
 ## Scope
 
 freeCAM currently supports the iCESM1.3.1 PI-atm CAM configuration described
-by `configs/pi_cam_icesm131.yaml`. Python owns the observable rank-local state
+by `configs/pi_cam_icesm131.yaml`, and the builds `fc.build` derives from it
+for other compile-time options. Python owns the observable rank-local state
 and CAM workflow. Original iCESM Fortran routines remain the numerical source
 of truth and are called through generated C-interoperable adapters.
 
@@ -14,12 +15,18 @@ evidence.
 ## Repository layout
 
 - `src/freecam/pi_cam/`: PI-CAM driver, StatePool, workflow, runtime processes,
-  persistent session, and public facade.
+  persistent session, builds and rank layouts, the Workflow Builder service,
+  and public facade.
+- `src/freecam/physics/`: process stage classes, kernel slots, segment
+  runners, and schemes as standalone functions.
 - `src/freecam/core/` and `src/freecam/model/`: internal ABI and runtime helpers.
-- `native/pi_cam/`: source patches, adapter rules, and native support code.
+- `native/pi_cam/`: source patches, adapter rules, native support code, and
+  the CESM source and cases recipe (`cesm_source/`).
 - `external/iCESM1.3.1_fzhu/`: pinned upstream iCESM source submodule.
-- `examples/try_pi_cam.ipynb`: maintained user-facing Notebook.
-- `examples/macro_microphysics.ipynb`: one-cell single-process example.
+- `examples/`: notebooks; `try_pi_cam.ipynb` is the maintained user-facing
+  walkthrough.
+- `web/`: the Workflow Builder page and the progress dashboard.
+- `docs/`: user and developer documentation; `docs/plans/` keeps task plans.
 - `tests/unit/`: local Python tests.
 - `tools/`: PI-CAM preparation, build, capture, and validation tools.
 - `validation/`: PI-CAM PBS jobs and machine-readable evidence.
@@ -55,10 +62,11 @@ current task and preserve unrelated work in a dirty tree.
 ## Scientific validation
 
 Local tests check API and control semantics. Numeric runtime changes also need
-the 512-rank, 50-step PI-atm gate:
+the 512-rank, 50-step PI-atm gates:
 
 ```bash
 validation/jobs/submit.sh validation/jobs/pi_cam_python_zero_copy_state_50step.pbs
+validation/jobs/submit.sh validation/jobs/pi_cam_exact_cesm_online_50step.pbs
 ```
 
 `submit.sh` passes `-A $FREECAM_ACCOUNT` on the command line. Jobs carry no
@@ -68,7 +76,8 @@ working one would name a project in a shared file. A new job sources
 from there.
 
 The result must compare bit-for-bit with the pinned iCESM reference and be
-recorded under `validation/`. Never overwrite oracle output. A wrapper or
+recorded under `validation/`; a build with other compile-time options compares
+against its own original, run from the same build. Never overwrite oracle output. A wrapper or
 adapter is not considered validated merely because it compiles; prove that the
 intended routine executed and that its outputs match.
 

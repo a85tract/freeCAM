@@ -1,5 +1,15 @@
 # freeCAM Python process performance plan (v2)
 
+> **Status: done; kept as a record.** Planned 2026-09-04 on branch
+> `native-stage-batching`, merged in PR #9. Native-whole execution runs within
+> 0.5% of plain freeCAM over a month, segmented execution is in place, and
+> `auto` is the default policy. The segment runner now pauses at 17 kernels in
+> 11 classes, bit-for-bit over 50 steps and a month; no segmented year was run.
+> The live-variable analysis of §2.3 was replaced by spec-generated runners
+> (`tools/pi_cam_pausable.py`) and fibers. For the current design see
+> [physics_kernel_decoupling.md](../physics_kernel_decoupling.md) and
+> [usage.md](../usage.md).
+
 Branch: `native-stage-batching` (from `standalone-physics-function`,
 2026-09-04). This file is the task's plan. The historical performance evidence
 lives in `validation/performance_overhead.md` and is never overwritten. v2

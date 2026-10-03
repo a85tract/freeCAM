@@ -1,5 +1,14 @@
 # Plan: every process a slot, at both granularities
 
+> **Status: partly open.** Done: hooks for the seven batch-A kernels
+> (shadow-gated bit-for-bit), the drift report, the generated
+> [contracts.md](../contracts.md) and `examples/replace_kernel.ipynb`. Still
+> open: hooks for the rest of batch A and for batch B (those kernels answer
+> only at the runner's pause), a history entry for the cloud drivers, and
+> coarse contracts for the remaining ten processes. For current use see
+> [usage.md](../usage.md) and
+> [kernel_replacement_returns.md](../kernel_replacement_returns.md).
+
 Decided 2026-09-15 after the pausable and Python-driver forms were measured:
 freeCAM's product is the replacement interface -- every process reachable
 as a slot, coarse (the whole process or its compute blocks) and fine (the

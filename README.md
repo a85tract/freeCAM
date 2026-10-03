@@ -8,14 +8,16 @@ is no shadow model and no Fortran-to-Python callback path.
 
 The supported scientific configuration is the `ne16` PI-atm case with CAM5
 physics, SE dynamics and 512 MPI ranks on NCAR Derecho, with the original CESM
-surface components and coupler running live beside CAM.
+surface components and coupler running live beside CAM. Other rank counts run
+online as explorations, and other compile-time options (today `pcols`) are
+rebuilt end to end by `fc.build` and gated against their own original.
 
 ```text
 Python / Jupyter
     |
     |  Driver, workflow, clock, state
     v
-512 persistent MPI Python ranks
+N persistent MPI Python ranks (512 by default)
     |
     +-- CAM numerical kernels ---------> original iCESM Fortran, as a shared library
     |
@@ -44,7 +46,15 @@ runs next, and Fortran performs it.
   column as `y = f(x, p)`, with no model session, and sampled into datasets.
 - **A workflow page.** `driver.ui()` serves a browser editor for the step
   that generates the freeCAM code it describes and runs it on the model; the
-  same page is published as a preview that edits without running.
+  same page is published as a preview that edits without running, with the
+  science of every process -- what it represents, its equations, its
+  literature.
+- **Builds and rank counts.** `fc.build(pcols=32)` rebuilds the CESM cases,
+  the original's run, the native image and the coupler library for other
+  compile-time options and runs the online gate against that build's own
+  original, and `fc.Driver(build=b)` runs it. `fc.Driver(ntasks=N,
+  exploratory=True)` runs the online case on N ranks (at least 128), laying
+  the surface components out for them.
 
 ## Installation
 
@@ -94,42 +104,66 @@ with fc.Driver(case="PI-atm", nsteps=2) as driver:
     print(driver.cam.history.latest())        # the history file CAM wrote
 ```
 
-The first `initialize()` requests the compute resources the case needs: 512
-MPI ranks on four Derecho nodes, through PBS, charged to `FREECAM_ACCOUNT`.
-Leaving the `with` block, or calling `driver.close()`, releases them.
+The first `initialize()` requests the compute resources the case needs --
+by default 512 MPI ranks on four Derecho nodes (`ntasks=N` takes N/128
+nodes, rounded up) -- through PBS, charged to `FREECAM_ACCOUNT`. Leaving the
+`with` block, or calling `driver.close()`, releases them.
 
 ## Documentation and examples
 
+Using freeCAM:
+
 - [docs/installation.md](docs/installation.md): site configuration, the
   interpreter requirement, external data, reusing an existing installation,
-  and building the native image.
-- [docs/usage.md](docs/usage.md): the workflow, dynamic fields and Python
-  processes, parameters, online and offline runs, history output, timing
-  reports, and the single-column function and dataset interfaces.
-- [docs/validation.md](docs/validation.md): what bit-for-bit means here, the
-  gates that have been run, and where the evidence and performance records
-  live.
-- Notebooks under [examples/](examples/): [try_pi_cam.ipynb](examples/try_pi_cam.ipynb)
-  is the maintained walkthrough; [macro_microphysics.ipynb](examples/macro_microphysics.ipynb),
+  building the native image, and rebuilding the CESM cases from the
+  repository's recipe.
+- [docs/usage.md](docs/usage.md): the model, other rank counts and builds,
+  state, the workflow, Python processes, replacing a process or a kernel,
+  parameters, timing reports, the Workflow Builder, and the single-column
+  function and dataset interfaces.
+- Notebooks under [examples/](examples/):
+  [try_pi_cam.ipynb](examples/try_pi_cam.ipynb) is the maintained
+  walkthrough and [run_freecam.ipynb](examples/run_freecam.ipynb) a run end
+  to end; [replace_process.ipynb](examples/replace_process.ipynb) and
+  [replace_kernel.ipynb](examples/replace_kernel.ipynb) replace a whole
+  process and one kernel inside it;
+  [macro_microphysics.ipynb](examples/macro_microphysics.ipynb),
   [physics_function.ipynb](examples/physics_function.ipynb) and
-  [kernel_surrogate.ipynb](examples/kernel_surrogate.ipynb) cover one stage as
-  a Python class, a scheme as a function, and a trained kernel in a scheme's
-  place; [generate_training_data.ipynb](examples/generate_training_data.ipynb)
+  [kernel_surrogate.ipynb](examples/kernel_surrogate.ipynb) cover one stage
+  as a Python class, a scheme as a function, and a trained kernel in a
+  scheme's place; [generate_training_data.ipynb](examples/generate_training_data.ipynb)
   and [generate_compute_uwshcu_inv_training_data.ipynb](examples/generate_compute_uwshcu_inv_training_data.ipynb)
-  generate training data for `mmacro_pcond` and for the shallow cumulus kernel
-  from real columns, answered by the original Fortran.
-- [validation/performance_overhead.md](validation/performance_overhead.md):
-  the measured time and memory cost of the Python control layer.
+  generate training data for `mmacro_pcond` and for the shallow cumulus
+  kernel from real columns, answered by the original Fortran.
 - The Workflow Builder preview at https://a85tract.github.io/freeCAM/: the
   page without a model behind it; how to use it is in
   [docs/usage.md](docs/usage.md#the-workflow-builder).
+
+Evidence:
+
+- [docs/validation.md](docs/validation.md): what bit-for-bit means here, the
+  gates that have been run, and where their records live.
+- [validation/performance_overhead.md](validation/performance_overhead.md):
+  the measured time and memory cost of the Python control layer.
+- [docs/kernel_replacement_returns.md](docs/kernel_replacement_returns.md):
+  what each kernel costs over a month, and what replacing it can return.
 - Implementation progress at https://a85tract.github.io/freeCAM/progress/:
   which processes and kernels are callable, replaceable, and verified, built
   by the Pages workflow from the records committed on `main` (see
   [docs/progress_dashboard.md](docs/progress_dashboard.md)).
+
+How the replacement interface is built:
+
 - [docs/physics_kernel_decoupling.md](docs/physics_kernel_decoupling.md):
-  the kernel slots, the segment-runner manifest, and the inventory that says
-  which of the step's processes have a Python class and a validated kernel.
+  the kernel slots, where the image stops (segment runners and hooks), the
+  ways of answering a slot and what each costs, the process slots, and what
+  the first surrogates taught.
+- [docs/contracts.md](docs/contracts.md): every kernel and block contract,
+  generated from the code.
+- [docs/kernel_api_closure.md](docs/kernel_api_closure.md): every procedure
+  the configured physics step can reach, as the list still to open.
+- [docs/plans/](docs/plans/): the task plans, kept as the record of what was
+  decided, each with its status.
 
 ## Development
 

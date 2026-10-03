@@ -468,9 +468,19 @@ The month costs are one run on exclusive nodes; the plugin paths are
 original ran 10 to 40% slower than in the month (`compute_uwshcu_inv` 9.0
 against 6.5 ms), so a path measured there is if anything an overestimate.
 The estimated paths take the element counts from the kernels' drafted
-contracts (`native/pi_cam/functions/drafts/`) and, for the three kernels
-not in the inventory, from a count of their real dummies; `gas_phase_chemdr`
-also takes `state` and `pbuf`, whose fields are not in its count.  A hook for
-the kernels marked estimated is batch B of `interface_completion_plan.md`;
-until then their path is the runner's pause, which costs about 0.7 ms a
-pause plus a per-step cost per stage that is being removed.
+contracts (`native/pi_cam/functions/drafts/`) and, for `wetdepa_v2`,
+`modal_aero_depvel_part` and `gas_phase_chemdr`, which had no contract when
+this table was made, from a count of their real dummies; `gas_phase_chemdr`
+also takes `state` and `pbuf`, whose fields are not in its count.  Hooks for
+the kernels marked estimated are the rest of batch A (`convtran`,
+`wetdepa_v2`, `dadadj`) and batch B of
+[the interface-completion plan](plans/interface_completion.md); `virtem`
+keeps its pause.  Until then their path is the runner's pause, which costs
+about 0.7 ms a pause plus a per-step cost per stage.
+
+This page covers the runs up to 2026-09-24.  The later online months with
+the shallow-convection model batched over a rank's chunks, on the host and
+on the GPUs, and the rank sweep are in their records:
+`validation/pi_cam_online_model_1month_gpu-site-*-batch-v4.json` and
+`validation/pi_cam_online_model_1488step_*rank_*.json`; how the batching
+works is in [usage.md](usage.md#replacing-one-kernel-inside-a-process).

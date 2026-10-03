@@ -1,7 +1,17 @@
 # freeCAM performance plan: keep the UI and bit-for-bit, beat the original Fortran by 5%
 
+> **Status: closed at parity; the 5% target was not met.** Planned 2026-09-04/05.
+> With every process class installed and nothing replaced, paired online runs
+> put freeCAM level with the original Fortran: months at C/A 0.996 and 0.986, a
+> year at 1.0095, all bit-for-bit
+> (`validation/pi_cam_faster_than_fortran.json`). The work stopped there by
+> decision. Of the plan, the grouped coupler collectives (3.D) and the segment
+> runner (3.B) were delivered; caching, batching of native actions and the
+> Fortran workspace work (3.A, 3.C, 3.E, 3.F) were not started. The tables of
+> §6 predate the all-class pairs added on 2026-09-06.
+
 Branch: `native-stage-batching` (from 2026-09-04). This file is the task's
-plan (v3; it supersedes `native_stage_batching_plan.md` as the overall goal,
+plan (v3; it supersedes `native_stage_batching.md` as the overall goal,
 while that plan's three modes, native-whole / segmented / legacy-python, and
 its runner design remain valid as phase 3 here). The historical performance
 evidence lives in `validation/performance_overhead.md` and is never

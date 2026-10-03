@@ -83,6 +83,11 @@ uses the build's image, oracle case and run and coupler library, refuses a
 library linked for another grid. The replay cases keep the installed build.
 From a shell: `freecam build --pcols 32 [--plan | --status | --wait]`.
 
+The `pcols=32` build has been made this way and passed its online 50-step
+gate and an online month against its own original
+(`validation/pi_cam_build_pcols32_online_{50step,month}_bfb.json`). No
+`device="cuda"` build has been gated yet.
+
 ### Offline replay
 
 Select a replay case when x2a should come from a captured boundary dataset
@@ -306,6 +311,21 @@ the command line `--kernel-plugin NAME=file.py:function` and
 kernel's contract and binding; `docs/contracts.md` is the generated reference of
 every contract.  `examples/replace_kernel.ipynb` walks through the ways on a
 live run.
+
+Which path a stage takes each step is `stage.execution_policy`
+(`--stage-execution` on the command line); the run record says which one ran
+(`stage.execution.mode`):
+
+| policy | nothing replaced | kernels replaced |
+| --- | --- | --- |
+| `auto` (default) | the original Fortran stage whole (`native-whole`) | a compiled function or `NativeModel` at a hook: the stage whole, the image answering the hook (`native-model`); otherwise `segmented` where the image's runner pauses at every replaced kernel, and the Python transliteration (`legacy-python`) with a warning where it does not |
+| `native-whole` | the original stage whole | refused, except a model at a hook |
+| `segmented` | refused: there is no kernel to pause at | the runner stops at each replaced kernel |
+| `legacy-python` | the transliteration, statement by statement | the same, calling the slot |
+
+Native models and Python functions cannot share a stage in one step.  Every
+path runs the same Fortran arithmetic where nothing is replaced; they differ
+in cost (see [validation/performance_overhead.md](../validation/performance_overhead.md)).
 
 A model is called once per chunk: a rank of 512 has two chunks of at most 16
 columns, and a network pays its per-call cost twice a step.  A TorchScript model
