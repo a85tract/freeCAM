@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-freeCAM runs the CAM atmosphere component of iCESM1.3.1 under a Python control layer. Python owns the workflow, clock, coupling decisions, and rank-local state; the original Fortran (pinned submodule `external/iCESM1.3.1_fzhu`) remains the numerical source of truth, called through generated C-interoperable adapters. The only admitted scientific configuration is the `ne16` PI-atm case with CAM5 physics, SE dynamics, and 512 MPI ranks on NCAR Derecho (`configs/pi_cam_icesm131.yaml` and variants).
+freeCAM runs the CAM atmosphere component of iCESM1.3.1 under a Python control layer. Python owns the workflow, clock, coupling decisions, and rank-local state; the original Fortran (pinned submodule `external/iCESM1.3.1_fzhu`) remains the numerical source of truth, called through generated C-interoperable adapters. The admitted scientific configuration is the `ne16` PI-atm case with CAM5 physics, SE dynamics, and 512 MPI ranks on NCAR Derecho (`configs/pi_cam_icesm131.yaml` and variants). `fc.build(pcols=...)` rebuilds the whole chain for other compile-time options and gates it against its own original (the `pcols=32` build is validated); `Driver(ntasks=N, exploratory=True)` runs online on other rank counts (at least 128) as an exploration.
 
 ## Commands
 
@@ -35,7 +35,7 @@ validation/jobs/submit.sh validation/jobs/pi_cam_exact_cesm_online_50step.pbs
 
 `tools/verify_pi_cam.py --reference <dir> --candidate <dir>` compares CAM output directories bit-for-bit (no numerical tolerance) via `freecam.pi_cam.validation.compare_pi_cam_directories`.
 
-Native build pipeline lives in `tools/`, driven by `validation/jobs/pi_cam_promoted_statepool_build.pbs`: `prepare_pi_cam_source.py` rebuilds the patched tree under `build/iCESM1.3.1_PI_cam_only` from the pinned submodule (rejecting any revision mismatch, applying the control patches and support modules `apply_pi_cam_source_patches.py` lists, and recording them in `.pycam-source.json`); `build_pi_cam_promoted_kernels.py` regenerates the direct-kernel descriptor; `build_pi_cam_devices.py` links the fixed-address image from the oracle's own objects and writes `native_cam_manifest.json`. Other `build_pi_cam_*.py` build the standalone functions, the online coupler, and the capture executable. See *Building the native image* in `docs/installation.md`.
+Native build pipeline lives in `tools/`, driven by `validation/jobs/pi_cam_promoted_statepool_build.pbs`: `prepare_pi_cam_source.py` rebuilds the patched tree under `build/iCESM1.3.1_PI_cam_only` from the pinned submodule (rejecting any revision mismatch, applying the control patches and support modules `apply_pi_cam_source_patches.py` lists, and recording them in `.pycam-source.json`); `build_pi_cam_promoted_kernels.py` regenerates the direct-kernel descriptor; `build_pi_cam_devices.py` links the fixed-address image from the oracle's own objects and writes `native_cam_manifest.json`. Other `build_pi_cam_*.py` build the standalone functions, the online coupler, and the capture executable. The CESM cases themselves come from the repository's recipe: `tools/prepare_cesm_source.py` and `tools/build_pi_cam_cases.py` over `native/pi_cam/cesm_source/{source,cases}.yaml` (jobs `pi_cam_cases_{prepare,build,run}.pbs`). `freecam.pi_cam.build` (`fc.build`, `freecam build`) chains cases → original run → image → coupler → online gate as PBS jobs under `$FREECAM_SCRATCH/freeCAM/builds/`. See *Building the native image* in `docs/installation.md` (it covers the cases too) and *Other compile-time options* in `docs/usage.md`.
 
 ## Architecture
 
@@ -53,12 +53,15 @@ Key subsystems around that spine:
 - **Workflow/plan** (`pi_cam/plan.py`, `runtime_processes.py`, `model/python_processes.py`): one ordered list of process actions supporting enable/disable/move/run and insertion of notebook-defined `fc.Physics` without rebuilding CAM.
 - **Boundary providers** (`pi_cam/boundary.py`): online CESM coupling (default — live CLM/CICE/DOCN/RTM plus coupler kernels, exposing rank-local MCT x2a/a2x arrays as zero-copy views) versus offline replay of captured boundary datasets (`PI-atm-replay`, `PI-atm-1month` cases).
 - **Catalogs** (`pi_cam/physics_catalog.py`, `source_catalog.py`): the 276 catalogued physical processes and their source/adapter metadata.
+- **Process classes** (`src/freecam/physics/`: `stage.py`, `pausable.py`, `segments.py`, `radiation_process.py`, `cloud_block.py`): a process as a Python class with kernel slots, run whole, segmented at the image's pauses, or answered at a hook; see `docs/physics_kernel_decoupling.md`.
+- **Builds and layouts** (`pi_cam/build.py`, `pi_cam/layout.py`): `BuildOptions`/`Build` for compile-time options, the surface components' layout for N ranks, and the check that a coupler library was linked for the image's dimensions.
+- **Workflow Builder** (`pi_cam/workflow_builder/`, `web/`): the browser editor and its catalog snapshot (`tools/export_workflow_catalog.py`); the science shown per process is `pi_cam/data/pi_cam_process_science.yaml`.
 - **`src/freecam/model/`**: clock, collective error handling, NetCDF service, device codegen.
 - **`validation/`**: machine-readable JSON evidence and the PBS jobs that produced it; **`tests/unit/`**: local API/control-semantics tests; **`tests/integration/`**: MPI smoke tests.
 
 ## Hard rules
 
-- **Numeric runtime changes need the 512-rank 50-step PI-atm gate** in addition to unit tests; the result must be bit-for-bit with the pinned iCESM reference and recorded under `validation/`. Never overwrite oracle output. A wrapper or adapter that compiles is not validated — prove the intended routine executed and its outputs match.
+- **Numeric runtime changes need the 512-rank 50-step PI-atm gate** in addition to unit tests; the result must be bit-for-bit with the pinned iCESM reference (for a non-default build, with that build's own original) and recorded under `validation/`. Never overwrite oracle output. A wrapper or adapter that compiles is not validated — prove the intended routine executed and its outputs match.
 - **Keep floating-point algorithms in the original iCESM source.** Generated adapters may convert pointers, shapes, scalar values, and communicator handles, but must not copy numerical scheme bodies. Fail closed when a type, dependency, or process state cannot be represented safely.
 - Keep ABI arrays Fortran-contiguous. Native code must not retain Python-owned pointers beyond a declared call boundary.
 - Do not reintroduce retired generic runtimes into the public API. New cases need their own configuration and independent validation evidence — PI-atm adapters are not silently reused for incompatible configurations.
