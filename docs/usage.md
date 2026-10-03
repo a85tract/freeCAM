@@ -513,6 +513,22 @@ separately for whether that path has passed a bit-for-bit gate. Control,
 clock and output actions run every step and are shown read-only under
 "Full step".
 
+The canvas groups the step by what each phase does rather than by CAM's
+routine names: *Physics after surface coupling* (`cam_run2`, `tphysac`),
+*Dynamics* (`cam_run3`), and *Physics before surface coupling* (`cam_run1`,
+`tphysbc`), in the order CESM runs them within one coupling interval. A
+process's About tab gives its science -- what it represents, how it is set up
+in this case (and whether it does anything here: Rayleigh friction, QBO
+relaxation, ion drag and the CARMA hooks do not), its governing equations and
+its literature with DOI links. That text is the one hand-written record the
+page reads, `src/freecam/pi_cam/data/pi_cam_process_science.yaml`, read from
+the pinned source and the reference case's namelist; the catalog refuses an
+entry for an action the step plan does not have, and a test typesets every
+formula. A catalogued sub-process shows the description of the stage it
+belongs to. After editing the record, run
+`uv run python tools/export_workflow_catalog.py` (and
+`tools/export_progress_snapshot.py`, which hashes the catalog).
+
 The check runs at two levels: the page checks names, duplicates, the control
 skeleton, parent/leaf exclusivity, bindings and parameter types; the local
 service adds Python syntax, model files and the catalog version. Changing

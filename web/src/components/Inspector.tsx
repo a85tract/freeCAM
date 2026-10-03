@@ -2,11 +2,15 @@ import { useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 
-import type { CatalogEntry, KernelBinding, NodeConfiguration, ParameterValue, VariableDeclaration, WorkflowNode } from "../model/types";
+import type { CatalogEntry, KernelBinding, NodeConfiguration, ParameterValue, PhaseInfo, VariableDeclaration, WorkflowNode } from "../model/types";
+import { phaseLabel, ScienceSection } from "./Science";
 
 interface Props {
   node: WorkflowNode | null;
   entry: CatalogEntry | null;
+  /** the stage the selected process is a leaf or sub-process of, if any */
+  parent: CatalogEntry | null;
+  phases?: Record<string, PhaseInfo>;
   addable: CatalogEntry[];
   theme: "light" | "dark";
   onConfigure: (id: string, changes: Partial<NodeConfiguration>) => void;
@@ -66,6 +70,11 @@ export function Inspector(props: Props) {
     props.onConfigure(node.id, { kernels: { ...node.configuration.kernels, [kernel]: binding } });
   };
   const setVariables = (variables: VariableDeclaration[]) => props.onConfigure(node.id, { variables });
+  // a catalogued sub-process has no description of its own: its stage's stands in
+  const own = props.entry?.science ?? null;
+  const stage = !own && props.parent?.science ? props.parent.science : null;
+  const science = own ?? stage;
+  const routine = props.phases?.[node.phase]?.routine;
 
   return (
     <aside className="inspector" aria-label="Inspector">
@@ -95,14 +104,18 @@ export function Inspector(props: Props) {
 
       {active === "about" && (
         <div>
-          <p>{props.entry?.description ?? (node.origin === "python" ? "A Python process defined in this workflow." : "")}</p>
+          {science
+            ? <ScienceSection science={science} inherited={stage ? stage.title : null} />
+            : <p>{props.entry?.description ?? (node.origin === "python" ? "A Python process defined in this workflow." : "")}</p>}
+          {science && <h4>In the workflow</h4>}
           <table>
             <tbody>
-              <tr><th>Phase</th><td className="mono">{node.phase}</td></tr>
+              <tr><th>Phase</th><td>{phaseLabel(props.phases, node.phase)} <span className="mono muted">{node.phase}{routine ? ` · ${routine}` : ""}</span></td></tr>
               <tr><th>Operation</th><td className="mono">{node.operation}</td></tr>
+              {own?.routine && <tr><th>Routine</th><td className="mono">{own.routine}</td></tr>}
               {node.native_id !== null && <tr><th>Native id</th><td className="mono">{node.native_id}</td></tr>}
               {node.source && <tr><th>Source</th><td className="mono">{node.source}</td></tr>}
-              {node.parent_stage && <tr><th>Leaf of</th><td className="mono">{node.parent_stage}</td></tr>}
+              {node.parent_stage && <tr><th>{node.origin === "catalog" ? "Part of" : "Leaf of"}</th><td>{props.parent?.science ? `${props.parent.science.title} ` : ""}<span className="mono">{node.parent_stage}</span></td></tr>}
               {(node.reads.length || node.writes.length) ? <tr><th>Fields</th><td className="mono">reads {node.reads.join(", ") || "–"}; writes {node.writes.join(", ") || "–"}</td></tr> : null}
               <tr><th>Implementation</th><td>{node.implementation}</td></tr>
             </tbody>

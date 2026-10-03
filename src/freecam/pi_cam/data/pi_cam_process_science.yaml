@@ -1,0 +1,1092 @@
+# What each process of the PI-atm step does, scientifically, for the About
+# page of the Workflow Builder.
+#
+# Entries are keyed by the workflow action's qualified name (phase.name, as in
+# freecam.pi_cam.plan); a catalogued sub-process shows the entry of the stage
+# it belongs to.  What an entry says about "this configuration" was read from
+# the pinned iCESM source (components/cam/src) and the reference case's own
+# namelist and log: 1850_cam5 on ne16np4 with 30 levels, a 1800 s physics
+# step, three 600 s dynamics steps, trop_mam3 chemistry and water isotopes.
+# Every DOI was checked against Crossref.
+#
+# Fields: ``title``, ``summary`` and ``configuration`` are prose, where
+# ``$...$`` is inline LaTeX; ``equations`` are display LaTeX with an optional
+# ``caption``; ``references`` are keys of the table at the end; ``routine`` is
+# the Fortran entry point and the file under components/cam/src;
+# ``active: false`` marks a process that changes nothing in this
+# configuration.  The page renders the LaTeX with KaTeX; a test renders every
+# formula, so one that does not parse fails the suite.
+
+schema_version: 1
+
+phases:
+  coupling:
+    label: Surface coupling
+    routine: atm_import / atm_export
+    summary: >-
+      The atmosphere's exchange with the rest of CESM through the coupler. At
+      the start of the step the fields from land (CLM), sea ice (CICE), the
+      data ocean (DOCN) and runoff are copied into CAM; at the end, the
+      atmosphere's surface state is handed back.
+  cam_run2:
+    label: Physics after surface coupling
+    routine: tphysac
+    summary: >-
+      The parameterizations that use the surface fluxes just received from the
+      coupler: emissions, chemistry, turbulent vertical diffusion, dry
+      deposition and gravity wave drag. It ends by handing the physics
+      tendencies to the dynamical core.
+  cam_run3:
+    label: Dynamics
+    routine: stepon_run3
+    summary: >-
+      The spectral-element dynamical core advances the resolved flow, mass
+      and tracers over one physics step: three 600 s dynamics steps.
+  cam_run4:
+    label: Output
+    routine: cam_run4
+    summary: History and restart files.
+  clock:
+    label: Clock
+    routine: advance_timestep
+    summary: The model clock advances by one 1800 s step.
+  cam_run1:
+    label: Physics before surface coupling
+    routine: tphysbc
+    summary: >-
+      The parameterizations computed from the state the dynamics produced:
+      the energy fixer, convection, clouds, aerosol wet removal and
+      radiation. It ends by computing the fields the atmosphere sends to the
+      surface: the bottom-level state, precipitation and downward radiation.
+
+processes:
+  # ------------------------------------------------------------------ coupling
+  coupling.boundary_import:
+    title: Import from the coupler
+    routine: atm_import (cpl/atm_import_export.F90)
+    summary: >-
+      Copies the coupler's merged surface fields into CAM's `cam_in`:
+      surface fluxes of sensible and latent heat, moisture, momentum and
+      dust, the radiative surface temperature, albedos, the 10 m wind and the
+      land, ocean and sea-ice fractions. They stay fixed for the whole
+      atmosphere step.
+    configuration: >-
+      In the online case the fields come from live CLM, CICE, DOCN and RTM
+      components; in the replay cases from a recorded boundary dataset.
+
+  coupling.boundary_export:
+    title: Export to the coupler
+    routine: atm_export (cpl/atm_import_export.F90)
+    summary: >-
+      Copies `cam_out` to the coupler: the bottom-level temperature, winds,
+      humidity, pressure and height, convective and large-scale rain and
+      snow, downward shortwave and longwave radiation at the surface, and the
+      aerosol deposition fluxes. The surface components use them for their
+      next step.
+
+  clock.advance_timestep:
+    title: Advance the clock
+    routine: advance_timestep (utils/time_manager.F90)
+    summary: >-
+      Moves the model time forward by one physics step, $\Delta t = 1800$ s,
+      between the dynamics of this step and the physics computed for the
+      next.
+
+  cam_run4.history:
+    title: History output
+    routine: wshist (control/cam_history.F90)
+    summary: >-
+      Writes the accumulated history fields to the history files when an
+      output interval ends.
+
+  cam_run4.restart:
+    title: Restart output
+    routine: cam_write_restart (control/cam_restart.F90)
+    summary: >-
+      Writes the restart files at a restart time, so a run can be continued
+      bit for bit.
+
+  # ------------------------------------------------- physics after coupling
+  cam_run2.surface_fluxes_and_emissions:
+    title: Surface emissions and moisture-flux check
+    routine: chem_emissions (chemistry/mozart/chemistry.F90), qneg4 (physics/cam/qneg4.F90)
+    summary: >-
+      Adds the surface emissions of trace gases and aerosols to the
+      constituent surface fluxes $F_q$ that vertical diffusion will apply.
+      It then checks that the surface moisture flux cannot empty the lowest
+      layer: where a downward flux (dew or frost) would take the
+      bottom-level humidity below its minimum, the downward flux is cut to
+      what the layer can supply, and the latent heat of that change is taken
+      from the sensible heat flux, so the surface energy flux is unchanged.
+    configuration: >-
+      Prescribed surface emissions of SO₂, SOAG, black carbon, primary
+      organic matter, sulfate and aerosol number from the 1850 AR5 (CMIP5)
+      files, and DMS from the AeroCom climatology; dust (from CLM's dust
+      flux) and sea salt (from the 10 m wind and the sea surface
+      temperature) are computed online.
+    equations:
+      - tex: |-
+          q_{\text{bot}} + \frac{g\,\Delta t\,F_q}{\Delta p_{\text{bot}}} \ge q_{\min}
+        caption: >-
+          the condition qneg4 enforces on the bottom layer, where $F_q$ is the
+          upward moisture flux and $\Delta p_{\text{bot}}$ the layer's
+          pressure thickness
+    references: [liu2012, neale2012]
+
+  cam_run2.tracers_and_chemistry:
+    title: Tracer sources and chemistry
+    routine: tracers_timestep_tend, aoa_tracers_timestep_tend, chem_timestep_tend
+    summary: >-
+      The sources and sinks of the advected constituents: test tracers, the
+      age-of-air tracers and the chemical solver, applied in that order. By
+      default the stage runs as its three leaves so each can be switched on
+      its own; only the chemistry leaf changes the state in this
+      configuration.
+    references: [emmons2010, lamarque2012, liu2012]
+
+  cam_run2.tracer_tendencies_leaf:
+    title: Test-tracer tendencies
+    routine: tracers_timestep_tend (physics/cam/tracers.F90)
+    active: false
+    summary: >-
+      Sources and sinks of idealised test tracers used to check transport.
+    configuration: >-
+      No test tracers are defined (`tracers_flag` is false), so the routine
+      returns at once.
+
+  cam_run2.age_of_air_tendencies_leaf:
+    title: Age-of-air tracer tendencies
+    routine: aoa_tracers_timestep_tend (physics/cam/aoa_tracers.F90)
+    active: false
+    summary: >-
+      Sources and sinks of the age-of-air tracers, which diagnose how long
+      air has been transported away from the surface.
+    configuration: >-
+      `aoa_tracers_flag` is false, so the routine returns at once.
+
+  cam_run2.chemistry_tendencies_leaf:
+    title: Tropospheric chemistry (trop_mam3)
+    routine: chem_timestep_tend (chemistry/mozart/chemistry.F90)
+    summary: >-
+      The trop_mam3 gas-phase chemistry and the MAM3 aerosol
+      microphysics. The gas-phase mechanism carries SO₂, DMS, H₂O₂,
+      H₂SO₄ and SOAG with prescribed oxidant fields; its stiff system
+      is integrated by an explicit solver for the slow species and a
+      backward-Euler (implicit) solver with Newton iterations for the rest.
+      Soluble gases are washed out by precipitation, gases are dry-deposited
+      at the surface, elevated emissions are added, and the aerosol step then exchanges mass between the
+      gases and the aerosol modes: H₂SO₄ and SOAG condense, SO₂ is
+      oxidised to sulfate in cloud water, new sulfate particles nucleate, and
+      the Aitken mode coagulates into the accumulation mode.
+    configuration: >-
+      `cam_chempkg = trop_mam3`: three log-normal modes (Aitken,
+      accumulation, coarse); the oxidants OH, O₃, NO₃ and HO₂ from
+      an 1850 climatology; 1850 elevated emissions of SO₂ and primary
+      aerosol.
+    equations:
+      - tex: |-
+          \frac{\mathrm{d}\mathbf{n}}{\mathrm{d}t} = \mathbf{P}(\mathbf{n}) - \mathbf{L}(\mathbf{n})\,\mathbf{n}
+        caption: >-
+          the chemical system for the species' number densities $\mathbf{n}$,
+          with production $\mathbf{P}$ and loss $\mathbf{L}$
+      - tex: |-
+          \begin{aligned}
+          \mathbf{n}^{t+\Delta t} = \mathbf{n}^{t} &+ \Delta t\,\mathbf{P}(\mathbf{n}^{t+\Delta t}) \\
+          &- \Delta t\,\mathbf{L}(\mathbf{n}^{t+\Delta t})\,\mathbf{n}^{t+\Delta t}
+          \end{aligned}
+        caption: the backward-Euler step the implicit solver closes with Newton–Raphson iterations
+    references: [emmons2010, lamarque2012, liu2012]
+
+  cam_run2.vertical_diffusion:
+    title: Turbulent vertical diffusion (UW moist turbulence)
+    routine: vertical_diffusion_tend (physics/cam/vertical_diffusion.F90)
+    summary: >-
+      Mixes heat, moisture, momentum and every constituent vertically by
+      boundary-layer and free-atmosphere turbulence, and applies the surface
+      fluxes received from the coupler as the lower boundary condition. The
+      University of Washington scheme diagnoses the turbulent kinetic energy
+      $e$ of each turbulent layer, including cloud-topped and elevated ones,
+      and sets the eddy diffusivities from it; moist conserved variables
+      ($s_l$, $q_t$) make the mixing consistent through cloud. The diffusion
+      equation is solved implicitly. Turbulent mountain stress adds a form
+      drag from unresolved orography at the surface.
+    configuration: >-
+      `eddy_scheme = diag_TKE`; turbulent mountain stress on
+      (`do_tms`, `tms_z0fac` = 0.075, `tms_orocnst` = 1); no molecular
+      diffusion, which only WACCM's high model top needs.
+    equations:
+      - tex: |-
+          \begin{gathered}
+          \frac{\partial \psi}{\partial t} = g\,\frac{\partial F}{\partial p},
+          \qquad F = g\,\rho^{2} K_\psi\,\frac{\partial \psi}{\partial p}, \\
+          F(p_s) = F_\psi^{\text{sfc}}
+          \end{gathered}
+        caption: >-
+          diffusion of a quantity $\psi$ ($s$, $q$, $u$, $v$ or a tracer) in
+          pressure coordinates, where $F$ is the upward turbulent flux and the
+          surface flux $F_\psi^{\text{sfc}}$ is the lower boundary condition
+      - tex: |-
+          K_{h,m} = \ell\; e^{1/2}\; S_{h,m}
+        caption: >-
+          the UW diffusivities for heat and momentum from the master length
+          scale $\ell$, the turbulent kinetic energy $e$ and the stability
+          functions $S_{h,m}$
+    references: [bretherton2009, park2009, neale2012]
+
+  cam_run2.rayleigh_friction:
+    title: Rayleigh friction
+    routine: rayleigh_friction_tend (physics/cam/rayleigh_friction.F90)
+    active: false
+    summary: >-
+      A linear drag on the winds near the model top, $\partial\mathbf{u}/\partial t = -\mathbf{u}/\tau(z)$,
+      used as a sponge; the kinetic energy removed is returned as heat. The
+      stage also closes the energy and tracer budget checks of vertical
+      diffusion.
+    configuration: >-
+      The decay time at the top, `raytau0`, is 0, so the drag is off (the
+      log reports `otau0 = 0`) and the routine returns a zero tendency.
+    equations:
+      - tex: |-
+          \begin{gathered}
+          \frac{\partial \mathbf{u}}{\partial t} = -\frac{\mathbf{u}}{\tau(z)}, \\
+          \frac{\partial s}{\partial t} = \frac{1}{2\,\Delta t}\left(1 - \frac{1}{(1+\Delta t/\tau)^{2}}\right)|\mathbf{u}|^{2}
+          \end{gathered}
+        caption: the drag, integrated implicitly, and the frictional heating that conserves energy
+    references: [neale2012]
+
+  cam_run2.aerosol_dry_deposition:
+    title: Aerosol dry deposition
+    routine: aero_model_drydep (chemistry/modal_aero/aero_model.F90)
+    summary: >-
+      Removes aerosol at the surface by turbulent deposition and
+      gravitational settling, for the mass and number of every MAM3 mode,
+      interstitial and cloud-borne. By default the stage runs as its two leaves;
+      CARMA is not built into this case.
+    references: [zhang2001, liu2012]
+
+  cam_run2.aerosol_dry_deposition_leaf:
+    title: Aerosol dry deposition
+    routine: aero_model_drydep (chemistry/modal_aero/aero_model.F90)
+    summary: >-
+      Gravitational settling through the column and turbulent deposition at
+      the surface for the MAM3 aerosol, interstitial and cloud-borne. The deposition velocity
+      combines the settling velocity of the mode's particles with an
+      aerodynamic and a surface resistance that depend on the friction
+      velocity $u_*$ and Obukhov length $L$ computed by vertical diffusion,
+      and on the land type.
+    configuration: >-
+      `aer_drydep_list`: bc, dust, sea salt, organic matter, sulfate and
+      number in the three MAM3 modes.
+    equations:
+      - tex: |-
+          v_d = v_g + \frac{1}{R_a + R_s}
+        caption: >-
+          the deposition velocity of Zhang et al. (2001): gravitational
+          settling $v_g$ plus the aerodynamic resistance $R_a$ and surface
+          resistance $R_s$ in series
+      - tex: |-
+          F_{\text{dep}} = -\,v_d\,\rho\,\chi_{\text{bot}}
+        caption: the downward flux of a mixing ratio $\chi$ at the bottom level
+    references: [zhang2001, liu2012]
+
+  cam_run2.carma_aerosol_tendencies_leaf:
+    title: CARMA aerosol microphysics
+    routine: carma_timestep_tend (physics/carma/cam/carma_intr.F90)
+    active: false
+    summary: >-
+      The sectional aerosol model CARMA, when a CARMA model is built in.
+    configuration: >-
+      `carma_model = none`, so `carma_do_aerosol` is false and nothing runs.
+
+  cam_run2.charge_neutrality:
+    title: Charge neutrality
+    routine: charge_fix (chemistry/mozart/charge_neutrality.F90)
+    active: false
+    summary: >-
+      Sets the electron concentration to the sum of the positive ions, so
+      the ionospheric chemistry stays electrically neutral.
+    configuration: >-
+      trop_mam3 carries no ions or electrons, so the routine changes
+      nothing.
+
+  cam_run2.gravity_wave_drag:
+    title: Orographic gravity wave drag
+    routine: gw_tend (physics/cam/gw_drag.F90)
+    summary: >-
+      Unresolved mountains launch stationary gravity waves that carry
+      momentum upward and deposit it where they break, decelerating the flow
+      aloft. Following McFarlane (1987), the launched stress depends on the
+      low-level wind, stability and density and on the subgrid standard
+      deviation of the orography $\sigma_h$. Going up, the stress is limited
+      by the saturation stress, which shrinks where the wind weakens or the
+      air thins; the stress lost between two levels decelerates the wind
+      there, and the kinetic energy removed heats the air.
+    configuration: >-
+      Only the orographic source is on (`use_gw_oro`); no spectrum of
+      non-orographic waves (`pgwv = 0`), no frontal or convective sources.
+      The efficiency $\varepsilon$ is `effgw_oro` = 0.125.
+    equations:
+      - tex: |-
+          \begin{gathered}
+          \tau_0 = \tfrac{1}{2}\,k\,\rho_0\,N_0\,U_0\,\min\!\left(h^{2},\; F_c^{2}\,\frac{U_0^{2}}{N_0^{2}}\right), \\
+          h = 2\,\sigma_h
+          \end{gathered}
+        caption: >-
+          the launched stress, from the wind $U_0$, buoyancy frequency $N_0$
+          and density $\rho_0$ averaged over the depth of the obstacle, with
+          horizontal wavenumber $k$ and critical Froude number $F_c$
+      - tex: |-
+          \begin{gathered}
+          \tau(z) = \min\!\left(\tau_{\text{below}}\,e^{-\text{damping}},\; \tau_{\text{sat}}\right), \\
+          \tau_{\text{sat}} = \frac{F_c^{2}\,k\,\rho\,|U|^{3}}{2N}
+          \end{gathered}
+        caption: the stress profile, limited by saturation as the wave propagates up
+      - tex: |-
+          \frac{\partial U}{\partial t} = -\,\varepsilon\, g\,\frac{\partial \tau}{\partial p}
+        caption: >-
+          the drag on the wind component $U > 0$ along the launch direction,
+          where the stress $\tau \ge 0$ decreases upward
+    references: [mcfarlane1987, neale2012]
+
+  cam_run2.qbo_relaxation:
+    title: QBO relaxation
+    routine: qbo_relax (physics/cam/qbo.F90)
+    active: false
+    summary: >-
+      Nudges the tropical stratospheric winds toward an observed
+      quasi-biennial oscillation, for models that cannot produce one.
+    configuration: >-
+      The CAM5 build uses the stub module, where `qbo_use_forcing` is a
+      constant false and the routine only returns an empty tendency.
+
+  cam_run2.ion_drag:
+    title: Ion drag
+    routine: iondrag_calc (physics/cam/iondrag.F90)
+    active: false
+    summary: >-
+      Drag and Joule heating from collisions between neutral air and ions in
+      the thermosphere.
+    configuration: >-
+      This low-top CAM5 build compiles the stub module; `iondrag_calc` has
+      no body, and no WACCM-X ionosphere is present.
+
+  cam_run2.state_finalize:
+    title: End of the after-coupling physics
+    routine: physics_dme_adjust (physics/cam/physics_types.F90) and its surroundings in tphysac
+    summary: >-
+      Closes the physics step before the state goes to the dynamical core.
+      It stores the column's total energy for next step's energy fixer, sets
+      the temperature from its initial value and the accumulated physics
+      tendency, converts the dry-mass mixing ratios of the dry constituents
+      back to moist ones as the dynamics expects, and writes the total
+      physics tendencies (`PTTEND`, `PTEQ`, ...) to the history.
+    configuration: >-
+      The dry-mass adjustment `physics_dme_adjust` returns at once for the SE
+      core (it applies only to the finite-volume core); the SE core accounts
+      for the change in water vapour when it applies the tendencies.
+    equations:
+      - tex: |-
+          T = T_{\text{ini}} + \Delta t\,\left(\frac{\partial T}{\partial t}\right)_{\text{phys}}
+        caption: the temperature handed to the dynamics
+      - tex: |-
+          q_{\text{moist}} = q_{\text{dry}}\,\frac{\Delta p_{\text{dry}}}{\Delta p}
+        caption: the conversion of a dry mixing ratio to a moist one
+    references: [neale2012]
+
+  cam_run2.carma_statistics_leaf:
+    title: CARMA statistics
+    routine: carma_accumulate_stats (physics/carma/cam/carma_intr.F90)
+    active: false
+    summary: Accumulates CARMA's diagnostic statistics.
+    configuration: No CARMA model is built in (`carma_model = none`).
+
+  cam_run2.physics_to_dynamics:
+    title: Physics–dynamics coupling, physics to dynamics
+    routine: stepon_run2 → p_d_coupling (dynamics/se/stepon.F90, dp_coupling.F90)
+    summary: >-
+      Hands the physics tendencies to the spectral-element grid. The physics
+      columns are the unique GLL points of the SE elements, so the mapping is
+      a copy followed by an exchange along element edges. The temperature
+      and wind tendencies are kept as forcing terms $F_T$, $F_{\mathbf{u}}$
+      that the dynamics applies during its steps; the tracer changes are
+      applied at once, and the surface pressure changes by the mass of the
+      water vapour the physics added or removed.
+    configuration: >-
+      `se_ftype = 2`: tracer and pressure forcing applied as an adjustment,
+      $T$ and $\mathbf{u}$ forcing applied within the dynamics steps.
+      Physics and dynamics are time-split: each sees the other's result of
+      the whole step.
+    equations:
+      - tex: |-
+          \begin{gathered}
+          (\Delta p\,q)^{+} = \Delta p\;q^{\text{phys}}, \\
+          p_s^{+} = p_s + \sum_k \Delta p_k\,\big(q_{v,k}^{\text{phys}} - q_{v,k}\big)
+          \end{gathered}
+        caption: the tracer mass of each layer and the surface pressure after the adjustment
+    references: [williamson2002, dennis2012]
+
+  # ----------------------------------------------------------------- dynamics
+  cam_run3.dynamics:
+    title: Spectral-element dynamical core (CAM-SE)
+    routine: stepon_run3 → dyn_run → prim_run_subcycle (dynamics/se)
+    summary: >-
+      Solves the hydrostatic primitive equations on the cubed sphere with a
+      continuous Galerkin spectral-element method: each of the 6 × 16 × 16
+      elements carries a 4 × 4 grid of Gauss–Lobatto–Legendre points, and
+      neighbouring elements are joined by direct stiffness summation. Its
+      spatial discretization conserves mass and energy. Fourth-order
+      hyperviscosity removes grid-scale noise and a second-order sponge
+      damps the top layers. Levels move with the flow (vertically
+      Lagrangian) and are remapped to the hybrid levels; tracers are
+      advected with a limiter that keeps them within their local bounds and
+      conserves their mass.
+    configuration: >-
+      `ne16np4` (13,826 columns, about 2° spacing), 30 levels; three 600 s
+      dynamics steps per 1800 s physics step with the 5-stage, third-order
+      Kinnmark–Gray Runge–Kutta (`tstep_type = 5`); vertical remap every
+      three steps (`rsplit = 3`); hyperviscosity
+      $\nu = 7\times10^{15}\ \mathrm{m^4\,s^{-1}}$
+      ($\nu_{\text{div}} = 1.55\times10^{16}\ \mathrm{m^4\,s^{-1}}$), sponge
+      $\nu_{\text{top}} = 2.5\times10^{5}\ \mathrm{m^2\,s^{-1}}$; the
+      optimization-based limiter (`se_limiter_option = 8`).
+    equations:
+      - tex: |-
+          \begin{aligned}
+          \frac{\partial \mathbf{u}}{\partial t} &+ (\zeta + f)\,\hat{\mathbf{k}}\times\mathbf{u} + \nabla\!\left(\tfrac{1}{2}|\mathbf{u}|^{2} + \Phi\right) \\
+          &+ \dot{\eta}\,\frac{\partial \mathbf{u}}{\partial \eta} + \frac{R\,T_v}{p}\,\nabla p = \mathbf{F}_{\mathbf{u}}
+          \end{aligned}
+        caption: momentum, in vector-invariant form
+      - tex: |-
+          \begin{aligned}
+          \frac{\partial T}{\partial t} &+ \mathbf{u}\cdot\nabla T + \dot{\eta}\,\frac{\partial T}{\partial \eta} \\
+          &- \frac{R\,T_v}{c_p^{*}\,p}\,\omega = F_T
+          \end{aligned}
+        caption: thermodynamics
+      - tex: |-
+          \begin{aligned}
+          \frac{\partial}{\partial t}\!\left(\frac{\partial p}{\partial \eta}\right) &+ \nabla\cdot\!\left(\frac{\partial p}{\partial \eta}\,\mathbf{u}\right) \\
+          &+ \frac{\partial}{\partial \eta}\!\left(\dot{\eta}\,\frac{\partial p}{\partial \eta}\right) = 0
+          \end{aligned}
+        caption: mass, for the pressure thickness of a layer
+      - tex: |-
+          \begin{aligned}
+          \frac{\partial}{\partial t}\!\left(\frac{\partial p}{\partial \eta}\,q\right) &+ \nabla\cdot\!\left(\frac{\partial p}{\partial \eta}\,q\,\mathbf{u}\right) \\
+          &+ \frac{\partial}{\partial \eta}\!\left(\dot{\eta}\,\frac{\partial p}{\partial \eta}\,q\right) = 0
+          \end{aligned}
+        caption: >-
+          each tracer $q$; with vertically Lagrangian levels $\dot\eta = 0$
+          during the dynamics steps and the remap does the vertical transport
+    references: [dennis2012, taylor2010, guba2014, lin2004]
+
+  # ------------------------------------------------ physics before coupling
+  cam_run1.dynamics_to_physics:
+    title: Physics–dynamics coupling, dynamics to physics
+    routine: stepon_run1 → d_p_coupling (dynamics/se/stepon.F90, dp_coupling.F90)
+    summary: >-
+      Copies the state the dynamics produced, at the unique GLL points, into
+      the physics columns, which are grouped into chunks of `pcols` columns
+      for load balance. Each column gets its surface pressure, temperature,
+      winds, vertical pressure velocity and tracers; the pressures at
+      interfaces and mid-levels, the geopotential heights and the dry
+      static energy are then derived from them.
+    equations:
+      - tex: |-
+          p_{k+1/2} = A_{k+1/2}\,p_0 + B_{k+1/2}\,p_s
+        caption: the interface pressures of the hybrid coordinate
+      - tex: |-
+          s = c_p\,T + g\,z + \Phi_s
+        caption: >-
+          the dry static energy the physics works with, with $z$ the height
+          above the surface and $\Phi_s$ the surface geopotential
+    references: [williamson2002, dennis2012]
+
+  cam_run1.state_initialize:
+    title: Start of the before-coupling physics
+    routine: beginning of tphysbc (physics/cam/physpkg.F90)
+    summary: >-
+      Prepares the state for the physics: the water-isotope mass fixer and
+      ratio limiter, a check that clips negative constituent mixing ratios
+      (`qneg3`), the state diagnostics written before any physics, and the
+      initial tracer integrals that later budget checks compare against.
+    configuration: >-
+      Water isotope tracers are on (`-water_tracer h2o_h216o_hdo_h218o`), so
+      their fixer and limiter run here.
+    references: [brady2019, neale2012]
+
+  cam_run1.energy_fixer:
+    title: Global energy fixer
+    routine: check_energy_fix (physics/cam/check_energy.F90)
+    summary: >-
+      The dynamical core does not conserve total energy exactly. The fixer
+      measures the change in the global-mean column total energy between
+      the end of the previous physics step and now, which is the dynamics'
+      error, and gives it back as a uniform heating of every grid cell. It
+      also records the initial temperature and water, from which the step's
+      dynamical-core tendency `DTCORE` is diagnosed.
+    equations:
+      - tex: |-
+          \begin{aligned}
+          E = \int_{p_{\text{top}}}^{p_s}\Big(&s + \tfrac{1}{2}|\mathbf{u}|^{2} \\
+          &+ (L_v + L_f)\,q_v + L_f\,q_l\Big)\,\frac{\mathrm{d}p}{g}
+          \end{aligned}
+        caption: >-
+          the column total energy: dry static energy $s = c_pT + gz + \Phi_s$,
+          kinetic energy and the latent heat of vapour and liquid relative to
+          ice
+      - tex: |-
+          \left(\frac{\partial s}{\partial t}\right)_{\text{fix}} = -\,\frac{g}{\overline{p_s} - p_{\text{top}}}\;\frac{\overline{E}_{\text{in}} - \overline{E}_{\text{out}}}{\Delta t}
+        caption: >-
+          the uniform heating, where $\overline{E}_{\text{out}}$ is the global
+          mean at the end of the last physics step and $\overline{E}_{\text{in}}$
+          at the start of this one
+    references: [williamson2015, lauritzen2019, neale2012]
+
+  cam_run1.dry_adjustment:
+    title: Dry adiabatic adjustment
+    routine: dadadj (physics/cam/dadadj.F90)
+    summary: >-
+      Where the stratification of the top layers is unstable to dry
+      convection, the lapse rate is adjusted to the dry adiabat while the
+      layers' enthalpy is conserved: the GFDL-style adjustment that goes
+      back to Manabe et al. (1965). It iterates until the column is stable,
+      up to 15 times.
+    configuration: >-
+      Applied to the top three layers only (`nlvdry = 3`); below them the
+      convection and turbulence schemes remove instability.
+    equations:
+      - tex: |-
+          \begin{gathered}
+          \theta_k \ge \theta_{k+1}\ \text{after adjustment}, \\
+          c_p\,(T_k\,\Delta p_k + T_{k+1}\,\Delta p_{k+1})\ \text{unchanged}
+          \end{gathered}
+        caption: the target state for an unstable pair of layers
+    references: [manabe1965]
+
+  cam_run1.deep_convection:
+    title: Deep convection (Zhang–McFarlane)
+    routine: convect_deep_tend (physics/cam/convect_deep.F90 → zm_conv_intr.F90)
+    summary: >-
+      Represents precipitating cumulus towers too small for the grid. The
+      Zhang–McFarlane scheme builds an ensemble of entraining updraft plumes
+      and their downdrafts from the level of maximum moist static energy in
+      the boundary layer. It triggers when the convective available
+      potential energy (CAPE) of a dilute, entraining parcel exceeds a
+      threshold, and its closure sets the cloud-base mass flux so that CAPE
+      is consumed over a fixed time scale. The plumes transport heat,
+      moisture and cloud water, condense and rain, evaporate precipitation
+      below cloud, and transport momentum through convective pressure
+      gradients.
+    configuration: >-
+      CAPE threshold $70\ \mathrm{J\,kg^{-1}}$, $\tau = 3600$ s; autoconversion
+      coefficients `zmconv_c0_lnd` = 0.0059 and `zmconv_c0_ocn` = 0.045;
+      rain evaporation efficiencies `zmconv_ke` = 1e-6 (ocean) and
+      `zmconv_ke_lnd` = 3e-6. The convective transport of aerosols and other
+      tracers runs later, in the wet-deposition stage.
+    equations:
+      - tex: |-
+          \left(\frac{\partial\,\mathrm{CAPE}}{\partial t}\right)_{\text{conv}} = -\,\frac{\mathrm{CAPE}}{\tau}
+        caption: the closure for the cloud-base mass flux $M_b$
+      - tex: |-
+          \frac{\partial M_u}{\partial z} = (\varepsilon_u - \delta_u)\,M_u
+        caption: the updraft mass flux, with entrainment $\varepsilon_u$ and detrainment $\delta_u$
+      - tex: |-
+          \begin{aligned}
+          \frac{\partial \bar{s}}{\partial t} = -\,\frac{1}{\rho}\,\frac{\partial}{\partial z}\Big[&M_u (s_u - \bar{s}) \\
+          &+ M_d (s_d - \bar{s})\Big] + L\,(C - E)
+          \end{aligned}
+        caption: >-
+          the heating by updraft ($u$) and downdraft ($d$) mass fluxes, with
+          condensation $C$ and evaporation $E$
+    references: [zhang1995, neale2008, richter2008]
+
+  cam_run1.shallow_convection:
+    title: Shallow convection (University of Washington)
+    routine: convect_shallow_tend (physics/cam/convect_shallow.F90 → uwshcu.F90)
+    summary: >-
+      Represents non-precipitating and weakly precipitating cumulus such as
+      trade-wind clouds. The UW scheme launches a single entraining-detraining
+      plume from the top of the boundary layer. Its cloud-base mass flux
+      depends on the convective inhibition (CIN) and the boundary layer's
+      turbulent kinetic energy: only the fraction of updrafts whose vertical
+      velocity can overcome the CIN rises. Lateral mixing is determined by
+      buoyancy sorting of the mixtures of cloudy and environmental air;
+      condensate is detrained and precipitation forms above a threshold.
+    configuration: >-
+      `shallow_scheme = UW`, with penetrative entrainment `uwshcu_rpen` = 5.
+    equations:
+      - tex: |-
+          \begin{gathered}
+          M_b = \rho_0\,\frac{\sigma_w}{\sqrt{2\pi}}\,\exp\!\left(-\frac{w_c^{2}}{2\,\sigma_w^{2}}\right), \\
+          w_c = \sqrt{2\,b\,\mathrm{CIN}},\qquad \sigma_w^{2} \approx \bar{e}_{\text{PBL}}
+          \end{gathered}
+        caption: >-
+          the cloud-base mass flux: the upward flux of a Gaussian distribution
+          of vertical velocities with variance from the boundary-layer mean
+          TKE, counting only those faster than the critical velocity $w_c$
+          that overcomes the inhibition; $\rho_0$ is the density at the
+          boundary-layer top and $b$ a buoyancy-efficiency constant
+      - tex: |-
+          \frac{\partial M_u}{\partial z} = (\varepsilon - \delta)\,M_u
+        caption: the plume, with entrainment and detrainment from buoyancy sorting
+    references: [park2009, bretherton2004]
+
+  cam_run1.sea_salt_rebin:
+    title: Sea-salt rebinning
+    routine: sslt_rebin_adv (physics/cam/sslt_rebin.F90)
+    active: false
+    summary: >-
+      Redistributes the bulk aerosol model's sea salt among its size bins
+      after advection, for the prescribed-aerosol (CAM4-style) sea salt.
+    configuration: >-
+      MAM3 carries sea salt in its modes, not the bulk constituents
+      `SSLTA`/`SSLTC`, so `has_sslt` is false and the routine returns.
+
+  cam_run1.cloud_macro_microphysics:
+    title: Cloud macrophysics and microphysics
+    routine: macrop_driver_tend (cldwat2m_macro.F90), microp_aero_run, microp_driver_tend (micro_mg1_0.F90)
+    summary: >-
+      Stratiform (large-scale) clouds and precipitation. The Park
+      macrophysics computes the liquid and ice stratus fractions, from the
+      relative humidity with a triangular distribution of subgrid humidity
+      for liquid, and the condensation and evaporation that keep the cloud
+      consistent with them; it also takes in the condensate detrained by
+      convection. Aerosol activation then gives the droplet and ice crystal
+      number sources, and the Morrison–Gettelman microphysics, a two-moment
+      bulk scheme, predicts the mass and number of cloud liquid and ice and
+      diagnoses rain and snow: autoconversion, accretion, freezing and
+      melting, the Bergeron–Findeisen process, sedimentation and the
+      evaporation of precipitation.
+    configuration: >-
+      `macrop_scheme = park`, `microp_scheme = MG` (MG1.0,
+      `micro_mg_version = 1`); one macro–micro substep per physics step
+      (`cld_macmic_num_steps = 1`); droplet activation from the MAM3 modes
+      after Abdul-Razzak and Ghan (2000); ice nucleation after Liu and
+      Penner (2005) and Liu et al. (2007).
+    equations:
+      - tex: |-
+          N(D) = N_0\,D^{\mu}\,e^{-\lambda D}
+        caption: the gamma size distribution of each hydrometeor class, whose parameters follow from the predicted mass and number
+      - tex: |-
+          \left(\frac{\partial q_c}{\partial t}\right)_{\text{auto}} = 1350\; q_c^{2.47}\, N_c^{-1.79}
+        caption: >-
+          autoconversion of cloud water to rain (Khairoutdinov and Kogan
+          2000), with $N_c$ in $\mathrm{cm^{-3}}$
+      - tex: |-
+          \begin{aligned}
+          \frac{\partial q}{\partial t} = {}&\left(\frac{\partial q}{\partial t}\right)_{\text{macro}} + \left(\frac{\partial q}{\partial t}\right)_{\text{act/nuc}} \\
+          &+ \sum_{\text{processes}} \left(\frac{\partial q}{\partial t}\right)_{\text{micro}} \\
+          &- \frac{1}{\rho}\,\frac{\partial (\rho\, V_q\, q)}{\partial z}
+          \end{aligned}
+        caption: the budget of each predicted mass or number $q$, with sedimentation at fall speed $V_q$
+    references: [park2014, morrison2008, gettelman2008, gettelman2010, abdulrazzak2000, liupenner2005, liu2007, khairoutdinov2000]
+
+  cam_run1.macro_tend_pre_leaf:
+    title: Cloud stage, up to the macrophysics
+    routine: tphysbc, macro_stage 1
+    summary: >-
+      The cloud stage stopped just before the Park macrophysics driver, so a
+      Python transliteration of the driver can run in between; it resumes
+      with the post leaf. Off by default.
+    references: [park2014]
+
+  cam_run1.macro_tend_post_leaf:
+    title: Cloud stage, after the macrophysics
+    routine: tphysbc, macro_stage 2
+    summary: >-
+      Resumes the cloud stage after the macrophysics: applies the
+      macrophysics tendency, then aerosol activation and the MG
+      microphysics. Off by default.
+    references: [morrison2008, gettelman2008]
+
+  cam_run1.wet_deposition:
+    title: Aerosol wet removal and convective transport
+    routine: aero_model_wetdep, convect_deep_tend_2 (tphysbc)
+    summary: >-
+      Removes aerosol by clouds and precipitation and carries the tracers
+      through deep convective plumes. By default the stage runs as its four
+      leaves.
+    references: [liu2012, neale2012]
+
+  cam_run1.modal_aerosol_preparation_leaf:
+    title: Aerosol size and water uptake
+    routine: modal_aero_calcsize_diag, modal_aero_wateruptake_dr
+    active: false
+    summary: >-
+      Diagnoses the modal aerosol sizes and their water uptake, for the
+      prescribed modal aerosol.
+    configuration: >-
+      Runs only for prescribed (non-prognostic) modal aerosol; MAM3 here is
+      prognostic, so the branch is skipped.
+
+  cam_run1.aerosol_wet_deposition_leaf:
+    title: Aerosol wet deposition
+    routine: aero_model_wetdep (chemistry/modal_aero/aero_model.F90)
+    summary: >-
+      Scavenging of MAM3 aerosol by stratiform and convective clouds and
+      their precipitation. In-cloud (nucleation) scavenging removes the
+      aerosol activated in cloud drops at the rate the cloud water turns
+      into precipitation; below-cloud (impaction) scavenging removes
+      interstitial aerosol collected by falling rain and snow; aerosol is
+      resuspended where precipitation evaporates. The aerosol water uptake
+      and wet sizes are updated first.
+    configuration: >-
+      `aer_wetdep_list` names the species of the three modes; both their
+      interstitial and cloud-borne forms are scavenged.
+    equations:
+      - tex: |-
+          \begin{gathered}
+          \left(\frac{\partial \chi}{\partial t}\right)_{\text{wet}} = -\,\lambda\,\chi, \\
+          \lambda_{\text{in-cloud}} = f_{\text{act}}\,\frac{P}{q_c}
+          \end{gathered}
+        caption: >-
+          schematically, first-order removal with the scavenging coefficient
+          $\lambda$; in cloud, the activated fraction $f_{\text{act}}$ times
+          the rate $P$ at which cloud water $q_c$ is converted to
+          precipitation
+    references: [liu2012, neale2012]
+
+  cam_run1.carma_wet_deposition_leaf:
+    title: CARMA wet deposition
+    routine: carma_wetdep_tend (physics/carma/cam/carma_intr.F90)
+    active: false
+    summary: Wet deposition of CARMA aerosol.
+    configuration: No CARMA model is built in (`carma_model = none`).
+
+  cam_run1.convective_tracer_transport_leaf:
+    title: Convective transport of tracers
+    routine: convect_deep_tend_2 → zm_conv_tend_2 → convtran (physics/cam/zm_conv_intr.F90)
+    summary: >-
+      Transports the aerosols and other tracers through the deep convective
+      updrafts and downdrafts computed by the deep convection stage, with
+      the same mass fluxes as heat and moisture; soluble aerosol is treated
+      with the fraction that is not scavenged.
+    equations:
+      - tex: |-
+          \begin{aligned}
+          \frac{\partial \bar{\chi}}{\partial t} = -\,\frac{1}{\rho}\,\frac{\partial}{\partial z}\Big[&M_u (\chi_u - \bar{\chi}) \\
+          &+ M_d (\chi_d - \bar{\chi})\Big]
+          \end{aligned}
+        caption: the tendency of a tracer mixing ratio $\chi$ from the convective mass fluxes
+    references: [zhang1995, liu2012]
+
+  cam_run1.diagnostics:
+    title: Physics diagnostics
+    routine: diag_phys_writeout, diag_conv, cloud_diagnostics_calc
+    summary: >-
+      Diagnostic output only: the state, convective precipitation and
+      cloud diagnostics written to the history. The state is not changed.
+      By default the stage runs as its two leaves.
+
+  cam_run1.state_and_convection_diagnostics_leaf:
+    title: State and convection diagnostics
+    routine: diag_phys_writeout, diag_conv (physics/cam/cam_diagnostics.F90)
+    summary: >-
+      Writes the state after convection and clouds (temperature, humidity,
+      winds, geopotential, sea-level pressure, ...) and the convective and
+      large-scale precipitation to the history. Changes nothing.
+
+  cam_run1.cloud_diagnostics_leaf:
+    title: Cloud diagnostics
+    routine: cloud_diagnostics_calc (physics/cam/cloud_diagnostics.F90)
+    summary: >-
+      Diagnoses cloud water paths, effective radii and the total, low,
+      middle and high cloud fractions (maximum-random overlap) for the
+      history. Changes nothing.
+
+  cam_run1.radiation:
+    title: Radiation (RRTMG)
+    routine: radiation_tend (physics/rrtmg/radiation.F90)
+    summary: >-
+      Solar (shortwave) and terrestrial (longwave) radiative transfer through
+      gases, clouds and aerosols, giving the radiative heating rates and the
+      surface fluxes. RRTMG is a correlated-$k$ model: 14 shortwave and 16
+      longwave bands, each integrated over its absorption coefficients by a
+      small number of quadrature points. Subgrid cloud variability is
+      sampled by McICA, which draws one random cloud profile per
+      quadrature point consistent with the cloud fraction and its vertical
+      overlap. Optical properties come from the prognostic water vapour and
+      the MAM3 aerosol, prescribed ozone and fixed greenhouse gases.
+    configuration: >-
+      `radiation_scheme = rrtmg`; full radiative transfer every second
+      step (`IRADSW` = `IRADLW` = 2, hourly), with the stored heating rates
+      applied in between; 1850 greenhouse gases and ozone climatology; the
+      solar spectrum fixed at 1850 (`solar_data_type = FIXED`).
+    equations:
+      - tex: |-
+          \left(\frac{\partial T}{\partial t}\right)_{\text{rad}} = \frac{g}{c_p}\,\frac{\partial F_{\text{net}}}{\partial p}
+        caption: the heating from the divergence of the net downward flux $F_{\text{net}}$
+      - tex: |-
+          F = \sum_{\text{bands}}\;\sum_{g} w_g\, F_g
+        caption: >-
+          the band fluxes as a quadrature over the cumulative distribution $g$
+          of absorption coefficients, each point solved as a monochromatic
+          two-stream problem
+    references: [iacono2008, mlawer1997, pincus2003, neale2012]
+
+  cam_run1.rad_tend_pre_leaf:
+    title: Radiation stage, binding
+    routine: tphysbc, rad_stage 1
+    summary: >-
+      The radiation stage stopped before the radiation driver, so a Python
+      radiation can run in between; it binds the chunk's surface fields and
+      returns. Off by default.
+    references: [iacono2008]
+
+  cam_run1.rad_tend_post_leaf:
+    title: Radiation stage, applying
+    routine: tphysbc, rad_stage 2
+    summary: >-
+      Resumes the radiation stage: applies the radiative heating produced
+      in between and the net flux to the energy check. Off by default.
+    references: [iacono2008]
+
+  cam_run1.state_export:
+    title: Surface export fields
+    routine: tropopause_output, cam_export, diag_export
+    summary: >-
+      Diagnoses the tropopause and fills `cam_out`, the fields the surface
+      components will receive. By default the stage runs as its three
+      leaves.
+
+  cam_run1.tropopause_leaf:
+    title: Tropopause diagnosis
+    routine: tropopause_output (physics/cam/tropopause.F90)
+    summary: >-
+      Finds the tropopause in every column with the WMO lapse-rate
+      definition, using the algorithm of Reichler et al. (2003), and writes
+      its pressure, temperature and height to the history. Changes nothing.
+    equations:
+      - tex: |-
+          -\frac{\partial T}{\partial z} \le 2\ \mathrm{K\,km^{-1}}
+        caption: >-
+          the WMO criterion: the lowest level where the lapse rate falls to
+          $2\ \mathrm{K\,km^{-1}}$ and its average over the 2 km above stays at or below that
+    references: [reichler2003]
+
+  cam_run1.state_export_leaf:
+    title: Fields for the surface
+    routine: cam_export (physics/cam/camsrfexch.F90)
+    summary: >-
+      Fills `cam_out` from the bottom level of the state: temperature,
+      humidity, winds, pressure, height, potential temperature and density,
+      and the convective and large-scale rain and snow of this step. The
+      downward surface radiation was set by radiation and the aerosol
+      deposition fluxes by the aerosol stages.
+
+  cam_run1.export_diagnostics_leaf:
+    title: Export diagnostics
+    routine: diag_export (physics/cam/cam_diagnostics.F90)
+    summary: >-
+      Writes the fields sent to the surface to the history. Changes nothing.
+
+references:
+  neale2012:
+    citation: >-
+      Neale, R. B., and Coauthors (2012). Description of the NCAR Community
+      Atmosphere Model (CAM 5.0). NCAR Technical Note NCAR/TN-486+STR.
+    url: https://www.cesm.ucar.edu/models/cesm1.0/cam/docs/description/cam5_desc.pdf
+  dennis2012:
+    citation: >-
+      Dennis, J. M., Edwards, J., Evans, K. J., Guba, O., Lauritzen, P. H.,
+      Mirin, A. A., St-Cyr, A., Taylor, M. A., & Worley, P. H. (2012). CAM-SE:
+      A scalable spectral element dynamical core for the Community Atmosphere
+      Model. International Journal of High Performance Computing
+      Applications, 26(1), 74–89.
+    doi: 10.1177/1094342011428142
+  taylor2010:
+    citation: >-
+      Taylor, M. A., & Fournier, A. (2010). A compatible and conservative
+      spectral element method on unstructured grids. Journal of
+      Computational Physics, 229(17), 5879–5895.
+    doi: 10.1016/j.jcp.2010.04.008
+  guba2014:
+    citation: >-
+      Guba, O., Taylor, M., & St-Cyr, A. (2014). Optimization-based limiters
+      for the spectral element method. Journal of Computational Physics,
+      267, 176–195.
+    doi: 10.1016/j.jcp.2014.02.029
+  lin2004:
+    citation: >-
+      Lin, S.-J. (2004). A "vertically Lagrangian" finite-volume dynamical
+      core for global models. Monthly Weather Review, 132(10), 2293–2307.
+    doi: 10.1175/1520-0493(2004)132<2293:AVLFDC>2.0.CO;2
+  williamson2002:
+    citation: >-
+      Williamson, D. L. (2002). Time-split versus process-split coupling of
+      parameterizations and dynamical core. Monthly Weather Review, 130(8),
+      2024–2041.
+    doi: 10.1175/1520-0493(2002)130<2024:TSVPSC>2.0.CO;2
+  williamson2015:
+    citation: >-
+      Williamson, D. L., Olson, J. G., Hannay, C., Toniazzo, T., Taylor, M.,
+      & Yudin, V. (2015). Energy considerations in the Community Atmosphere
+      Model (CAM). Journal of Advances in Modeling Earth Systems, 7(3),
+      1178–1188.
+    doi: 10.1002/2015MS000448
+  lauritzen2019:
+    citation: >-
+      Lauritzen, P. H., & Williamson, D. L. (2019). A total energy error
+      analysis of dynamical cores and physics-dynamics coupling in the
+      Community Atmosphere Model (CAM). Journal of Advances in Modeling
+      Earth Systems, 11(5), 1309–1328.
+    doi: 10.1029/2018MS001549
+  manabe1965:
+    citation: >-
+      Manabe, S., Smagorinsky, J., & Strickler, R. F. (1965). Simulated
+      climatology of a general circulation model with a hydrologic cycle.
+      Monthly Weather Review, 93(12), 769–798.
+    doi: 10.1175/1520-0493(1965)093<0769:SCOAGC>2.3.CO;2
+  zhang1995:
+    citation: >-
+      Zhang, G. J., & McFarlane, N. A. (1995). Sensitivity of climate
+      simulations to the parameterization of cumulus convection in the
+      Canadian Climate Centre general circulation model. Atmosphere-Ocean,
+      33(3), 407–446.
+    doi: 10.1080/07055900.1995.9649539
+  neale2008:
+    citation: >-
+      Neale, R. B., Richter, J. H., & Jochum, M. (2008). The impact of
+      convection on ENSO: From a delayed oscillator to a series of events.
+      Journal of Climate, 21(22), 5904–5924.
+    doi: 10.1175/2008JCLI2244.1
+  richter2008:
+    citation: >-
+      Richter, J. H., & Rasch, P. J. (2008). Effects of convective momentum
+      transport on the atmospheric circulation in the Community Atmosphere
+      Model, version 3. Journal of Climate, 21(7), 1487–1499.
+    doi: 10.1175/2007JCLI1789.1
+  park2009:
+    citation: >-
+      Park, S., & Bretherton, C. S. (2009). The University of Washington
+      shallow convection and moist turbulence schemes and their impact on
+      climate simulations with the Community Atmosphere Model. Journal of
+      Climate, 22(12), 3449–3469.
+    doi: 10.1175/2008JCLI2557.1
+  bretherton2004:
+    citation: >-
+      Bretherton, C. S., McCaa, J. R., & Grenier, H. (2004). A new
+      parameterization for shallow cumulus convection and its application to
+      marine subtropical cloud-topped boundary layers. Part I: Description
+      and 1D results. Monthly Weather Review, 132(4), 864–882.
+    doi: 10.1175/1520-0493(2004)132<0864:ANPFSC>2.0.CO;2
+  bretherton2009:
+    citation: >-
+      Bretherton, C. S., & Park, S. (2009). A new moist turbulence
+      parameterization in the Community Atmosphere Model. Journal of
+      Climate, 22(12), 3422–3448.
+    doi: 10.1175/2008JCLI2556.1
+  park2014:
+    citation: >-
+      Park, S., Bretherton, C. S., & Rasch, P. J. (2014). Integrating cloud
+      processes in the Community Atmosphere Model, version 5. Journal of
+      Climate, 27(18), 6821–6856.
+    doi: 10.1175/JCLI-D-14-00087.1
+  morrison2008:
+    citation: >-
+      Morrison, H., & Gettelman, A. (2008). A new two-moment bulk stratiform
+      cloud microphysics scheme in the Community Atmosphere Model, version 3
+      (CAM3). Part I: Description and numerical tests. Journal of Climate,
+      21(15), 3642–3659.
+    doi: 10.1175/2008JCLI2105.1
+  gettelman2008:
+    citation: >-
+      Gettelman, A., Morrison, H., & Ghan, S. J. (2008). A new two-moment
+      bulk stratiform cloud microphysics scheme in the Community Atmosphere
+      Model, version 3 (CAM3). Part II: Single-column and global results.
+      Journal of Climate, 21(15), 3660–3679.
+    doi: 10.1175/2008JCLI2116.1
+  gettelman2010:
+    citation: >-
+      Gettelman, A., Liu, X., Ghan, S. J., Morrison, H., Park, S., Conley,
+      A. J., Klein, S. A., Boyle, J., Mitchell, D. L., & Li, J.-L. F. (2010).
+      Global simulations of ice nucleation and ice supersaturation with an
+      improved cloud scheme in the Community Atmosphere Model. Journal of
+      Geophysical Research, 115, D18216.
+    doi: 10.1029/2009JD013797
+  abdulrazzak2000:
+    citation: >-
+      Abdul-Razzak, H., & Ghan, S. J. (2000). A parameterization of aerosol
+      activation: 2. Multiple aerosol types. Journal of Geophysical
+      Research, 105(D5), 6837–6844.
+    doi: 10.1029/1999JD901161
+  liupenner2005:
+    citation: >-
+      Liu, X., & Penner, J. E. (2005). Ice nucleation parameterization for
+      global models. Meteorologische Zeitschrift, 14(4), 499–514.
+    doi: 10.1127/0941-2948/2005/0059
+  liu2007:
+    citation: >-
+      Liu, X., Penner, J. E., Ghan, S. J., & Wang, M. (2007). Inclusion of
+      ice microphysics in the NCAR Community Atmospheric Model version 3
+      (CAM3). Journal of Climate, 20(18), 4526–4547.
+    doi: 10.1175/JCLI4264.1
+  khairoutdinov2000:
+    citation: >-
+      Khairoutdinov, M., & Kogan, Y. (2000). A new cloud physics
+      parameterization in a large-eddy simulation model of marine
+      stratocumulus. Monthly Weather Review, 128(1), 229–243.
+    doi: 10.1175/1520-0493(2000)128<0229:ANCPPI>2.0.CO;2
+  iacono2008:
+    citation: >-
+      Iacono, M. J., Delamere, J. S., Mlawer, E. J., Shephard, M. W., Clough,
+      S. A., & Collins, W. D. (2008). Radiative forcing by long-lived
+      greenhouse gases: Calculations with the AER radiative transfer models.
+      Journal of Geophysical Research, 113, D13103.
+    doi: 10.1029/2008JD009944
+  mlawer1997:
+    citation: >-
+      Mlawer, E. J., Taubman, S. J., Brown, P. D., Iacono, M. J., & Clough,
+      S. A. (1997). Radiative transfer for inhomogeneous atmospheres: RRTM, a
+      validated correlated-k model for the longwave. Journal of Geophysical
+      Research, 102(D14), 16663–16682.
+    doi: 10.1029/97JD00237
+  pincus2003:
+    citation: >-
+      Pincus, R., Barker, H. W., & Morcrette, J.-J. (2003). A fast, flexible,
+      approximate technique for computing radiative transfer in
+      inhomogeneous cloud fields. Journal of Geophysical Research,
+      108(D13), 4376.
+    doi: 10.1029/2002JD003322
+  mcfarlane1987:
+    citation: >-
+      McFarlane, N. A. (1987). The effect of orographically excited gravity
+      wave drag on the general circulation of the lower stratosphere and
+      troposphere. Journal of the Atmospheric Sciences, 44(14), 1775–1800.
+    doi: 10.1175/1520-0469(1987)044<1775:TEOOEG>2.0.CO;2
+  liu2012:
+    citation: >-
+      Liu, X., and Coauthors (2012). Toward a minimal representation of
+      aerosols in climate models: description and evaluation in the
+      Community Atmosphere Model CAM5. Geoscientific Model Development,
+      5(3), 709–739.
+    doi: 10.5194/gmd-5-709-2012
+  zhang2001:
+    citation: >-
+      Zhang, L., Gong, S., Padro, J., & Barrie, L. (2001). A size-segregated
+      particle dry deposition scheme for an atmospheric aerosol module.
+      Atmospheric Environment, 35(3), 549–560.
+    doi: 10.1016/S1352-2310(00)00326-5
+  emmons2010:
+    citation: >-
+      Emmons, L. K., and Coauthors (2010). Description and evaluation of the
+      Model for Ozone and Related chemical Tracers, version 4 (MOZART-4).
+      Geoscientific Model Development, 3(1), 43–67.
+    doi: 10.5194/gmd-3-43-2010
+  lamarque2012:
+    citation: >-
+      Lamarque, J.-F., and Coauthors (2012). CAM-chem: description and
+      evaluation of interactive atmospheric chemistry in the Community Earth
+      System Model. Geoscientific Model Development, 5(2), 369–411.
+    doi: 10.5194/gmd-5-369-2012
+  brady2019:
+    citation: >-
+      Brady, E., and Coauthors (2019). The connected isotopic water cycle in
+      the Community Earth System Model version 1. Journal of Advances in
+      Modeling Earth Systems, 11(8), 2547–2566.
+    doi: 10.1029/2019MS001663
+  reichler2003:
+    citation: >-
+      Reichler, T., Dameris, M., & Sausen, R. (2003). Determining the
+      tropopause height from gridded data. Geophysical Research Letters,
+      30(20), 2042.
+    doi: 10.1029/2003GL018240

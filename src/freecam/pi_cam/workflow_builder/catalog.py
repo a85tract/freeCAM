@@ -5,6 +5,9 @@ Nothing here is a hand-written list.  The default order is the current
 catalog the package ships and from the process-support record under
 ``validation/``; the kernel bindings from the stage classes and the segment
 runner; the tunables from ``native/pi_cam/runtime_parameters.yaml``.  The
+one hand-written record is the science the About tab shows -- what each
+process is, its equations and its literature -- in the package's
+``pi_cam_process_science.yaml``, checked here against the step plan.  The
 snapshot the published page reads is the same data, serialised once, with
 the commit and a content hash so the page can say what it describes.
 """
@@ -15,6 +18,7 @@ import json
 import subprocess
 from dataclasses import replace
 from datetime import datetime, timezone
+from functools import lru_cache
 from hashlib import sha256
 from importlib.resources import files
 from pathlib import Path
@@ -58,6 +62,11 @@ CATEGORY_BY_KIND: Mapping[str, str] = {
 }
 
 CONTROL_SKELETON = ("boundary_import", "advance_timestep", "boundary_export")
+
+SCIENCE_RESOURCE = "pi_cam_process_science.yaml"
+_SCIENCE_FIELDS = frozenset(
+    {"title", "summary", "configuration", "equations", "references", "routine", "active"}
+)
 
 
 def _repo_root() -> Path:
@@ -149,6 +158,79 @@ def default_document(case: str = "PI-atm", nsteps: int = 2, *,
 
 
 # ---------------------------------------------------------------------------
+# the science
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def _load_science() -> Mapping[str, Any]:
+    resource = files("freecam.pi_cam.data").joinpath(SCIENCE_RESOURCE)
+    return yaml.safe_load(resource.read_text())
+
+
+def _prose(value: Any) -> str | None:
+    text = " ".join(str(value).split()) if value is not None else ""
+    return text or None
+
+
+def process_science(nodes: Sequence[WorkflowNode]) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    """The phases' labels and each workflow action's scientific description.
+
+    Returns ``(phases, processes)``, keyed by phase and by qualified action
+    name.  References are resolved to their citations and links here, so the
+    page needs no second table.  Fails closed on an entry for an action the
+    step plan does not have, a phase without a label, a field the page would
+    not show, or a reference the table lacks.
+    """
+
+    record = _load_science()
+    if record.get("schema_version") != 1:
+        raise ValueError(f"{SCIENCE_RESOURCE}: unsupported schema_version {record.get('schema_version')!r}")
+    table = record.get("references") or {}
+    actions = {node.id for node in nodes}
+
+    phases: dict[str, dict[str, Any]] = {}
+    for phase, spec in (record.get("phases") or {}).items():
+        phases[str(phase)] = {"label": str(spec["label"]), "routine": spec.get("routine"),
+                              "summary": _prose(spec.get("summary"))}
+    unlabelled = sorted({node.phase for node in nodes} - set(phases))
+    if unlabelled:
+        raise ValueError(f"{SCIENCE_RESOURCE}: phases without a label: {unlabelled}")
+
+    processes: dict[str, dict[str, Any]] = {}
+    for qualified, spec in (record.get("processes") or {}).items():
+        if qualified not in actions:
+            raise ValueError(f"{SCIENCE_RESOURCE}: {qualified!r} is not an action of the step plan")
+        unknown = sorted(set(spec) - _SCIENCE_FIELDS)
+        if unknown:
+            raise ValueError(f"{SCIENCE_RESOURCE}: {qualified}: unknown fields {unknown}")
+        references = []
+        for key in spec.get("references") or ():
+            if key not in table:
+                raise ValueError(f"{SCIENCE_RESOURCE}: {qualified}: no reference {key!r} in the table")
+            doi = table[key].get("doi")
+            references.append({
+                "key": str(key),
+                "citation": _prose(table[key]["citation"]),
+                "doi": doi,
+                "url": table[key].get("url") or (f"https://doi.org/{doi}" if doi else None),
+            })
+        processes[str(qualified)] = {
+            "title": str(spec["title"]),
+            "summary": _prose(spec.get("summary")),
+            "configuration": _prose(spec.get("configuration")),
+            "equations": [
+                {"tex": str(equation["tex"]).strip(), "caption": _prose(equation.get("caption"))}
+                for equation in spec.get("equations") or ()
+            ],
+            "references": references,
+            "routine": spec.get("routine"),
+            "active": bool(spec.get("active", True)),
+        }
+    return phases, processes
+
+
+# ---------------------------------------------------------------------------
 # the library
 # ---------------------------------------------------------------------------
 
@@ -173,6 +255,7 @@ def catalog_entries(nodes: Sequence[WorkflowNode], *, root: Path | None = None
     root = root or _repo_root()
     entries: dict[str, WorkflowCatalogEntry] = {}
     default_ids = {node.id for node in nodes}
+    phases, science = process_science(nodes)
     for node in nodes:
         entries[node.id] = WorkflowCatalogEntry(
             node=replace(node, enabled=True),
@@ -180,7 +263,8 @@ def catalog_entries(nodes: Sequence[WorkflowNode], *, root: Path | None = None
             addable=node.scientific,
             reason=None if node.scientific else "a control action; always part of the step",
             in_default=node.enabled,
-            description=_describe_default(node),
+            description=_describe_default(node, phases),
+            science=science.get(node.id),
         )
 
     catalog = _load_physics_catalog()
@@ -241,14 +325,14 @@ def catalog_entries(nodes: Sequence[WorkflowNode], *, root: Path | None = None
     return entries
 
 
-def _describe_default(node: WorkflowNode) -> str:
+def _describe_default(node: WorkflowNode, phases: Mapping[str, Mapping[str, Any]]) -> str:
     if node.locked:
         return "A required control action of every CAM step."
     if node.kind in {"io", "service", "clock", "kernel"}:
         return "Part of the step's control skeleton; runs every step, hidden from the canvas."
     if node.parent_stage:
         return f"A leaf of {node.parent_stage}; the parent and its leaves never run together."
-    return f"Original CAM process {node.operation} in {node.phase}."
+    return f"Original CAM process {node.operation}, {phases[node.phase]['label'].lower()} ({node.phase})."
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +373,7 @@ def build_snapshot(*, case: str = "PI-atm", nsteps: int = 2, root: Path | None =
     capabilities = [c.to_payload() for c in kernel_capabilities()]
     parameters = runtime_parameters(root)
     physics = _load_physics_catalog()
+    phases, _ = process_science(nodes)
     content = {
         "schema_version": SNAPSHOT_SCHEMA_VERSION,
         "cases": dict(CASES),
@@ -296,6 +381,7 @@ def build_snapshot(*, case: str = "PI-atm", nsteps: int = 2, root: Path | None =
         "entries": [entry.to_payload() for entry in entries.values()],
         "capabilities": capabilities,
         "parameters": parameters,
+        "phases": phases,
         "rules": {
             "locked_operations": sorted(LOCKED_OPERATIONS),
             "control_skeleton": list(CONTROL_SKELETON),
@@ -339,5 +425,6 @@ __all__ = [
     "default_nodes",
     "load_catalog",
     "parent_leaf_groups",
+    "process_science",
     "runtime_parameters",
 ]

@@ -148,6 +148,32 @@ describe("the page in preview mode", () => {
     expect(shallow).toHaveTextContent("off");
   });
 
+  it("names the phases by what they do and describes a process's science", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const listbox = await screen.findByRole("listbox", { name: "Step order" });
+    // the phases read as physics after / before surface coupling and dynamics, not CAM RUN1/2/3
+    const markers = Array.from(listbox.querySelectorAll(".phase-marker")).map((marker) => marker.textContent ?? "");
+    expect(markers.map((text) => text.split(/cam_run|coupling ·/)[0].trim())).toEqual([
+      "Physics after surface coupling", "Dynamics", "Physics before surface coupling",
+    ]);
+    expect(listbox).not.toHaveTextContent(/CAM RUN/);
+
+    await user.click(screen.getByTestId("row-cam_run2.gravity_wave_drag"));
+    const inspector = screen.getByRole("complementary", { name: "Inspector" });
+    const science = within(inspector).getByRole("region", { name: "Science" });
+    expect(within(science).getByRole("heading", { level: 3 })).toHaveTextContent("Orographic gravity wave drag");
+    expect(science).toHaveTextContent(/McFarlane \(1987\)/);
+    expect(science.querySelectorAll(".equation math").length).toBe(3);
+    const doi = within(science).getByRole("link", { name: /doi:10\.1175\/1520-0469\(1987\)044/ });
+    expect(doi).toHaveAttribute("href", expect.stringMatching(/^https:\/\/doi\.org\//));
+    expect(inspector).toHaveTextContent("Physics after surface coupling cam_run2 · tphysac");
+
+    // a process that changes nothing here says so
+    await user.click(screen.getByTestId("row-cam_run2.qbo_relaxation"));
+    expect(within(inspector).getByText("no effect in this case")).toBeInTheDocument();
+  });
+
   it("lets the details panel be dragged taller, and remembers the height", async () => {
     const user = userEvent.setup();
     render(<App />);

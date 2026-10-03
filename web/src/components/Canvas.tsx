@@ -2,12 +2,15 @@ import { useCallback } from "react";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-import type { WorkflowDocument, WorkflowNode } from "../model/types";
+import type { PhaseInfo, WorkflowDocument, WorkflowNode } from "../model/types";
+import { phaseLabel } from "./Science";
 
 interface Props {
   document: WorkflowDocument;
   /** parent stage id -> the leaf ids that are the same work in finer pieces */
   groups: Record<string, string[]>;
+  /** the phases' informative names, from the snapshot */
+  phases?: Record<string, PhaseInfo>;
   selected: string | null;
   showControl: boolean;
   onSelect: (id: string | null) => void;
@@ -123,7 +126,12 @@ export function Canvas(props: Props) {
             lastPhase = node.phase;
             return (
               <li key={node.id} style={{ listStyle: "none" }}>
-                {marker && <div className="phase-marker" aria-hidden="true">{marker.replace("cam_", "CAM ").replace("coupling", "coupling").replace("clock", "clock")}</div>}
+                {marker && (
+                  <div className="phase-marker" aria-hidden="true" title={props.phases?.[marker]?.summary ?? undefined}>
+                    {phaseLabel(props.phases, marker)}
+                    <span className="phase-code">{marker}{props.phases?.[marker]?.routine ? ` · ${props.phases[marker].routine}` : ""}</span>
+                  </div>
+                )}
                 <ul className="rows">
                   <Row
                     node={node}

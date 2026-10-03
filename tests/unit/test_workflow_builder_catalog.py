@@ -113,3 +113,50 @@ def test_every_case_a_driver_accepts_has_a_default_document(case) -> None:
 def test_an_unknown_case_is_refused() -> None:
     with pytest.raises(ValueError, match="unknown case"):
         default_document("PI-atm-other")
+
+
+def test_every_scientific_process_has_its_science_and_every_phase_a_name() -> None:
+    snapshot = build_snapshot(stamp=False)
+    entries = {entry["id"]: entry for entry in snapshot["entries"]}
+    for node in snapshot["default_nodes"]:
+        assert node["phase"] in snapshot["phases"], node["phase"]
+        if not node["scientific"]:
+            continue
+        science = entries[node["id"]]["science"]
+        assert science and science["title"] and science["summary"], node["id"]
+        for equation in science["equations"]:
+            assert equation["tex"].strip(), node["id"]
+        for reference in science["references"]:
+            assert reference["citation"] and reference["url"].startswith("https://"), reference
+    labels = {phase: info["label"] for phase, info in snapshot["phases"].items()}
+    assert labels["cam_run1"] == "Physics before surface coupling"
+    assert labels["cam_run2"] == "Physics after surface coupling"
+    assert labels["cam_run3"] == "Dynamics"
+    # a catalogued sub-process shows its stage's science on the page, not a copy of it
+    assert all(entry["science"] is None for entry in snapshot["entries"] if entry["origin"] == "catalog")
+
+
+def test_a_process_inert_in_this_configuration_says_so() -> None:
+    _, entries, _ = load_catalog()
+    for inert in ("cam_run2.rayleigh_friction", "cam_run2.qbo_relaxation", "cam_run2.ion_drag"):
+        assert entries[inert].science["active"] is False, inert
+    for working in ("cam_run1.deep_convection", "cam_run1.radiation", "cam_run3.dynamics"):
+        assert entries[working].science["active"] is True, working
+
+
+@pytest.mark.parametrize("change, message", [
+    (lambda r: r["processes"].update({"cam_run9.nothing": {"title": "x"}}), "not an action of the step plan"),
+    (lambda r: r["processes"]["cam_run3.dynamics"].update({"colour": "blue"}), "unknown fields"),
+    (lambda r: r["processes"]["cam_run3.dynamics"].update({"references": ["nobody1999"]}), "no reference"),
+    (lambda r: r["phases"].pop("cam_run1"), "phases without a label"),
+])
+def test_the_science_record_fails_closed(monkeypatch, change, message) -> None:
+    import copy
+
+    from freecam.pi_cam.workflow_builder import catalog
+
+    record = copy.deepcopy(catalog._load_science())
+    change(record)
+    monkeypatch.setattr(catalog, "_load_science", lambda: record)
+    with pytest.raises(ValueError, match=message):
+        catalog.process_science(default_document().nodes)

@@ -464,6 +464,9 @@ class WorkflowCatalogEntry:
     reason: str | None = None
     in_default: bool = False
     description: str | None = None
+    #: what the process does scientifically, for the page's About tab (see
+    #: ``catalog.process_science``); None where only the stage it belongs to has one
+    science: Mapping[str, Any] | None = None
 
     @property
     def id(self) -> str:
@@ -483,6 +486,7 @@ class WorkflowCatalogEntry:
                 ),
                 "in_default": self.in_default,
                 "description": self.description,
+                "science": None if self.science is None else dict(self.science),
             }
         )
         return payload

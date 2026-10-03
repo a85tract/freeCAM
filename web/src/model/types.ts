@@ -95,6 +95,39 @@ export interface WorkflowDocument {
   nodes: WorkflowNode[];
 }
 
+export interface ScienceEquation {
+  /** display LaTeX */
+  tex: string;
+  /** prose; `$...$` is inline LaTeX */
+  caption: string | null;
+}
+
+export interface ScienceReference {
+  key: string;
+  citation: string;
+  doi: string | null;
+  url: string | null;
+}
+
+/** What a process does scientifically (catalog.process_science). */
+export interface ProcessScience {
+  title: string;
+  summary: string | null;
+  configuration: string | null;
+  equations: ScienceEquation[];
+  references: ScienceReference[];
+  routine: string | null;
+  /** false: the process changes nothing in this configuration */
+  active: boolean;
+}
+
+/** A phase of the CAM step, by the name the step plan uses (cam_run1, ...). */
+export interface PhaseInfo {
+  label: string;
+  routine: string | null;
+  summary: string | null;
+}
+
 export interface CatalogEntry extends WorkflowNode {
   category: string;
   addable: boolean;
@@ -102,6 +135,8 @@ export interface CatalogEntry extends WorkflowNode {
   reason: string | null;
   in_default: boolean;
   description: string | null;
+  /** absent from snapshots older than the science record */
+  science?: ProcessScience | null;
 }
 
 export interface CatalogRules {
@@ -117,6 +152,8 @@ export interface CatalogSnapshot {
   entries: CatalogEntry[];
   capabilities: KernelCapability[];
   parameters: Record<string, ParameterSpec[]>;
+  /** absent from snapshots older than the science record */
+  phases?: Record<string, PhaseInfo>;
   rules: CatalogRules;
   source_revision: string;
   catalog_hash: string;
