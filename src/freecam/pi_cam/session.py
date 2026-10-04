@@ -1638,6 +1638,7 @@ class PICAMNotebookSession:
         trace_limit: int | None = DEFAULT_TRACE_LIMIT,
         timeline_dir: str | Path | None = None,
         timeline_flush_every: int = 100,
+        state_options: Mapping[str, Any] | None = None,
     ) -> None:
         if isinstance(config, PICAMConfig):
             raise TypeError("PICAMNotebookSession currently requires a YAML config path")
@@ -1671,6 +1672,9 @@ class PICAMNotebookSession:
         #: where the rank workers record their action timeline (freecam timeline DIR), or None
         self.timeline_dir = None if timeline_dir is None else Path(timeline_dir)
         self.timeline_flush_every = int(timeline_flush_every)
+        #: the rank workers' state recorder (freecam globe DIR): {"dir", "fields", "every",
+        #: "action_steps"}, or None
+        self.state_options = None if state_options is None else dict(state_options)
         self.startup_timeout = float(startup_timeout)
         self.request_timeout = float(request_timeout)
         self.log_path = Path(log_path or self.run_dir / "pi_cam_notebook_worker.log").resolve()
@@ -1804,6 +1808,13 @@ class PICAMNotebookSession:
         if self.timeline_dir is not None:
             command.extend(["--timeline-dir", str(self.timeline_dir),
                             "--timeline-flush-every", str(self.timeline_flush_every)])
+        if self.state_options is not None:
+            options = self.state_options
+            command.extend(["--state-dir", str(options["dir"]),
+                            "--state-fields", ",".join(options.get("fields") or ("T", "Q", "CLDLIQ", "CLDICE")),
+                            "--state-every", str(int(options.get("every", 1))),
+                            "--state-action-steps", ",".join(str(int(s)) for s in options.get("action_steps", ())),
+                            "--state-flush-every", str(int(options.get("flush_every", 24)))])
         return command
 
     def _boundary_arguments(self) -> list[str]:

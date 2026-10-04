@@ -391,6 +391,36 @@ class Physics:
         return handle
 
 
+def _state_options(state: bool | str | Path | Mapping[str, Any]) -> dict[str, Any] | None:
+    """``Driver(record_state=...)`` -> the recorder's options, or None when it is off; checked here, before
+    any job starts, so a misnamed option fails in the notebook and not on 512 ranks."""
+
+    if state is False or state is None:
+        return None
+    if state is True:
+        return {"dir": None}
+    if isinstance(state, (str, Path)):
+        return {"dir": Path(state).expanduser()}
+    if not isinstance(state, Mapping):
+        raise TypeError("state must be False, True, a directory, or a mapping of recorder options")
+    unknown = sorted(set(state) - {"dir", "fields", "every", "action_steps", "flush_every"})
+    if unknown:
+        raise ValueError(f"state options {unknown} are not dir, fields, every, action_steps or flush_every")
+    from .state_record import field_spec
+
+    options = dict(state)
+    if options.get("dir") is not None:
+        options["dir"] = Path(options["dir"]).expanduser()
+    if "fields" in options:
+        options["fields"] = [field_spec(name).name for name in options["fields"]]
+    if int(options.get("every", 1)) < 1:
+        raise ValueError("state every must be at least 1")
+    if int(options.get("flush_every", 24)) < 1:
+        raise ValueError("state flush_every must be at least 1")
+    options["action_steps"] = sorted({int(step) for step in options.get("action_steps", ())})
+    return options
+
+
 def _invoke_physics_callback(
     callback: Callable[..., Any],
     state: Any,
@@ -1709,6 +1739,7 @@ class Driver:
         ntasks: int | None = None,
         exploratory: bool = False,
         build: Any = None,
+        record_state: bool | str | Path | Mapping[str, Any] = False,
     ) -> None:
         if int(nsteps) < 1:
             raise ValueError("nsteps must be positive")
@@ -1889,6 +1920,10 @@ class Driver:
         #: record every rank's action timeline: False (off, the default), True (into the run
         #: directory's ``timeline``), or a directory; view it with ``freecam timeline DIR``
         self.timeline = timeline if isinstance(timeline, bool) else Path(timeline).expanduser()
+        #: record snapshots of state fields for the globe viewer (``freecam globe DIR``): False
+        #: (off, the default), True (T, Q, CLDLIQ and CLDICE every step, into the run directory's
+        #: ``state``), a directory, or options {"dir", "fields", "every", "action_steps"}
+        self.record_state = _state_options(record_state)
         # Do not resolve the final ``.venv/bin/python`` symlink: Python uses
         # that invocation path to select the virtual environment's site-packages.
         self.python_executable = Path(
@@ -2251,17 +2286,20 @@ class Driver:
             self._session.close()
             self._session = None
 
-    def ui(self, *, host: str = "127.0.0.1", port: int | None = None, open_browser: bool = False) -> Any:
+    def ui(self, *, host: str = "127.0.0.1", port: int | None = None, open_browser: bool = False,
+           globe: bool = True) -> Any:
         """Serve the Workflow Builder page for this model and return its handle.
 
         Only the page starts: no PBS, no MPI.  The handle's ``url`` carries the
         session token; ``close()`` stops the page and leaves the model as it
-        is.  The model itself starts on the first Run the page asks for.
+        is.  The model itself starts on the first Run the page asks for.  With
+        ``globe`` (the default) a model not yet started records its state every
+        step for the page's Globe tab (``record_state``).
         """
 
         from .workflow_builder.ui import launch_ui
 
-        return launch_ui(self, host=host, port=port, open_browser=open_browser)
+        return launch_ui(self, host=host, port=port, open_browser=open_browser, globe=globe)
 
     def __enter__(self) -> "Driver":
         return self
@@ -2279,6 +2317,16 @@ class Driver:
             return None if self.run_dir is None else self.run_dir / "timeline"
         return Path(self.timeline).resolve()
 
+    @property
+    def state_dir(self) -> Path | None:
+        """Where the rank workers record their state snapshots, or None when it is off."""
+
+        if self.record_state is None:
+            return None
+        if self.record_state.get("dir") is None:
+            return None if self.run_dir is None else self.run_dir / "state"
+        return Path(self.record_state["dir"]).resolve()
+
     def _live_session(self) -> PICAMNotebookSession:
         if self._session is None:
             run_dir = self._prepare_run_dir()
@@ -2293,6 +2341,10 @@ class Driver:
             boundary = self._prepare_online_boundary(run_dir)
             timeline_options = {} if self.timeline is False else {
                 "timeline_dir": (Path(run_dir) / "timeline") if self.timeline is True else Path(self.timeline).resolve()}
+            if self.record_state is not None:
+                directory = self.record_state.get("dir")
+                timeline_options["state_options"] = {
+                    **self.record_state, "dir": Path(run_dir) / "state" if directory is None else Path(directory).resolve()}
             session = self._session_factory(
                 self.config_path,
                 boundary=boundary,

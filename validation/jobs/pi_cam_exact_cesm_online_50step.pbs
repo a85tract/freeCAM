@@ -24,6 +24,11 @@ cam_reference=${FREECAM_REFERENCE_RUN}
 #   PYCAM_CONFIG                the case configuration (default the exact online 50-step one)
 #   FREECAM_PROVIDER_ORACLE     the captured exchange the provider checks itself against; empty: none
 #   FREECAM_RECORD_DIR          where the records go (default validation)
+#   PYCAM_STATE=1               also record state snapshots, for `freecam globe <root>/state`
+#   PYCAM_STATE_FIELDS          the fields (default T,Q,CLDLIQ,CLDICE)
+#   PYCAM_STATE_EVERY           steps between step snapshots (default 1)
+#   PYCAM_STATE_ACTION_STEPS    steps also recorded after every plan action (24, 23-24, 12-48/12)
+#   PYCAM_STATE_FLUSH_EVERY     snapshots between writes (default 24; 1 as the Workflow Builder records)
 cesm_reference=${FREECAM_CESM_REFERENCE_RUN:-${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-50step-run1/run}
 config=${PYCAM_CONFIG:-configs/pi_cam_icesm131_exact_online_50step.yaml}
 record_dir=${FREECAM_RECORD_DIR:-validation}
@@ -37,6 +42,12 @@ library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-co
 root=${FREECAM_SCRATCH}/pyCAM/PI-cam/exact-cesm-online-50step-${PBS_JOBID}
 cam_run=${root}/cam-run
 cesm_run=${root}/cesm-provider-run
+state_flags=()
+if [ "${PYCAM_STATE:-0}" = 1 ]; then
+  state_flags=(--state-dir "${root}/state" --state-fields "${PYCAM_STATE_FIELDS:-T,Q,CLDLIQ,CLDICE}"
+    --state-every "${PYCAM_STATE_EVERY:-1}" --state-action-steps "${PYCAM_STATE_ACTION_STEPS:-}"
+    --state-flush-every "${PYCAM_STATE_FLUSH_EVERY:-24}")
+fi
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
@@ -81,6 +92,7 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --steps 50 \
   --memory-sample-every 10 \
   "${manifest_flags[@]}" \
+  "${state_flags[@]}" \
   --summary "${record_dir}/pi_cam_exact_cesm_online${tag}_50step.json" \
   > "${cam_run}/freecam.log" 2>&1
 

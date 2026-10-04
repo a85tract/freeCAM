@@ -19,6 +19,8 @@ export interface RunStatus {
   model_calls: Record<string, number>;
   started_at: string | null;
   finished_at: string | null;
+  /** the state the model records for the Globe tab: absent from services older than it */
+  globe?: { enabled: boolean; dir: string | null; ready: boolean };
 }
 
 export interface ServiceState {

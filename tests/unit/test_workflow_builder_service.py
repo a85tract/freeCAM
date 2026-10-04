@@ -153,3 +153,56 @@ def test_stop_and_close_follow_the_model_s_state(client, service) -> None:
 def test_without_the_built_page_the_root_says_how_to_build_it(client, service) -> None:
     response = client.get("/")
     assert response.status_code == 503 and "npm run build" in response.json()["detail"]
+
+
+class _RecordingDriver(FakeDriver):
+    """A driver that can record its state, as ``freecam.Driver`` can."""
+
+    def __init__(self, *args, state_dir=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.record_state = None
+        self.state_dir = state_dir
+
+
+def test_the_page_turns_state_recording_on_before_the_model_starts(tmp_path):
+    driver = _RecordingDriver(nsteps=3, run_dir=tmp_path / "run")
+    service = WorkflowService(driver, generated_dir=tmp_path / "generated")
+    assert driver.record_state == {"dir": None, "flush_every": 1}
+    driver.record_state = {"dir": None, "fields": ["T"], "flush_every": 6}
+    WorkflowService(driver, generated_dir=tmp_path / "generated")
+    assert driver.record_state["flush_every"] == 6                    # a choice of the caller's stays
+    off = _RecordingDriver(nsteps=3, run_dir=tmp_path / "run")
+    WorkflowService(off, generated_dir=tmp_path / "generated", globe=False)
+    assert off.record_state is None
+    assert service.run_payload()["globe"] == {"enabled": True, "dir": None, "ready": False}
+
+
+def test_the_globe_routes_need_the_token_and_a_recording(client, service):
+    assert client.get("/globe/api/meta").status_code == 401
+    refused = client.get("/globe/api/meta", headers=_headers(service))
+    assert refused.status_code == 409 and "records no state" in refused.json()["detail"]
+    assert service.run_payload()["globe"]["enabled"] is False
+    page = client.get("/globe/")
+    assert page.status_code == 200 and "api/meta" in page.text and "/*COASTLINE*/null" not in page.text
+
+
+def test_the_globe_serves_the_run_it_records(tmp_path, monkeypatch):
+    from test_pi_cam_state_record import record
+
+    state = tmp_path / "state"
+    driver = _RecordingDriver(nsteps=3, run_dir=tmp_path / "run", state_dir=state)
+    service = WorkflowService(driver, generated_dir=tmp_path / "generated")
+    client = TestClient(create_app(service, static_dir=service._generated_dir))
+    waiting = client.get("/globe/api/meta", headers=_headers(service))
+    assert waiting.status_code == 409 and "no step recorded yet" in waiting.json()["detail"]
+    record(state, monkeypatch)
+    assert service.run_payload()["globe"]["ready"] is True
+    meta = client.get("/globe/api/meta", headers=_headers(service))
+    assert meta.status_code == 200 and meta.json()["step_frames"] == [0, 1, 2]
+    # the globe opened in a tab of its own carries the token in its address
+    level = client.get("/globe/api/level", params={"token": service.token, "kind": "steps", "i": 2, "field": "T", "lev": 1})
+    assert level.status_code == 200 and level.headers["content-type"] == "application/octet-stream"
+    assert len(level.content) == 4 * meta.json()["columns"]
+    assert client.get("/globe/api/level", params={"token": "wrong", "field": "T", "lev": 1}).status_code == 401
+    bad = client.get("/globe/api/level", headers=_headers(service), params={"field": "T"})
+    assert bad.status_code == 400

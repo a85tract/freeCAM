@@ -210,3 +210,46 @@ describe("the page in preview mode", () => {
     expect(localStorage.getItem("freecam-ui-theme")).toBe("dark");
   });
 });
+
+describe("the Globe tab", () => {
+  beforeEach(() => {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: vi.fn().mockReturnValue({ matches: false, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() }),
+    });
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("says in the preview that it needs a run", async () => {
+    mockPreviewFetch();
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("listbox", { name: "Step order" });
+    await user.click(screen.getByRole("tab", { name: "Globe" }));
+    expect(screen.getByText(/The preview has no model behind it/)).toBeInTheDocument();
+    expect(document.querySelector("iframe")).toBeNull();
+  });
+
+  it("shows the recorded state of the page's own run", async () => {
+    const run = (globe: unknown) => ({ state: "running", step: 3, target_step: 10, job_id: "1.fake", run_dir: "/scratch/run", workflow_hash: null,
+      applied_hash: null, message: null, model_calls: {}, started_at: null, finished_at: null, globe });
+    let globe: unknown = { enabled: true, dir: "/scratch/run/state", ready: false };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (url.includes("api/state")) return json({ mode: "local", snapshot, draft: null, run: run(globe), case: "PI-atm", nsteps: 10,
+        resources: { ranks: 512, nodes: 4, queue: "main", walltime: "01:00:00", account_set: true }, driver_initialized: true, version: "test" });
+      if (url.includes("api/events")) return json({ events: [], run: run(globe) });
+      return new Response("not found", { status: 404 });
+    }));
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("listbox", { name: "Step order" });
+    await user.click(screen.getByRole("tab", { name: "Globe" }));
+    expect(await screen.findByText(/The globe starts with the first Run/)).toBeInTheDocument();
+    globe = { enabled: true, dir: "/scratch/run/state", ready: true };
+    const frame = await screen.findByTitle("Globe of the model state", undefined, { timeout: 4000 });
+    expect(frame).toHaveAttribute("src", "globe/");
+  });
+});

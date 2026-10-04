@@ -502,6 +502,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeline-dir", type=Path, default=None,
                         help="record every rank's action timeline into DIR (freecam timeline DIR); off by default")
     parser.add_argument("--timeline-flush-every", type=int, default=100)
+    parser.add_argument("--state-dir", type=Path, default=None,
+                        help="record snapshots of state fields into DIR (freecam globe DIR); off by default")
+    parser.add_argument("--state-fields", default="T,Q,CLDLIQ,CLDICE")
+    parser.add_argument("--state-every", type=int, default=1)
+    parser.add_argument("--state-action-steps", default="")
+    parser.add_argument("--state-flush-every", type=int, default=24,
+                        help="write the snapshots every N recorded steps; 1 for a page that follows the run")
     args = parser.parse_args(argv)
     comm = MPI.COMM_WORLD
     connection = None
@@ -541,6 +548,15 @@ def main(argv: list[str] | None = None) -> int:
                 driver.attach_timeline(TimelineRecorder(
                     args.timeline_dir, rank=comm.rank, size=comm.size, comm=comm,
                     flush_every=args.timeline_flush_every, run_label=str(args.run_dir),
+                ))
+            if args.state_dir is not None:
+                from .state_record import StateRecorder, parse_steps
+
+                driver.attach_state_recorder(StateRecorder(
+                    args.state_dir, rank=comm.rank, size=comm.size, comm=comm,
+                    fields=[name for name in args.state_fields.split(",") if name.strip()],
+                    every=args.state_every, action_steps=parse_steps(args.state_action_steps),
+                    flush_every=args.state_flush_every, run_label=str(args.run_dir),
                 ))
             driver.initialize()
             startup_error = None

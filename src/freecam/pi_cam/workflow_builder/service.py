@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import secrets
 import threading
+import time
 import traceback
 from collections import deque
 from dataclasses import dataclass, field
@@ -80,7 +81,7 @@ class WorkflowService:
     """Everything the HTTP layer delegates to; testable without a server."""
 
     def __init__(self, driver: Any, *, root: Path | None = None, token: str | None = None,
-                 generated_dir: Path | None = None) -> None:
+                 generated_dir: Path | None = None, globe: bool = True) -> None:
         self.driver = driver
         self.token = token or secrets.token_urlsafe(24)
         document, entries, snapshot = load_catalog(root=root)
@@ -104,7 +105,12 @@ class WorkflowService:
         self._lock = threading.RLock()
         self._worker: threading.Thread | None = None
         self._generated_dir = generated_dir
+        self._globe_data: Any = None
+        self._globe_checked = 0.0
+        self._globe_lock = threading.Lock()
         self.log("info", "workflow builder ready")
+        if globe:
+            self._record_for_globe()
 
     # -- log ------------------------------------------------------------------
 
@@ -150,7 +156,55 @@ class WorkflowService:
 
     def _run_payload(self) -> dict[str, Any]:
         self._refresh_run()
-        return self._run.to_payload()
+        return {**self._run.to_payload(), "globe": self.globe_status()}
+
+    # -- the globe ------------------------------------------------------------
+
+    def _record_for_globe(self) -> None:
+        """Have the model record its state every step, written every step, so the page's globe
+        follows the run.  Only before the model starts: a model already running keeps what it
+        was started with."""
+
+        if not hasattr(self.driver, "record_state"):
+            return
+        if self.driver_initialized:
+            if self.driver.record_state is None:
+                self.log("info", "the globe needs state recording, which this model was started without; "
+                                 "Close model and Run again to record it")
+            return
+        if self.driver.record_state is None:
+            self.driver.record_state = {"dir": None, "flush_every": 1}
+        else:
+            self.driver.record_state = {**self.driver.record_state,
+                                        "flush_every": self.driver.record_state.get("flush_every", 1)}
+
+    def globe_status(self) -> dict[str, Any]:
+        directory = getattr(self.driver, "state_dir", None) if hasattr(self.driver, "record_state") else None
+        ready = directory is not None and (Path(directory) / "manifest.json").is_file()
+        return {"enabled": getattr(self.driver, "record_state", None) is not None,
+                "dir": None if directory is None else str(directory), "ready": ready}
+
+    def globe_data(self) -> Any:
+        """The recorded state of the run this page started, reloaded when the recorder has
+        written more (checked at most every two seconds)."""
+
+        from ..state_view import StateData
+
+        status = self.globe_status()
+        if not status["enabled"]:
+            raise ServiceRefused("this model records no state for the globe (Close model and Run again)")
+        if not status["ready"]:
+            raise ServiceRefused("no step recorded yet: the globe starts with the first Run")
+        directory = Path(status["dir"])
+        with self._globe_lock:
+            now = time.monotonic()
+            if self._globe_data is None or Path(self._globe_data.directory) != directory:
+                self._globe_data, self._globe_checked = StateData(directory), now
+            elif now - self._globe_checked > 2.0:
+                self._globe_checked = now
+                if self._globe_data.changed():
+                    self._globe_data.reload()
+            return self._globe_data
 
     def run_payload(self) -> dict[str, Any]:
         with self._lock:

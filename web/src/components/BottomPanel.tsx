@@ -4,7 +4,7 @@ import type { LogEvent, Mode, RunStatus, ServiceState } from "../api";
 import type { GeneratedArtifacts } from "../codegen/generate";
 import type { Issue, ValidationReport, WorkflowDocument } from "../model/types";
 
-export type PanelTab = "checks" | "code" | "run";
+export type PanelTab = "checks" | "code" | "run" | "globe";
 
 interface Props {
   mode: Mode;
@@ -29,6 +29,8 @@ interface Props {
   onEnableExperimental: () => void;
   height: number;
   onResize: (height: number) => void;
+  /** the session token, for opening the globe in a tab of its own */
+  token: string | null;
 }
 
 export const BOTTOM_MIN = 120;
@@ -135,6 +137,7 @@ export function BottomPanel(props: Props) {
         </button>
         <button role="tab" aria-selected={props.tab === "code"} onClick={() => props.onTab("code")}>Code{stale ? " (stale)" : ""}</button>
         <button role="tab" aria-selected={props.tab === "run"} onClick={() => props.onTab("run")}>Run</button>
+        <button role="tab" aria-selected={props.tab === "globe"} onClick={() => props.onTab("globe")}>Globe</button>
       </div>
       <div className="content">
         {props.tab === "checks" && (
@@ -198,6 +201,8 @@ export function BottomPanel(props: Props) {
           </div>
         )}
 
+        {props.tab === "globe" && <GlobeTab mode={props.mode} run={props.run} token={props.token} />}
+
         {props.tab === "run" && (
           <div>
             {props.mode === "preview" && (
@@ -236,5 +241,28 @@ export function BottomPanel(props: Props) {
         )}
       </div>
     </section>
+  );
+}
+
+/** The model's state on a globe, step by step as the run started from this page records it. */
+function GlobeTab({ mode, run, token }: { mode: Mode; run: RunStatus | null; token: string | null }) {
+  if (mode === "preview") {
+    return <p className="muted">The globe shows the state of a run started from this page, step by step as it runs. The preview has no model behind it.</p>;
+  }
+  const globe = run?.globe;
+  if (!globe || !globe.enabled) {
+    return <p className="muted">This model records no state for the globe: it was started without it, or the page was opened with <code>globe=False</code>. Close model, then Run again.</p>;
+  }
+  if (!globe.ready) {
+    return <p className="muted">The globe starts with the first Run: it shows each step as the model records it.</p>;
+  }
+  return (
+    <div className="globe-tab">
+      <div className="code-tabs">
+        <span className="muted">Recorded in <code>{globe.dir}</code>; the newest step is shown while the run goes on.</span>
+        {token && <a href={`globe/?token=${encodeURIComponent(token)}`} target="_blank" rel="noreferrer">Open in a new tab</a>}
+      </div>
+      <iframe className="globe-frame" src="globe/" title="Globe of the model state" />
+    </div>
   );
 }

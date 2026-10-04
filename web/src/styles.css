@@ -64,6 +64,8 @@ code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, m
 .tabs button { background: none; border: 1px solid transparent; border-bottom: none; padding: 6px 10px; border-radius: 6px 6px 0 0; color: var(--muted); cursor: pointer; }
 .tabs button[aria-selected="true"] { color: var(--text); background: var(--panel-2); border-color: var(--border); }
 .bottom .content { flex: 1; overflow: auto; padding: 8px 12px; }
+.globe-tab { display: flex; flex-direction: column; gap: 6px; height: 100%; }
+.globe-frame { flex: 1; width: 100%; min-height: 240px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); }
 
 button.primary { background: var(--accent); color: var(--accent-text); border: 1px solid transparent; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
 button.secondary, .row button, .entry button, .inspector button.action { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }

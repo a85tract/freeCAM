@@ -1,0 +1,1266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>freeCAM globe</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #5d6778; --line: #d8dde6;
+  --accent: #2a62d6; --ocean: #d9e4f2; --land: #cdbf9f; --coast: #1c2330; --grid: rgba(28,35,48,.12);
+  --sphere-edge: #9aa6b8; --mark: #e0247a; --zero: #bfc6d2;
+  --anom-1: #d10fd1; --anom-2: #f07c00; --anom-3: #00a3b4;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11151c; --panel: #181e27; --ink: #e6eaf1; --muted: #9aa5b6; --line: #2b3441;
+    --accent: #7aa7ff; --ocean: #1b2a40; --land: #5c5442; --coast: #e6eaf1; --grid: rgba(230,234,241,.12);
+    --sphere-edge: #44506a; --mark: #ff5fa8; --zero: #3a4454;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11151c; --panel: #181e27; --ink: #e6eaf1; --muted: #9aa5b6; --line: #2b3441;
+  --accent: #7aa7ff; --ocean: #1b2a40; --land: #5c5442; --coast: #e6eaf1; --grid: rgba(230,234,241,.12);
+  --sphere-edge: #44506a; --mark: #ff5fa8; --zero: #3a4454;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { padding: 14px 16px 8px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline; }
+header h1 { font-size: 18px; margin: 0; font-weight: 650; }
+header .run { color: var(--muted); font-size: 13px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 0 16px 10px; }
+.controls label { color: var(--muted); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+select, button { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 8px; }
+button { cursor: pointer; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 4px 10px; background: var(--panel); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.seg button:disabled { opacity: .45; cursor: not-allowed; }
+main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; padding: 0 16px; }
+@media (max-width: 860px) { main { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.card h2 { font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--muted); }
+.globe-card { position: relative; }
+#globe { width: 100%; aspect-ratio: 1 / 1; display: block; touch-action: none; cursor: grab; }
+#globe.dragging { cursor: grabbing; }
+#hover { position: absolute; left: 12px; top: 10px; font-size: 12px; color: var(--muted);
+  background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 2px 6px; border-radius: 5px; }
+#legend { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+#legend canvas { flex: 1; height: 12px; min-width: 60px; border-radius: 3px; border: 1px solid var(--line); }
+.side { display: grid; gap: 12px; align-content: start; }
+#profile, #section { width: 100%; height: 260px; display: block; }
+.note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+footer { padding: 12px 16px 20px; display: grid; gap: 10px; }
+.bar { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; align-items: center; }
+.bar .label { font-size: 13px; color: var(--muted); grid-column: 1 / -1; min-height: 1.4em; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+#strip { width: 100%; height: 34px; display: block; border-radius: 5px; cursor: pointer; }
+#proc-top a { color: var(--accent); cursor: pointer; text-decoration: none; margin-right: 12px; white-space: nowrap; }
+#proc-top a:hover { text-decoration: underline; }
+.hidden { display: none !important; }
+#trace { display: grid; gap: 4px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+#trace .state { color: var(--muted); padding: 2px 6px; }
+#trace button.step-row { all: unset; display: grid; gap: 1px; padding: 5px 6px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line); }
+#trace button.step-row:hover, #trace button.step-row:focus-visible { border-color: var(--accent); outline: none; }
+#trace button.step-row[aria-current="true"] { border-color: var(--mark); box-shadow: inset 3px 0 0 var(--mark); }
+#trace .name { font-weight: 600; }
+#trace .who { color: var(--muted); }
+#trace .up { color: #c0392b; } #trace .down { color: var(--accent); }
+#trace .cur { font-weight: 600; }
+.error { color: #c0392b; padding: 16px; }
+#show-anomalies[aria-pressed="true"] { background: var(--anom-1); color: #fff; border-color: var(--anom-1); }
+#show-anomalies .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--anom-1);
+  margin-left: 6px; vertical-align: 1px; }
+#anomaly-list { display: grid; gap: 5px; font-size: 12.5px; }
+#anomaly-list button.item { all: unset; display: block; cursor: pointer; padding: 6px 8px; border: 1px solid var(--line);
+  border-radius: 6px; border-left: 4px solid var(--anom-1); }
+#anomaly-list button.item:hover, #anomaly-list button.item:focus-visible { border-color: var(--accent); outline: none; }
+#anomaly-list .sub { color: var(--muted); display: block; margin-top: 2px; }
+.chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+#anomaly-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin-top: 4px; }
+#trace .flag { font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>freeCAM globe</h1>
+  <span class="run" id="run"></span>
+</header>
+<div class="controls">
+  <label>Field <select id="field"></select></label>
+  <label>Level <select id="level"></select></label>
+  <span class="seg" role="group" aria-label="What to show">
+    <button id="show-value" aria-pressed="true">Value</button>
+    <button id="show-change" aria-pressed="false">Change</button>
+  </span>
+  <span class="seg" role="group" aria-label="Which bar">
+    <button id="bar-steps" aria-pressed="true">Steps</button>
+    <button id="bar-procs" aria-pressed="false">Processes in a step</button>
+  </span>
+  <label id="proc-step-label" class="hidden">Step <select id="proc-step"></select></label>
+  <button id="show-anomalies" aria-pressed="false" title="Mark the columns where a recorded field is non-finite, negative water or constituent, or temperature out of range, and find the process that made them so">Anomalies</button>
+  <button id="theme" title="Switch light and dark">◐</button>
+</div>
+<main>
+  <section class="card globe-card">
+    <canvas id="globe" aria-label="Globe of the chosen field"></canvas>
+    <div id="hover"></div>
+    <div id="legend"><span id="legend-lo"></span><canvas id="legend-bar" width="256" height="12"></canvas><span id="legend-hi"></span><span id="legend-units"></span></div>
+    <div id="anomaly-legend" class="hidden"></div>
+    <p class="note" id="globe-note">Drag to turn the globe; click a place for its column and the section along its meridian.</p>
+  </section>
+  <aside class="side">
+    <section class="card" id="anomaly-card" hidden>
+      <h2 id="anomaly-title">Anomalies</h2>
+      <div id="anomaly-list"></div>
+      <p class="note" id="anomaly-note"></p>
+    </section>
+    <section class="card">
+      <h2 id="profile-title">Column</h2>
+      <canvas id="profile"></canvas>
+      <p class="note" id="profile-note">Click the globe to pick a column.</p>
+    </section>
+    <section class="card">
+      <h2 id="section-title">Section along a meridian</h2>
+      <canvas id="section"></canvas>
+      <p class="note" id="section-note"></p>
+    </section>
+    <section class="card" id="trace-card" hidden>
+      <h2 id="trace-title">This column through the step</h2>
+      <div id="trace"></div>
+      <p class="note" id="trace-note"></p>
+    </section>
+  </aside>
+</main>
+<footer>
+  <div class="bar" id="step-bar">
+    <button id="play" title="Play the steps once, from here to the last">▶</button>
+    <input type="range" id="step-slider" min="0" max="0" value="0" aria-label="Step">
+    <div class="label" id="step-label"></div>
+  </div>
+  <div class="bar hidden" id="proc-bar">
+    <span></span>
+    <div><canvas id="strip" aria-label="Processes of the step"></canvas>
+      <input type="range" id="proc-slider" min="0" max="0" value="0" aria-label="Process"></div>
+    <div class="label" id="proc-label"></div>
+    <div class="label" id="proc-top"></div>
+  </div>
+</footer>
+<script>
+"use strict";
+const EMBEDDED = /*STATE_DATA*/null;
+const COAST = /*COASTLINE*/null;
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// ---------------------------------------------------------------- data sources
+// Served by `freecam globe DIR` the token is in the address; inside the Workflow Builder the
+// page is same-origin with the builder and sends the builder's own token as a header.
+const TOKEN = new URLSearchParams(location.search).get("token") || "";
+function builderToken() { try { return sessionStorage.getItem("freecam-ui-token") || ""; } catch (error) { return ""; } }
+async function api(path, query, binary) {
+  const url = new URL(path.replace(/^\//, ""), location.href);      // relative: works at / and at /globe/
+  for (const [k, v] of Object.entries(query || {})) url.searchParams.set(k, v);
+  const headers = {};
+  if (TOKEN) url.searchParams.set("token", TOKEN);
+  else if (builderToken()) headers["X-FreeCAM-Token"] = builderToken();
+  const response = await fetch(url, { headers, cache: "no-store" });
+  if (!response.ok) throw new Error(await response.text());
+  if (binary === "u8") return new Uint8Array(await response.arrayBuffer());
+  return binary ? new Float32Array(await response.arrayBuffer()) : response.json();
+}
+
+class ServerSource {
+  async init() { this.meta = await api("/api/meta"); }
+  stepList() { return this.meta.step_frames; }
+  actionSteps() { return Object.keys(this.meta.action_steps).map(Number).sort((a, b) => a - b); }
+  actionNames(step) { return this.meta.action_steps[String(step)] || []; }
+  levels(field) { return [...Array(this.fieldInfo(field).levels).keys()]; }
+  fieldInfo(name) { return this.meta.fields.find((f) => f.name === name); }
+  canStepChange() { return true; }
+  where(frame) {
+    return frame.kind === "steps" ? { kind: "steps", i: frame.p }
+      : { kind: "actions", i: this.meta.action_frame_index[String(frame.step)][frame.k] };
+  }
+  level(frame, field, lev, mode) { return api("/api/level", { ...this.where(frame), field, lev, mode }, true); }
+  async profile(frame, field, col) {
+    const p = await api("/api/profile", { ...this.where(frame), field, col });
+    return { ...p, pressure: this.meta.level_pressure_hpa, levels: this.levels(field) };
+  }
+  async section(frame, field, lon, mode) {
+    const s = await api("/api/section", { ...this.where(frame), field, lon, mode });
+    return { ...s, levels: this.levels(field) };
+  }
+  changes(step, field) { return api("/api/changes", { step, field }); }
+  trace(step, col, lev) { return api("/api/trace", { step, col, lev }); }
+  actionOwners(step) { return (this.meta.action_owners || {})[String(step)] || []; }
+  // anomalies: the server scans the rank files once per step (and once for every step frame)
+  anomalies(step) { return api("/api/anomalies", { step }); }
+  stepAnomalies() { return api("/api/anomalies", {}); }
+  mask(frame, field) { return api("/api/anomaly_mask", { ...this.where(frame), field }, "u8"); }
+  stepIndexOf(step) { return this.meta.step_frames.indexOf(step); }
+  hasAnomalyData() { return true; }
+}
+
+async function inflate(b64, Type) {
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+  return new Type(await new Response(stream).arrayBuffer());
+}
+
+class EmbeddedSource {
+  constructor(payload) { this.meta = payload.meta; this.snap = payload.snapshot; this.cache = new Map(); }
+  async init() {}
+  stepList() { return this.snap.step_indices.map((i) => this.meta.step_frames[i]); }
+  actionSteps() { return Object.keys(this.snap.action_steps).map(Number).sort((a, b) => a - b); }
+  actionNames(step) { return this.snap.action_steps[String(step)].names; }
+  levels(field) { return this.snap.fields[field].levels; }
+  fieldInfo(name) { return this.meta.fields.find((f) => f.name === name); }
+  // steps are carried 8-bit over a level's range: their differences would be quantization noise
+  canStepChange() { return false; }
+  async decoded(key, b64, Type) {
+    if (!this.cache.has(key)) this.cache.set(key, inflate(b64, Type));
+    return this.cache.get(key);
+  }
+  async stepBlock(field, lev) {
+    const d = this.snap.fields[field].data[String(lev)];
+    const codes = await this.decoded(`s|${field}|${lev}`, d.steps, Uint8Array);
+    return { codes, lo: d.lo, hi: d.hi };
+  }
+  async stepValues(field, lev, p) {
+    const { codes, lo, hi } = await this.stepBlock(field, lev);
+    const n = this.meta.columns, out = new Float32Array(n), span = (hi - lo) / 255;
+    for (let c = 0; c < n; c++) out[c] = lo + codes[p * n + c] * span;
+    return out;
+  }
+  async actionValues(step, field, lev, k, mode) {
+    const d = this.snap.action_steps[String(step)].fields[field].levels[String(lev)];
+    const start = await this.decoded(`a0|${step}|${field}|${lev}`, d.start, Float32Array);
+    const codes = await this.decoded(`a|${step}|${field}|${lev}`, d.changes, Int8Array);
+    const n = this.meta.columns, out = new Float32Array(n);
+    if (mode === "change") {
+      const s = d.scales[k] / 127;
+      for (let c = 0; c < n; c++) out[c] = codes[k * n + c] * s;
+      return out;
+    }
+    out.set(start);
+    for (let j = 1; j <= k; j++) {
+      const s = d.scales[j] / 127;
+      if (!s) continue;
+      for (let c = 0; c < n; c++) out[c] += codes[j * n + c] * s;
+    }
+    return out;
+  }
+  async level(frame, field, lev, mode) {
+    if (frame.kind === "actions") return this.actionValues(frame.step, field, lev, frame.k, mode);
+    const now = await this.stepValues(field, lev, frame.p);
+    if (mode !== "change") return now;
+    if (frame.p === 0) return new Float32Array(now.length);
+    const before = await this.stepValues(field, lev, frame.p - 1);
+    for (let c = 0; c < now.length; c++) now[c] -= before[c];
+    return now;
+  }
+  async profile(frame, field, col) {
+    const levels = this.levels(field), values = [], before = [];
+    for (const lev of levels) {
+      values.push((await this.level(frame, field, lev, "value"))[col]);
+      const prev = frame.kind === "actions" ? (frame.k > 0 ? { ...frame, k: frame.k - 1 } : null)
+        : (frame.p > 0 ? { ...frame, p: frame.p - 1 } : null);
+      before.push(prev ? (await this.level(prev, field, lev, "value"))[col] : NaN);
+    }
+    return { column: col, lat: this.meta.lat[col], lon: this.meta.lon[col], land: this.meta.land[col],
+      values, before: before.every(Number.isNaN) ? null : before, pressure: this.meta.level_pressure_hpa, levels };
+  }
+  async section(frame, field, lon, mode) {
+    const levels = this.levels(field), rows = [];
+    const order = meridianColumns(lon);
+    for (const lev of levels) {
+      const v = await this.level(frame, field, lev, mode);
+      rows.push(order.map((c) => v[c]));
+    }
+    return { lon, lat: order.map((c) => this.meta.lat[c]), values: rows, levels };
+  }
+  async changes(step, field) { return this.snap.action_steps[String(step)].fields[field].totals; }
+  actionOwners(step) { return this.snap.action_steps[String(step)].owners || []; }
+  hasAnomalyData() { return !!this.snap.anomalies; }
+  async anomalies(step) { const a = this.snap.anomalies; return a && a.action_steps[String(step)] ? a.action_steps[String(step)].summary : null; }
+  async stepAnomalies() { return this.snap.anomalies ? this.snap.anomalies.steps.summary : null; }
+  // the page carries a subset of the step frames: the index of the first carried one at or after a step
+  stepIndexOf(step) { const list = this.stepList(); const i = list.findIndex((s) => s >= step); return i < 0 ? list.length - 1 : i; }
+  async anomalyCodes(frame, field) {
+    const a = this.snap.anomalies;
+    if (!a) return null;
+    if (frame.kind === "actions") {
+      const b = a.action_steps[String(frame.step)];
+      return b && b.codes[field] ? { codes: await this.decoded(`an|${frame.step}|${field}`, b.codes[field], Uint8Array), row: frame.k } : null;
+    }
+    return a.steps.codes[field] ? { codes: await this.decoded(`as|${field}`, a.steps.codes[field], Uint8Array), row: frame.p } : null;
+  }
+  async mask(frame, field) {
+    const got = await this.anomalyCodes(frame, field);
+    if (!got) return null;
+    const n = this.meta.columns;
+    return got.codes.subarray(got.row * n, (got.row + 1) * n);
+  }
+  async trace(step, col, lev) {
+    // the column at one level through the step, from the embedded start and each action's change
+    const block = this.snap.action_steps[String(step)], names = block.names, m = this.meta;
+    const fields = Object.keys(block.fields).filter((f) => block.fields[f].levels[String(lev)]);
+    const rows = names.map((name, k) => ({ index: k, name, owner: (block.owners || [])[k] || null, values: {}, change: {}, error: {} }));
+    for (const f of fields) {
+      const d = block.fields[f].levels[String(lev)];
+      const start = await this.decoded(`a0|${step}|${f}|${lev}`, d.start, Float32Array);
+      const codes = await this.decoded(`a|${step}|${f}|${lev}`, d.changes, Int8Array);
+      const n = m.columns;
+      let value = start[col];
+      rows.forEach((row, k) => {
+        // each change is 8-bit over that action's largest change on the globe: within half a code of it
+        if (k) { const dv = codes[k * n + col] * d.scales[k] / 127; row.change[f] = dv; row.error[f] = d.scales[k] / 254; value += dv; }
+        row.values[f] = value;
+      });
+      const totals = block.fields[f].totals || [];
+      rows.forEach((row, k) => { if (totals[k] && Number.isFinite(totals[k].seconds_mean)) row.seconds_mean = totals[k].seconds_mean; });
+      const got = await this.anomalyCodes({ kind: "actions", step, k: 0 }, f);
+      if (got) rows.forEach((row, k) => {
+        const code = got.codes[k * n + col], before = k ? got.codes[(k - 1) * n + col] : 0;
+        row.anomaly = row.anomaly || {}; row.became = row.became || {};
+        if (code) { row.anomaly[f] = m.anomaly_kinds[code - 1]; if (!k || before !== code) row.became[f] = m.anomaly_kinds[code - 1]; }
+        if (code === 1) { row.values[f] = null; row.change[f] = null; }
+      });
+    }
+    return { step, column: col, lat: m.lat[col], lon: m.lon[col], land: m.land[col], level: lev,
+      pressure_hpa: m.level_pressure_hpa[lev], fields: fields.map((f) => ({ name: f, units: this.fieldInfo(f).units })), rows,
+      approximate: true };
+  }
+}
+
+// every level and every step's changes kept once fetched (a slider revisits them)
+function cached(source) {
+  const levels = new Map(), changes = new Map(), LIMIT = 400;
+  const level = source.level.bind(source), change = source.changes.bind(source);
+  source.level = (frame, field, lev, mode) => {
+    const key = JSON.stringify([frame, field, lev, mode]);
+    if (!levels.has(key)) {
+      const promise = level(frame, field, lev, mode);
+      promise.catch(() => levels.delete(key));
+      levels.set(key, promise);
+      if (levels.size > LIMIT) levels.delete(levels.keys().next().value);
+    }
+    return levels.get(key);
+  };
+  source.changes = (step, field) => {
+    const key = `${step}|${field}`;
+    if (!changes.has(key)) { const promise = change(step, field); promise.catch(() => changes.delete(key)); changes.set(key, promise); }
+    return changes.get(key);
+  };
+  return source;
+}
+
+// ---------------------------------------------------------------- colour maps
+const STOPS = {
+  thermal: [[0, [49, 54, 149]], [.2, [69, 117, 180]], [.4, [171, 217, 233]], [.55, [255, 255, 191]],
+            [.75, [253, 174, 97]], [.9, [215, 48, 39]], [1, [165, 0, 38]]],
+  moist: [[0, [255, 255, 217]], [.25, [199, 233, 180]], [.5, [65, 182, 196]], [.75, [34, 94, 168]], [1, [8, 29, 88]]],
+  diverging: [[0, [33, 102, 172]], [.25, [103, 169, 207]], [.5, [247, 247, 247]], [.75, [239, 138, 98]], [1, [178, 24, 43]]],
+  viridis: [[0, [68, 1, 84]], [.25, [59, 82, 139]], [.5, [33, 145, 140]], [.75, [94, 201, 98]], [1, [253, 231, 37]]],
+};
+function ramp(name) {
+  const stops = STOPS[name], table = [];
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    let j = 0;
+    while (j < stops.length - 2 && t > stops[j + 1][0]) j++;
+    const [t0, c0] = stops[j], [t1, c1] = stops[j + 1], f = (t - t0) / (t1 - t0 || 1);
+    table.push(`rgb(${c0.map((v, k) => Math.round(v + (c1[k] - v) * f)).join(",")})`);
+  }
+  return table;
+}
+const RAMPS = Object.fromEntries(Object.keys(STOPS).map((k) => [k, ramp(k)]));
+const RAMP_RGB = Object.fromEntries(Object.entries(RAMPS).map(([k, t]) => [k, t.map((c) => c.match(/\d+/g).map(Number))]));
+const STYLE = { T: "thermal", Q: "moist", CLDLIQ: "cloud", CLDICE: "cloud", U: "signed", V: "signed", OMEGA: "signed", PS: "viridis" };
+function styleOf(field, mode) {
+  if (mode === "change") return "diverging";
+  const s = STYLE[field] || "viridis";
+  return s === "signed" ? "diverging" : s;
+}
+
+// ---------------------------------------------------------------- state
+const S = {
+  source: null, field: null, level: null, mode: "value", bar: "steps", p: 0, procStep: null, k: 0,
+  lon0: 0, lat0: 20, values: null, range: null, fixedRange: new Map(), selected: null, changes: null,
+  playing: false, token: 0,
+  anomaly: false, mask: null, anom: null, stepAnom: null,
+};
+let geo = null;          // column geometry
+
+function frame() {
+  return S.bar === "steps" ? { kind: "steps", p: S.p } : { kind: "actions", step: S.procStep, k: S.k };
+}
+
+function meridianColumns(lon) {
+  const m = S.source.meta, out = [];
+  for (let c = 0; c < m.columns; c++) {
+    const d = ((m.lon[c] - lon + 540) % 360) - 180;
+    if (Math.abs(d) * Math.cos(m.lat[c] * Math.PI / 180) <= 1.0) out.push(c);
+  }
+  return out.sort((a, b) => m.lat[a] - m.lat[b]);
+}
+
+function percentile(values, q) {
+  const finite = Array.from(values).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!finite.length) return 0;
+  return finite[Math.min(finite.length - 1, Math.max(0, Math.round(q * (finite.length - 1))))];
+}
+
+function chooseRange(values) {
+  const style = styleOf(S.field, S.mode);
+  if (S.mode === "change") {
+    const mags = Array.from(values, Math.abs);
+    let top = percentile(mags, 0.99), most = 0;
+    for (const v of mags) if (v > most) most = v;
+    top = top || most;
+    // nothing changed at this level: zero in the middle of the scale, and say so
+    return top > 0 ? { lo: -top, hi: top, style } : { lo: -1, hi: 1, style, none: true };
+  }
+  const key = `${S.field}|${S.level}`;
+  if (S.fixedRange.has(key)) return { ...S.fixedRange.get(key), style };
+  let lo, hi;
+  if (style === "cloud") { lo = 0; hi = percentile(values, 0.995) || Math.max(...values) || 1; }
+  else if (STYLE[S.field] === "signed") { const t = percentile(Array.from(values, Math.abs), 0.99) || 1; lo = -t; hi = t; }
+  else { lo = percentile(values, 0.01); hi = percentile(values, 0.99); if (hi <= lo) hi = lo + 1; }
+  S.fixedRange.set(key, { lo, hi });
+  return { lo, hi, style };
+}
+
+// ---------------------------------------------------------------- the globe
+const canvas = $("globe"), ctx = canvas.getContext("2d");
+const NLAT = 360, NLON = 720;                    // the lookup grid: 0.5 degree cells
+function setupGeometry() {
+  const m = S.source.meta, n = m.columns;
+  geo = { n, sinLat: new Float64Array(n), cosLat: new Float64Array(n), lon: new Float64Array(n),
+    x: new Float32Array(n), y: new Float32Array(n), z: new Float32Array(n),
+    ux: new Float64Array(n), uy: new Float64Array(n), uz: new Float64Array(n) };
+  for (let c = 0; c < n; c++) {
+    const la = m.lat[c] * Math.PI / 180, lo = m.lon[c] * Math.PI / 180;
+    geo.sinLat[c] = Math.sin(la); geo.cosLat[c] = Math.cos(la); geo.lon[c] = lo;
+    geo.ux[c] = geo.cosLat[c] * Math.cos(lo); geo.uy[c] = geo.cosLat[c] * Math.sin(lo); geo.uz[c] = geo.sinLat[c];
+  }
+  // every 0.5 degree cell's nearest column (each column's cell of the sphere, as a Voronoi
+  // diagram would draw it): columns bucketed by 2 degrees, each cell searching its neighbours
+  const BL = 90, BO = 180, bins = Array.from({ length: BL * BO }, () => []);
+  const binOf = (la, lo) => [Math.min(BL - 1, Math.floor((la + 90) / 2)), Math.floor((((lo % 360) + 360) % 360) / 2) % BO];
+  for (let c = 0; c < n; c++) { const [a, b] = binOf(m.lat[c], m.lon[c]); bins[a * BO + b].push(c); }
+  geo.cell = new Uint16Array(NLAT * NLON);
+  for (let i = 0; i < NLAT; i++) {
+    const la = -90 + (i + 0.5) * 0.5, rla = la * Math.PI / 180, cla = Math.cos(rla), sla = Math.sin(rla);
+    const a0 = Math.floor((la + 90) / 2), reach = Math.min(BO / 2, Math.ceil(1.5 / Math.max(cla, 1e-3)));
+    for (let j = 0; j < NLON; j++) {
+      const lo = (j + 0.5) * 0.5, rlo = lo * Math.PI / 180, px = cla * Math.cos(rlo), py = cla * Math.sin(rlo);
+      const b0 = Math.floor(lo / 2);
+      let best = 0, bestDot = -2;
+      for (let a = Math.max(0, a0 - 1); a <= Math.min(BL - 1, a0 + 1); a++) {
+        for (let db = -reach; db <= reach; db++) {
+          const list = bins[a * BO + (((b0 + db) % BO) + BO) % BO];
+          for (let k = 0; k < list.length; k++) {
+            const c = list[k], d = px * geo.ux[c] + py * geo.uy[c] + sla * geo.uz[c];
+            if (d > bestDot) { bestDot = d; best = c; }
+          }
+        }
+      }
+      geo.cell[i * NLON + j] = best;
+    }
+  }
+  geo.view = null;                                 // pixel -> cell for the current rotation and size
+  geo.colors = new Uint32Array(n);                 // each column's colour, packed RGBA
+}
+function project(sinLa, cosLa, lon, out, i) {
+  const l0 = S.lon0 * Math.PI / 180, p0 = S.lat0 * Math.PI / 180, dl = lon - l0;
+  out.x[i] = cosLa * Math.sin(dl);
+  out.y[i] = Math.cos(p0) * sinLa - Math.sin(p0) * cosLa * Math.cos(dl);
+  out.z[i] = Math.sin(p0) * sinLa + Math.cos(p0) * cosLa * Math.cos(dl);
+}
+function sizeCanvas(c) {
+  const r = c.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(r.width * d)), h = Math.max(1, Math.round(r.height * d));
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  return { w, h, d };
+}
+function viewMap(w, h, R, cx, cy) {
+  // which lookup cell every pixel of the disc shows, for this rotation: recomputed on a turn
+  const key = `${w}|${h}|${S.lon0.toFixed(3)}|${S.lat0.toFixed(3)}`;
+  if (geo.view && geo.view.key === key) return geo.view;
+  const p0 = S.lat0 * Math.PI / 180, sp = Math.sin(p0), cp = Math.cos(p0), l0 = S.lon0 * Math.PI / 180;
+  const cells = new Int32Array(w * h).fill(-1);
+  for (let py = 0; py < h; py++) {
+    const y = -(py + 0.5 - cy) / R;
+    for (let px = 0; px < w; px++) {
+      const x = (px + 0.5 - cx) / R, rr = x * x + y * y;
+      if (rr > 1) continue;
+      const z = Math.sqrt(1 - rr);
+      const lat = Math.asin(Math.max(-1, Math.min(1, z * sp + y * cp)));
+      let lon = (l0 + Math.atan2(x, z * cp - y * sp)) * 180 / Math.PI;
+      lon = ((lon % 360) + 360) % 360;
+      const i = Math.min(NLAT - 1, Math.floor((lat * 180 / Math.PI + 90) * 2)), j = Math.min(NLON - 1, Math.floor(lon * 2));
+      cells[py * w + px] = i * NLON + j;
+    }
+  }
+  geo.view = { key, cells, w, h };
+  return geo.view;
+}
+function rgbOf(color) {
+  const m = color.match(/\d+(\.\d+)?/g);
+  if (color.startsWith("#")) { const c = color.slice(1); return [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16)); }
+  return m ? m.slice(0, 3).map(Number) : [128, 128, 128];
+}
+const pack = (r, g, b) => (255 << 24) | (b << 16) | (g << 8) | r;
+const CLOUD_SEA = [16, 34, 64], CLOUD_LAND = [58, 62, 44];
+function columnColors() {
+  const values = S.values, range = S.range, m = S.source.meta, out = geo.colors;
+  if (!values || !range) { out.fill(pack(...rgbOf(css("--ocean")))); return; }
+  const span = range.hi - range.lo || 1;
+  if (range.style === "cloud") {
+    // white clouds over a dark ground in either theme (light water on light sea would vanish);
+    // the square root lets thin cloud show
+    const sea = CLOUD_SEA, land = CLOUD_LAND;
+    for (let c = 0; c < geo.n; c++) {
+      const base = m.land[c] > 0.5 ? land : sea, v = values[c];
+      const a = Number.isFinite(v) && v > range.lo ? Math.sqrt(Math.min(1, (v - range.lo) / span)) : 0;
+      out[c] = pack(Math.round(base[0] + (255 - base[0]) * a), Math.round(base[1] + (255 - base[1]) * a), Math.round(base[2] + (255 - base[2]) * a));
+    }
+    return;
+  }
+  const table = RAMP_RGB[range.style], nan = rgbOf(css("--zero"));
+  for (let c = 0; c < geo.n; c++) {
+    const v = values[c];
+    if (!Number.isFinite(v)) { out[c] = pack(...nan); continue; }
+    const t = table[Math.max(0, Math.min(255, Math.round((v - range.lo) / span * 255)))];
+    out[c] = pack(t[0], t[1], t[2]);
+  }
+}
+function markAnomalies() {
+  // with the anomalies shown: each anomalous column in its kind's colour, every other one faded
+  if (!S.anomaly || !S.mask) return;
+  const out = geo.colors, mask = S.mask, fade = rgbOf(css("--zero"));
+  const colors = [null, rgbOf(css("--anom-1")), rgbOf(css("--anom-2")), rgbOf(css("--anom-3"))];
+  for (let c = 0; c < geo.n; c++) {
+    const code = mask[c];
+    if (code) { out[c] = pack(...colors[code]); continue; }
+    const v = out[c], r = v & 255, g = (v >> 8) & 255, b = (v >> 16) & 255;
+    out[c] = pack(Math.round(r * 0.3 + fade[0] * 0.7), Math.round(g * 0.3 + fade[1] * 0.7), Math.round(b * 0.3 + fade[2] * 0.7));
+  }
+}
+const bitmap = document.createElement("canvas");
+function drawGlobe() {
+  if (!geo) return;
+  const { w, h, d } = sizeCanvas(canvas);
+  const R = Math.min(w, h) / 2 - 6 * d, cx = w / 2, cy = h / 2;
+  ctx.clearRect(0, 0, w, h);
+  // the field, one pixel at a time at up to 900 pixels across, scaled to the canvas
+  const k = Math.min(1, 900 / (2 * R)), bw = Math.max(1, Math.round(w * k)), bh = Math.max(1, Math.round(h * k));
+  const view = viewMap(bw, bh, R * k, cx * k, cy * k);
+  columnColors();
+  markAnomalies();
+  if (bitmap.width !== bw || bitmap.height !== bh) { bitmap.width = bw; bitmap.height = bh; }
+  const g = bitmap.getContext("2d"), image = g.createImageData(bw, bh), pixels = new Uint32Array(image.data.buffer);
+  const cells = view.cells, colors = geo.colors, lookup = geo.cell;
+  for (let p = 0; p < cells.length; p++) { const cell = cells[p]; if (cell >= 0) pixels[p] = colors[lookup[cell]]; }
+  g.putImageData(image, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  for (let c = 0; c < geo.n; c++) project(geo.sinLat[c], geo.cosLat[c], geo.lon[c], geo, c);
+  drawGraticule(cx, cy, R, d);
+  drawCoast(cx, cy, R, d);
+  ctx.strokeStyle = css("--sphere-edge"); ctx.lineWidth = 1 * d;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.stroke();
+  if (S.selected != null) {
+    const m = S.source.meta, c = S.selected;
+    if (geo.z[c] > 0) {
+      ctx.strokeStyle = css("--mark"); ctx.lineWidth = 2 * d;
+      ctx.beginPath(); ctx.arc(cx + R * geo.x[c], cy - R * geo.y[c], 6 * d, 0, 2 * Math.PI); ctx.stroke();
+    }
+    drawMeridian(cx, cy, R, d, m.lon[c]);
+  }
+}
+const tmp = { x: new Float32Array(1), y: new Float32Array(1), z: new Float32Array(1) };
+function polyline(points, cx, cy, R) {
+  let pen = false;
+  ctx.beginPath();
+  for (const [la, lo] of points) {
+    const r = la * Math.PI / 180;
+    project(Math.sin(r), Math.cos(r), lo * Math.PI / 180, tmp, 0);
+    if (tmp.z[0] > 0) {
+      const sx = cx + R * tmp.x[0], sy = cy - R * tmp.y[0];
+      if (pen) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy);
+      pen = true;
+    } else pen = false;
+  }
+  ctx.stroke();
+}
+function drawGraticule(cx, cy, R, d) {
+  ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1 * d;
+  for (let la = -60; la <= 60; la += 30) { const pts = []; for (let lo = -180; lo <= 180; lo += 3) pts.push([la, lo]); polyline(pts, cx, cy, R); }
+  for (let lo = -180; lo < 180; lo += 30) { const pts = []; for (let la = -90; la <= 90; la += 3) pts.push([la, lo]); polyline(pts, cx, cy, R); }
+}
+function drawCoast(cx, cy, R, d) {
+  if (!COAST) return;
+  // over the dark ground of the cloud view the coasts are drawn light
+  ctx.strokeStyle = S.range && S.range.style === "cloud" ? "rgba(214,226,240,0.7)" : css("--coast");
+  ctx.lineWidth = 1.1 * d; ctx.globalAlpha = 0.85;
+  const k = 1 / (COAST.scale || 1);
+  for (const line of COAST.lines) {
+    const pts = [];
+    for (let i = 0; i < line.length; i += 2) pts.push([line[i + 1] * k, line[i] * k]);
+    polyline(pts, cx, cy, R);
+  }
+  ctx.globalAlpha = 1;
+}
+function drawMeridian(cx, cy, R, d, lon) {
+  ctx.strokeStyle = css("--mark"); ctx.lineWidth = 1.2 * d; ctx.setLineDash([4 * d, 4 * d]);
+  const pts = []; for (let la = -90; la <= 90; la += 2) pts.push([la, lon]);
+  polyline(pts, cx, cy, R); ctx.setLineDash([]);
+}
+function pick(ev) {
+  const r = canvas.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height, R = Math.min(w, h) / 2 - 6 * d;
+  const x = ((ev.clientX - r.left) * d - w / 2) / R, y = -((ev.clientY - r.top) * d - h / 2) / R, rr = x * x + y * y;
+  if (rr > 1) return null;
+  const z = Math.sqrt(1 - rr), p0 = S.lat0 * Math.PI / 180, sp = Math.sin(p0), cp = Math.cos(p0);
+  const lat = Math.asin(Math.max(-1, Math.min(1, z * sp + y * cp))) * 180 / Math.PI;
+  let lon = S.lon0 + Math.atan2(x, z * cp - y * sp) * 180 / Math.PI;
+  lon = ((lon % 360) + 360) % 360;
+  return geo.cell[Math.min(NLAT - 1, Math.floor((lat + 90) * 2)) * NLON + Math.min(NLON - 1, Math.floor(lon * 2))];
+}
+
+// ---------------------------------------------------------------- legend
+function drawLegend() {
+  const bar = $("legend-bar"), g = bar.getContext("2d"), range = S.range;
+  g.clearRect(0, 0, bar.width, bar.height);
+  if (!range) return;
+  for (let i = 0; i < 256; i++) {
+    if (range.style === "cloud") {
+      const a = Math.sqrt(i / 255);
+      g.fillStyle = `rgb(${CLOUD_SEA.map((v) => Math.round(v + (255 - v) * a)).join(",")})`;
+    } else g.fillStyle = RAMPS[range.style][i];
+    g.fillRect(i, 0, 1, bar.height);
+  }
+  const info = S.source.fieldInfo(S.field);
+  const change = S.mode === "change";
+  $("legend-lo").textContent = range.none ? "" : fmtValue(range.lo, info.units, change).replace(/ K \(/, " K\u00a0(");
+  $("legend-hi").textContent = range.none ? "" : fmtValue(range.hi, info.units, change);
+  $("legend-units").textContent = range.none ? "no change at this level" : change ? `change, ${info.units}` : "";
+}
+function fmtLat(lat) { return `${Math.abs(lat).toFixed(1)}°${lat > 0 ? "N" : lat < 0 ? "S" : ""}`; }
+function fmtLon(lon) {
+  const l = ((lon + 540) % 360) - 180;
+  return `${Math.abs(l).toFixed(1)}°${Math.abs(l) === 180 || l === 0 ? "" : l > 0 ? "E" : "W"}`;
+}
+function fmtPlace(lat, lon) { return `${fmtLat(lat)}, ${fmtLon(lon)}`; }
+// a value with its units; a temperature in kelvin also in degrees Celsius
+function fmtValue(v, units, change) {
+  if (units === "K" && !change && Number.isFinite(v)) return `${fmt(v)} K (${(v - 273.15).toFixed(1)} °C)`;
+  return `${fmt(v)} ${units}`;
+}
+function fmt(v) {
+  if (!Number.isFinite(v)) return "–";
+  const a = Math.abs(v);
+  if (a === 0) return "0";
+  if (a >= 1000 || a < 0.01) return v.toExponential(2);
+  return v.toFixed(a >= 100 ? 1 : a >= 10 ? 2 : 3);
+}
+
+// ---------------------------------------------------------------- profile and section
+const MIN_P = 0, MAX_P = 1015;
+function pY(p, top, height) { return top + (p - MIN_P) / (MAX_P - MIN_P) * height; }
+function axisPressure(g, left, top, height, d) {
+  g.fillStyle = css("--muted"); g.font = `${11 * d}px system-ui, sans-serif`; g.textAlign = "right"; g.textBaseline = "middle";
+  g.strokeStyle = css("--grid"); g.lineWidth = 1;
+  for (const p of [100, 200, 300, 400, 500, 600, 700, 850, 1000]) {
+    const y = pY(p, top, height);
+    g.fillText(String(p), left - 4 * d, y);
+    g.beginPath(); g.moveTo(left, y); g.lineTo(g.canvas.width - 6 * d, y); g.stroke();
+  }
+  g.save(); g.translate(10 * d, top + height / 2); g.rotate(-Math.PI / 2); g.textAlign = "center";
+  g.fillText("hPa", 0, 0); g.restore();
+}
+let profileSeq = 0, sectionSeq = 0, stripSeq = 0, traceSeq = 0;
+// what computed an action, in words (the recorder's owner record)
+function ownerText(owner) {
+  if (!owner) return "";
+  const by = owner.by;
+  if (by === "fortran") return "original Fortran";
+  if (by === "coupler") return "coupler exchange";
+  if (by === "io") return "output";
+  if (by === "python") return "Python process";
+  if (by === "python-stage") {
+    const slots = Object.entries(owner.kernels || {});
+    if (!slots.length) return "original Fortran, through its Python stage class";
+    return "original Fortran, except " + slots.map(([k, v]) => v.by === "ml" ? `${k} by an ML model (${v.file}, ${v.device})`
+      : v.by === "plugin" ? `${k} by a compiled plugin` : v.by === "fortran-through-python" ? `${k} by the original via Python`
+      : `${k} by Python`).join(", ");
+  }
+  return String(by);
+}
+async function drawTrace() {
+  const seq = ++traceSeq, card = $("trace-card");
+  if (S.bar !== "procs" || S.selected == null || !S.source.trace) { card.hidden = true; return; }
+  card.hidden = false;
+  let t;
+  try { t = await S.source.trace(S.procStep, S.selected, S.level); }
+  catch (error) { if (seq === traceSeq) $("trace-note").textContent = String(error.message || error); return; }
+  if (seq !== traceSeq) return;
+  const box = $("trace"); box.innerHTML = "";
+  if (!t.fields.length) { $("trace-note").textContent = "This page carries no field at this level for the trace; pick another level."; return; }
+  const RELATIVE = 1e-3, names = t.fields.map((f) => f.name), units = Object.fromEntries(t.fields.map((f) => [f.name, f.units]));
+  const noise = Object.fromEntries(t.fields.map((f) => [f.name, f.noise || 0]));   // float round-off: counts as none
+  const largest = {};
+  for (const n of names) {
+    largest[n] = Math.max(0, ...t.rows.slice(1).map((r) => Math.abs(r.change[n] == null ? 0 : r.change[n])));
+    if (largest[n] <= noise[n]) largest[n] = 0;
+  }
+  const val = (n, v) => v == null ? `${n} <span class="flag" style="color:var(--anom-1)">non-finite</span>` : `${n} ${fmt(v)} ${units[n]}`;
+  // a self-contained page's changes are 8-bit: each within its ± of the recorded one, a zero code unknown below it
+  const delta = (n, v, err) => {
+    const pm = err ? ` ±${fmt(err)}` : "";
+    if (v === null) return `Δ${n} <span class="flag" style="color:var(--anom-1)">non-finite</span>`;
+    if (!v) return t.approximate ? `Δ${n} ≈0${pm}` : `Δ${n} 0`;
+    if (Math.abs(v) <= noise[n] || Math.abs(v) < RELATIVE * largest[n]) return `Δ${n} ≈0${pm}`;
+    return `<span class="${v > 0 ? "up" : "down"}">Δ${n} ${v > 0 ? "+" : ""}${fmt(v)}</span>${pm}`;
+  };
+  const cur = (n, html) => n === S.field ? `<span class="cur">${html}</span>` : html;
+  const first = t.rows[0];
+  box.insertAdjacentHTML("beforeend", `<div class="state">start of step: ${names.map((n) => cur(n, val(n, first.values[n]))).join(" · ")}</div>`);
+  let small = 0, untouched = 0;
+  t.rows.forEach((row, k) => {
+    if (!k) return;
+    const became = Object.entries(row.became || {}), prev = t.rows[k - 1];
+    const still = (n) => row.values[n] == null && prev.values[n] == null;
+    const listed = became.length || names.some((n) => !still(n) && (row.change[n] === null || (largest[n] > 0 && Math.abs(row.change[n] || 0) >= RELATIVE * largest[n])));
+    if (!listed) { if (names.some((n) => row.change[n])) small++; else untouched++; return; }
+    const button = document.createElement("button");
+    button.className = "step-row"; button.type = "button";
+    if (k === S.k) button.setAttribute("aria-current", "true");
+    const took = Number.isFinite(row.seconds_mean) ? ` · ${fmtMs(row.seconds_mean)}` : "";
+    const who = ownerText(row.owner);
+    button.innerHTML = `<span><span class="name">↓ ${shortName(row.name)}</span> <span class="who">${who}${took}</span></span>`
+      + `<span>${names.map((n) => cur(n, still(n) ? `Δ${n} <span style="color:var(--muted)">still non-finite</span>` : delta(n, row.change[n], (row.error || {})[n]))).join(" · ")}</span>`
+      + `<span class="who">${names.map((n) => val(n, row.values[n])).join(" · ")}</span>`
+      + became.map(([n, kind]) => `<span class="flag" style="color:var(--anom-${kindCode(kind)})">⚠ the column became ${kind} in ${n} here</span>`).join("");
+    button.onclick = () => { S.k = k; $("proc-slider").value = k; update(); };
+    box.appendChild(button);
+  });
+  const last = t.rows[t.rows.length - 1];
+  const total = (n) => t.rows.slice(1).reduce((sum, row) => sum + ((row.error || {})[n] || 0), 0);
+  const startAnomaly = Object.entries(first.anomaly || {});
+  if (startAnomaly.length) box.insertAdjacentHTML("afterbegin", `<div class="state flag" style="color:var(--anom-${kindCode(startAnomaly[0][1])})">⚠ already as the step begins: ${startAnomaly.map(([n, k]) => `${n} ${k}`).join(", ")}</div>`);
+  box.insertAdjacentHTML("beforeend", `<div class="state">over the step: ${names.map((n) => cur(n, delta(n, last.values[n] == null || first.values[n] == null ? null : last.values[n] - first.values[n], total(n)))).join(" · ")}</div>`);
+  const pressure = t.pressure_hpa ? `, about ${Math.round(t.pressure_hpa)} hPa` : "";
+  $("trace-title").textContent = `This column through step ${t.step}, level ${t.level + 1}${pressure}`;
+  const notes = [];
+  if (small) notes.push(`${small} more changed this level by less than 0.1% of the largest change`);
+  if (untouched) notes.push(`${untouched} left it unchanged`);
+  const unowned = t.rows.slice(1).every((row) => !row.owner) ? "This run did not record what computed each action. " : "";
+  const coarse = t.approximate ? "This page keeps each change in 8 bits over that action's largest change on the globe, so a column's "
+    + "change is only within its ±, and the errors add up over the step; freecam trace and the served viewer read the recorded values. " : "";
+  $("trace-note").textContent = (notes.length ? notes.join("; ") + ". " : "") + coarse + unowned + "Click an action to see it on the globe.";
+}
+async function drawProfile() {
+  const seq = ++profileSeq, c = $("profile");
+  if (S.selected == null) { const { w, h } = sizeCanvas(c); c.getContext("2d").clearRect(0, 0, w, h); return; }
+  const mode = S.mode, field = S.field;
+  let p;
+  try { p = await S.source.profile(frame(), field, S.selected); }
+  catch (error) { if (seq === profileSeq) $("profile-note").textContent = String(error.message || error); return; }
+  if (seq !== profileSeq) return;
+  const { w, h, d } = sizeCanvas(c), g = c.getContext("2d");
+  g.clearRect(0, 0, w, h);
+  const info = S.source.fieldInfo(field), pressure = p.levels.map((l) => p.pressure[l] || l + 1);
+  let series = p.values, before = p.before;
+  if (mode === "change") { series = before ? p.values.map((v, i) => v - before[i]) : p.values.map(() => 0); before = null; }
+  const all = series.concat(before || []).filter(Number.isFinite);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  if (mode === "change") { const t = Math.max(Math.abs(lo), Math.abs(hi)) || 1; lo = -t; hi = t; }
+  if (hi <= lo) { hi = lo + 1; }
+  const left = 44 * d, right = w - 8 * d, top = 8 * d, bottom = h - 24 * d, height = bottom - top;
+  axisPressure(g, left, top, height, d);
+  const x = (v) => left + (v - lo) / (hi - lo) * (right - left);
+  g.fillStyle = css("--muted"); g.textAlign = "center"; g.textBaseline = "top";
+  g.textAlign = "left"; g.fillText(fmtValue(lo, info.units, mode === "change"), left, bottom + 6 * d);
+  g.textAlign = "right"; g.fillText(fmtValue(hi, info.units, mode === "change"), right, bottom + 6 * d);
+  g.textAlign = "center";
+  if (mode === "change") g.fillText(`change, ${info.units}`, (left + right) / 2, bottom + 6 * d);
+  if (mode === "change") { g.strokeStyle = css("--zero"); g.beginPath(); g.moveTo(x(0), top); g.lineTo(x(0), bottom); g.stroke(); }
+  const line = (vals, color, dash) => {
+    g.strokeStyle = color; g.lineWidth = 2 * d; g.setLineDash(dash); g.beginPath();
+    vals.forEach((v, i) => { const X = x(v), Y = pY(pressure[i], top, height); i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
+    g.stroke(); g.setLineDash([]);
+  };
+  if (before) line(before, css("--muted"), [4 * d, 4 * d]);
+  line(series, css("--accent"), []);
+  const lev = p.levels.indexOf(S.level);
+  if (lev >= 0) { g.fillStyle = css("--mark"); g.beginPath(); g.arc(x(series[lev]), pY(pressure[lev], top, height), 4 * d, 0, 2 * Math.PI); g.fill(); }
+  $("profile-title").textContent = `Column at ${fmtPlace(p.lat, p.lon)}` +
+    (p.land > 0.5 ? " (land)" : " (sea)");
+  $("profile-note").textContent = mode === "change"
+    ? `What ${S.bar === "steps" ? "the step" : "this process"} changed in the column. Dot: the level on the globe.`
+    : `Solid: now; dashed: ${S.bar === "steps" ? "the recorded step before" : "before this process"}. Dot: the level on the globe.`;
+}
+async function drawSection() {
+  const seq = ++sectionSeq, c = $("section");
+  if (S.selected == null) { const { w, h } = sizeCanvas(c); c.getContext("2d").clearRect(0, 0, w, h); $("section-note").textContent = ""; return; }
+  const m = S.source.meta, lon = m.lon[S.selected];
+  let s;
+  try { s = await S.source.section(frame(), S.field, lon, S.mode); }
+  catch (error) { if (seq === sectionSeq) $("section-note").textContent = String(error.message || error); return; }
+  if (seq !== sectionSeq) return;
+  const { w, h, d } = sizeCanvas(c), g = c.getContext("2d");
+  g.clearRect(0, 0, w, h);
+  const levels = s.levels, pressure = levels.map((l) => m.level_pressure_hpa[l] || l + 1);
+  const left = 44 * d, right = w - 8 * d, top = 8 * d, bottom = h - 24 * d, height = bottom - top;
+  const X = (la) => left + (la + 90) / 180 * (right - left);
+  // the section's own colour range (a level's range saturates the others)
+  const flat = s.values.flat().filter(Number.isFinite), style = styleOf(S.field, S.mode);
+  let range;
+  if (S.mode === "change" || STYLE[S.field] === "signed") {
+    const t = percentile(flat.map(Math.abs), 0.99) || 1; range = { lo: -t, hi: t, style };
+  } else if (style === "cloud") range = { lo: 0, hi: percentile(flat, 0.995) || 1, style };
+  else range = { lo: percentile(flat, 0.01), hi: percentile(flat, 0.99), style };
+  const span = range.hi - range.lo || 1;
+  const edges = pressure.map((p, i) => i === 0 ? MIN_P : (p + pressure[i - 1]) / 2);
+  edges.push(MAX_P);
+  // each column's strip reaches half way to its neighbours in latitude
+  const lats = s.lat, bounds = lats.map((la, j) => [j ? (la + lats[j - 1]) / 2 : Math.max(-90, la - 1),
+    j < lats.length - 1 ? (la + lats[j + 1]) / 2 : Math.min(90, la + 1)]);
+  for (let j = 0; j < lats.length; j++) {
+    const x0 = X(bounds[j][0]), x1 = X(bounds[j][1]);
+    if (x1 - x0 <= 0) continue;
+    for (let i = 0; i < levels.length; i++) {
+      const v = s.values[i][j];
+      if (!Number.isFinite(v)) continue;
+      const t = Math.max(0, Math.min(1, (v - range.lo) / span));
+      g.fillStyle = range.style === "cloud"
+        ? `rgb(${CLOUD_SEA.map((v) => Math.round(v + (255 - v) * Math.sqrt(t))).join(",")})` : RAMPS[range.style][Math.round(t * 255)];
+      const y0 = pY(edges[i], top, height), y1 = pY(edges[i + 1], top, height);
+      g.fillRect(x0, y0, x1 - x0 + 0.5, Math.max(1, y1 - y0 + 0.5));
+    }
+  }
+  axisPressure(g, left, top, height, d);
+  g.fillStyle = css("--muted"); g.textAlign = "center"; g.textBaseline = "top";
+  for (const la of [-60, -30, 0, 30, 60]) g.fillText(la === 0 ? "0°" : fmtLat(la).replace(".0", ""), X(la), bottom + 6 * d);
+  const lev = levels.indexOf(S.level);
+  if (lev >= 0) { g.strokeStyle = css("--mark"); g.setLineDash([4 * d, 4 * d]); const y = pY(pressure[lev], top, height);
+    g.beginPath(); g.moveTo(left, y); g.lineTo(right, y); g.stroke(); g.setLineDash([]); }
+  g.strokeStyle = css("--mark"); g.beginPath(); g.moveTo(X(m.lat[S.selected]), top); g.lineTo(X(m.lat[S.selected]), bottom); g.stroke();
+  $("section-title").textContent = `Section along ${fmtLon(lon)}`;
+  $("section-note").textContent = `Latitude against pressure, colours from ${fmt(range.lo)} to ${fmt(range.hi)} ` +
+    `${S.source.fieldInfo(S.field).units}${S.mode === "change" ? " of change" : ""}; dashed: the level on the globe. ` +
+    (levels.length < (S.source.fieldInfo(S.field).levels) ? `This page carries ${levels.length} of the levels.` : "");
+}
+
+// ---------------------------------------------------------------- process strip
+const shortName = (name) => name.replace(/^cam_run\d\./, "").replace(/^cam\./, "");
+function stripLayout(w, d) {
+  // each action as wide as its share of the step's time (the mean over the ranks), a few pixels
+  // at least so that every one can be picked; equal widths when the run recorded no times
+  const names = S.source.actionNames(S.procStep), n = names.length, rows = S.changes;
+  const timed = rows && rows.length === n && rows.every((r) => Number.isFinite(r.seconds_mean));
+  const least = 3 * d, edges = [0];
+  if (!timed) { for (let k = 1; k <= n; k++) edges.push(k * w / n); return { edges, timed: false }; }
+  const total = rows.slice(1).reduce((sum, r) => sum + r.seconds_mean, 0) || 1, spare = Math.max(0, w - n * least);
+  for (let k = 0; k < n; k++) edges.push(edges[k] + least + (k === 0 ? 0 : spare * rows[k].seconds_mean / total));
+  const scale = w / edges[n];
+  return { edges: edges.map((e) => e * scale), timed: true, total };
+}
+function stripIndex(ev) {
+  const r = ev.target.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  const { edges } = stripLayout($("strip").width, d), x = (ev.clientX - r.left) * d;
+  let k = 0;
+  while (k < edges.length - 2 && x >= edges[k + 1]) k++;
+  return k;
+}
+function drawStrip() {
+  const c = $("strip"), { w, h, d } = sizeCanvas(c), g = c.getContext("2d");
+  g.clearRect(0, 0, w, h);
+  const names = S.source.actionNames(S.procStep), n = names.length, changes = S.changes;
+  if (!n) return;
+  const { edges } = stripLayout(w, d), top = Math.max(...(changes || []).map((r) => r.rms), 0);
+  for (let k = 0; k < n; k++) {
+    const r = changes ? changes[k] : null, amount = r && top > 0 ? r.rms / top : 0;
+    g.fillStyle = !r || r.max === 0 ? css("--zero") : RAMPS.viridis[Math.round(40 + 215 * Math.sqrt(amount))];
+    g.fillRect(edges[k] + 0.5, 0, Math.max(1, edges[k + 1] - edges[k] - 1), h);
+  }
+  g.font = `${11 * d}px system-ui, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+  for (let k = 0; k < n; k++) {
+    const cw = edges[k + 1] - edges[k];
+    const label = k === 0 ? "start" : shortName(names[k]).replace(/_/g, " ");
+    if (g.measureText(label).width < cw - 6 * d) {
+      const r = changes ? changes[k] : null, amount = r && top > 0 ? r.rms / top : 0;
+      g.fillStyle = !r || r.max === 0 ? css("--ink") : amount < 0.3 ? "#fff" : "#111";
+      g.fillText(label, edges[k] + cw / 2, h / 2);
+    }
+  }
+  if (S.anomaly && S.anom) {
+    for (const f of S.anom.first) {
+      if (f.at_start) continue;
+      g.fillStyle = css(`--anom-${1 + S.source.meta.anomaly_kinds.indexOf(f.kind)}`);
+      g.fillRect(edges[f.k] + 0.5, 0, Math.max(2, edges[f.k + 1] - edges[f.k] - 1), 6 * d);
+    }
+  }
+  const x0 = edges[S.k], x1 = edges[S.k + 1];
+  g.strokeStyle = css("--mark"); g.lineWidth = 3 * d; g.strokeRect(x0 + 1.5 * d, 1.5 * d, Math.max(2, x1 - x0 - 3 * d), h - 3 * d);
+}
+function procLabel() {
+  const names = S.source.actionNames(S.procStep), name = names[S.k] || "";
+  const r = S.changes ? S.changes[S.k] : null, info = S.source.fieldInfo(S.field);
+  const made = S.anomaly && S.anom && S.anom.fields[S.field] ? S.anom.fields[S.field].frames[S.k] : null;
+  const what = S.k === 0 ? "the state as the step begins" : !S.changes ? "measuring what each process changed…" :
+    (r && r.max == null ? (made && made.new ? `makes ${S.field} anomalous in ${made.new.toLocaleString()} columns` : `leaves non-finite values of ${S.field}`) :
+    r && r.max === 0 ? `does not change ${S.field}` :
+    r ? `changes ${S.field} by up to ${fmt(r.max)} ${info.units} (root-mean-square ${fmt(r.rms)})` : "");
+  let took = "";
+  if (r && S.k > 0 && Number.isFinite(r.seconds_mean)) {
+    const total = S.changes.slice(1).reduce((sum, row) => sum + row.seconds_mean, 0) || 1;
+    took = `; takes ${fmtMs(r.seconds_mean)} (${(100 * r.seconds_mean / total).toFixed(1)}% of the step, mean over the ranks; slowest rank ${fmtMs(r.seconds_max)})`;
+  }
+  $("proc-label").textContent = `Step ${S.procStep}, ${S.k + 1} of ${names.length}: ${name} — ${what}${took}`;
+  // the processes that changed the field most in this step, by root-mean-square change
+  const top = $("proc-top");
+  top.innerHTML = "";
+  if (!S.changes) return;
+  const ranked = S.changes.map((row, k) => ({ ...row, k })).filter((row) => row.k > 0 && row.max > 0 && row.rms != null)
+    .sort((a, b) => b.rms - a.rms).slice(0, 8);
+  const quiet = S.changes.filter((row, k) => k > 0 && row.max === 0).length;
+  const broken = S.changes.filter((row, k) => k > 0 && row.max == null).length;
+  top.append(`Largest changes of ${S.field} in this step: `);
+  for (const row of ranked) {
+    const a = document.createElement("a");
+    a.textContent = `${shortName(row.name)} ${fmt(row.rms)}`;
+    a.title = `${row.name}: root-mean-square ${fmt(row.rms)}, largest ${fmt(row.max)} ${info.units}`;
+    a.onclick = () => { S.k = row.k; $("proc-slider").value = S.k; update(); };
+    top.appendChild(a);
+  }
+  top.append(`(${info.units}, root-mean-square over every column and level); ${quiet} of the ${S.changes.length - 1} actions leave it unchanged` +
+    (broken ? `; after ${broken} of them it holds non-finite values, so their change has no size (turn Anomalies on to see where)` : "") + ".");
+  if (S.changes.every((row) => Number.isFinite(row.seconds_mean))) {
+    const total = S.changes.slice(1).reduce((sum, row) => sum + row.seconds_mean, 0) || 1;
+    const longest = S.changes.map((row, k) => ({ ...row, k })).filter((row) => row.k > 0)
+      .sort((a, b) => b.seconds_mean - a.seconds_mean).slice(0, 6);
+    top.append(document.createElement("br"));
+    top.append(`Longest in this step (${fmtMs(total)} in all, mean over the ranks; widths above are these shares): `);
+    for (const row of longest) {
+      const a = document.createElement("a");
+      a.textContent = `${shortName(row.name)} ${(100 * row.seconds_mean / total).toFixed(1)}%`;
+      a.title = `${row.name}: ${fmtMs(row.seconds_mean)} mean, ${fmtMs(row.seconds_max)} on the slowest rank`;
+      a.onclick = () => { S.k = row.k; $("proc-slider").value = S.k; update(); };
+      top.appendChild(a);
+    }
+  } else {
+    top.append(document.createElement("br"));
+    top.append("This run recorded no action times: the boxes are of equal width.");
+  }
+}
+function fmtMs(seconds) { return seconds >= 1 ? `${seconds.toFixed(2)} s` : `${(seconds * 1000).toFixed(seconds >= 0.01 ? 1 : 2)} ms`; }
+
+// ---------------------------------------------------------------- updating
+function stepTime(step) {
+  const seconds = step * 1800 + 1800, day = Math.floor(seconds / 86400), rest = seconds % 86400;
+  const hh = String(Math.floor(rest / 3600)).padStart(2, "0"), mm = String(Math.floor(rest % 3600 / 60)).padStart(2, "0");
+  return `day ${day + 1}, ${hh}:${mm} model time at the end of the step`;
+}
+async function update() {
+  const token = ++S.token, f = frame();
+  let values;
+  try { values = await S.source.level(f, S.field, S.level, S.mode); }
+  catch (error) { $("globe-note").textContent = String(error.message || error); return; }
+  if (token !== S.token) return;
+  let mask = null;
+  if (S.anomaly) { try { mask = await S.source.mask(f, S.field); } catch (error) { mask = null; } }
+  if (token !== S.token) return;
+  S.values = values; S.range = chooseRange(values); S.mask = mask;
+  drawGlobe(); drawLegend(); drawAnomalies();
+  if (S.bar === "steps") {
+    const step = S.source.stepList()[S.p];
+    $("step-label").textContent = `Step ${step} (${S.p + 1} of ${S.source.stepList().length} recorded) — ${stepTime(step)}` +
+      (S.mode === "change" && S.p === 0 ? " — the first recorded step has no earlier frame" : "");
+  } else { drawStrip(); procLabel(); }
+  drawProfile(); drawSection(); drawTrace();
+}
+const KIND_TEXT = { "non-finite": "non-finite (NaN or Inf)", negative: "negative", "out of range": "out of range" };
+function kindCode(kind) { return 1 + S.source.meta.anomaly_kinds.indexOf(kind); }
+let anomalySeq = 0;
+async function loadAnomalies() {
+  if (!S.anomaly) return;
+  const seq = ++anomalySeq;
+  $("anomaly-note").textContent = "Looking through the recorded frames for anomalies…";
+  try {
+    if (S.bar === "procs") S.anom = await S.source.anomalies(S.procStep);
+    else if (!S.stepAnom) S.stepAnom = await S.source.stepAnomalies();
+  } catch (error) { if (seq === anomalySeq) $("anomaly-note").textContent = String(error.message || error); return; }
+  if (seq !== anomalySeq) return;
+  drawAnomalies(); drawStrip();
+}
+function goToColumn(c) {
+  // turn the globe to a column and pick it: its profile, section and trace follow
+  S.selected = c; S.lon0 = S.source.meta.lon[c]; S.lat0 = Math.max(-60, Math.min(60, S.source.meta.lat[c]));
+}
+function setField(name) {
+  if (S.field === name) return;
+  S.field = name; $("field").value = name; fillLevels(); loadChanges();
+}
+function drawAnomalies() {
+  const card = $("anomaly-card"), legend = $("anomaly-legend");
+  card.hidden = !S.anomaly; legend.classList.toggle("hidden", !S.anomaly);
+  if (!S.anomaly) return;
+  const meta = S.source.meta, list = $("anomaly-list");
+  if (!S.source.hasAnomalyData()) {
+    list.innerHTML = ""; $("anomaly-note").textContent = "This page was written without anomaly data; the served viewer (freecam globe DIR) finds them."; return;
+  }
+  // the legend: what each colour means and how many columns at this frame
+  const counts = [0, 0, 0, 0];
+  if (S.mask) for (const code of S.mask) counts[code]++;
+  legend.innerHTML = meta.anomaly_kinds.map((kind, i) => `<span><span class="chip" style="background:var(--anom-${i + 1})"></span>${KIND_TEXT[kind]}: ${counts[i + 1].toLocaleString()} columns</span>`).join("")
+    + `<span>rule for ${S.field}: ${meta.anomaly_rules[S.field]}</span>`;
+  list.innerHTML = "";
+  const item = (color, head, sub, onclick) => {
+    const b = document.createElement("button"); b.className = "item"; b.type = "button"; b.style.borderLeftColor = color;
+    b.innerHTML = `${head}<span class="sub">${sub}</span>`; b.onclick = onclick; list.appendChild(b);
+  };
+  if (S.bar === "procs") {
+    const a = S.anom;
+    $("anomaly-title").textContent = `Anomalies in step ${S.procStep}`;
+    if (!a) return;
+    if (!a.first.length) { $("anomaly-note").textContent = `No action in step ${S.procStep} made a column anomalous. Rules: ` + Object.entries(meta.anomaly_rules).map(([f, r]) => `${f} ${r}`).join("; ") + "."; return; }
+    for (const f of a.first) {
+      const color = `var(--anom-${kindCode(f.kind)})`;
+      const head = f.at_start ? `${f.field} was already ${f.kind} as the step began`
+        : `${f.field} became ${f.kind} after <b>${shortName(f.name)}</b>`;
+      const sub = `${f.columns.toLocaleString()} columns` + (f.at_start ? "" : ` · ${ownerText(f.owner) || "computed by: not recorded"}`) + " · show it";
+      item(color, head, sub, () => {
+        setField(f.field); S.k = f.k; $("proc-slider").value = S.k; goToColumn(f.example_columns[0]); update();
+      });
+    }
+    const now = a.fields[S.field] ? a.fields[S.field].frames[S.k] : null;
+    $("anomaly-note").textContent = (now && now.columns ? `After this action ${now.columns.toLocaleString()} columns of ${S.field} are anomalous` +
+      (now.new ? `, ${now.new.toLocaleString()} of them made so by it` : "") + ". " : "") +
+      "A band over the process strip marks each action that made a new kind of anomaly; click an item to go to it and pick one of its columns.";
+  } else {
+    const a = S.stepAnom;
+    $("anomaly-title").textContent = "Anomalies over the recorded steps";
+    if (!a) return;
+    if (!a.first.length) { $("anomaly-note").textContent = `No anomalous column at the end of any recorded step. Rules: ` + Object.entries(meta.anomaly_rules).map(([f, r]) => `${f} ${r}`).join("; ") + "."; return; }
+    const actionSteps = S.source.actionSteps();
+    for (const f of a.first) {
+      const color = `var(--anom-${kindCode(f.kinds[0])})`;
+      const every = f.every_column_from != null ? `; every column from step ${f.every_column_from}` : "";
+      const traced = actionSteps.includes(f.step);
+      item(color, `${f.field} ${f.kinds.join(" and ")} first at the end of step ${f.step}`,
+        `${f.columns.toLocaleString()} columns${every} · ` + (traced ? "find the process in that step" : "show that step"
+          + (actionSteps.length ? ` (step ${f.step} was not recorded after every action: record it with --state-action-steps)` : "")), () => {
+          setField(f.field);
+          if (traced) { $("proc-step").value = f.step; S.procStep = f.step; S.k = 0; $("bar-procs").click(); }
+          else { S.p = S.source.stepIndexOf(f.step); $("step-slider").value = S.p; update(); }
+        });
+    }
+    const row = a.fields[S.field], here = row ? row.columns[meta.step_frames.indexOf(S.source.stepList()[S.p])] || 0 : 0;
+    $("anomaly-note").textContent = (here ? `At this step ${here.toLocaleString()} columns of ${S.field} are anomalous. ` : "") +
+      "Click an item: a step recorded after every action opens at its processes, where the anomaly card names the action.";
+  }
+}
+async function loadChanges() {
+  if (S.bar !== "procs") return;
+  const seq = ++stripSeq;
+  S.changes = null; drawStrip(); procLabel();
+  let rows = null;
+  try { rows = await S.source.changes(S.procStep, S.field); } catch (e) { rows = null; }
+  if (seq !== stripSeq) return;
+  S.changes = rows; drawStrip(); procLabel();
+}
+
+// ---------------------------------------------------------------- controls
+function fillLevels() {
+  const sel = $("level"), levels = S.source.levels(S.field), p = S.source.meta.level_pressure_hpa, info = S.source.fieldInfo(S.field);
+  sel.innerHTML = "";
+  for (const l of levels) {
+    const o = document.createElement("option"); o.value = l;
+    o.textContent = info.levels === 1 ? "surface" : `${l + 1} · ${p[l] ? Math.round(p[l]) + " hPa" : ""}`;
+    sel.appendChild(o);
+  }
+  if (!levels.includes(S.level)) {
+    // default near 850 hPa for the atmosphere's fields, the one level for a surface field
+    let best = levels[levels.length - 1], bestD = Infinity;
+    for (const l of levels) { const dd = Math.abs((p[l] || 0) - 850); if (dd < bestD) { bestD = dd; best = l; } }
+    S.level = best;
+  }
+  sel.value = S.level;
+}
+function setPressed(a, b, first) { $(a).setAttribute("aria-pressed", String(first)); $(b).setAttribute("aria-pressed", String(!first)); }
+function wire() {
+  const src = S.source, meta = src.meta;
+  const fsel = $("field");
+  for (const f of meta.fields) {
+    if (!(src instanceof EmbeddedSource) || src.snap.fields[f.name]) {
+      const o = document.createElement("option"); o.value = f.name; o.textContent = `${f.name} — ${f.label}`; fsel.appendChild(o);
+    }
+  }
+  S.field = fsel.value;
+  fillLevels();
+  fsel.onchange = () => { S.field = fsel.value; fillLevels(); loadChanges(); update(); };
+  $("level").onchange = () => { S.level = Number($("level").value); update(); };
+  $("show-value").onclick = () => { S.mode = "value"; setPressed("show-value", "show-change", true); update(); };
+  $("show-change").onclick = () => { S.mode = "change"; setPressed("show-value", "show-change", false); update(); };
+  S.syncChange = () => {
+    const allowed = S.bar === "procs" || src.canStepChange();
+    $("show-change").disabled = !allowed;
+    $("show-change").title = allowed ? "" : "This page carries the steps 8-bit; their changes are shown by the server (freecam globe DIR)";
+    if (!allowed && S.mode === "change") { S.mode = "value"; setPressed("show-value", "show-change", true); }
+  };
+  S.syncChange();
+  const steps = src.stepList(), slider = $("step-slider");
+  slider.max = Math.max(0, steps.length - 1); slider.value = 0;
+  slider.oninput = () => { S.p = Number(slider.value); update(); };
+  const actionSteps = src.actionSteps(), psel = $("proc-step");
+  for (const s of actionSteps) { const o = document.createElement("option"); o.value = s; o.textContent = `${s}`; psel.appendChild(o); }
+  S.procStep = actionSteps.length ? actionSteps[0] : null;
+  $("bar-procs").disabled = !actionSteps.length;
+  if (!actionSteps.length) $("bar-procs").title = "This run recorded no step after every process (--state-action-steps)";
+  const showBar = (procs) => {
+    S.bar = procs ? "procs" : "steps"; setPressed("bar-steps", "bar-procs", !procs);
+    $("step-bar").classList.toggle("hidden", procs); $("proc-bar").classList.toggle("hidden", !procs);
+    $("proc-step-label").classList.toggle("hidden", !procs);
+    S.syncChange();
+    if (procs) { const names = src.actionNames(S.procStep); $("proc-slider").max = Math.max(0, names.length - 1);
+      S.k = Math.min(S.k, names.length - 1); $("proc-slider").value = S.k; loadChanges(); }
+    S.anom = null; loadAnomalies();
+    stop(); update();
+  };
+  $("bar-steps").onclick = () => showBar(false);
+  $("bar-procs").onclick = () => showBar(true);
+  psel.onchange = () => { S.procStep = Number(psel.value); S.k = 0; showBar(true); };
+  $("proc-slider").oninput = () => { S.k = Number($("proc-slider").value); update(); };
+  $("strip").onclick = (ev) => { S.k = stripIndex(ev); $("proc-slider").value = S.k; update(); };
+  $("strip").onmousemove = (ev) => {
+    const k = stripIndex(ev), row = S.changes ? S.changes[k] : null, name = src.actionNames(S.procStep)[k];
+    ev.target.title = row && Number.isFinite(row.seconds_mean) && k > 0 ? `${name}: ${fmtMs(row.seconds_mean)}` : name;
+  };
+  $("play").onclick = () => (S.playing ? stop() : play());
+  $("show-anomalies").onclick = () => {
+    S.anomaly = !S.anomaly; $("show-anomalies").setAttribute("aria-pressed", String(S.anomaly));
+    if (S.anomaly) loadAnomalies(); else { S.mask = null; drawAnomalies(); drawStrip(); }
+    update();
+  };
+  $("theme").onclick = () => {
+    const root = document.documentElement, dark = root.dataset.theme ? root.dataset.theme === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark"; drawGlobe(); drawLegend(); drawProfile(); drawSection(); drawStrip();
+  };
+  // turning and picking
+  let drag = null;
+  canvas.addEventListener("pointerdown", (ev) => { drag = { x: ev.clientX, y: ev.clientY, lon0: S.lon0, lat0: S.lat0, moved: false };
+    canvas.setPointerCapture(ev.pointerId); canvas.classList.add("dragging"); });
+  canvas.addEventListener("pointermove", (ev) => {
+    if (drag) {
+      const r = canvas.getBoundingClientRect(), k = 180 / (Math.min(r.width, r.height) / 2) / Math.PI;
+      const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+      S.lon0 = drag.lon0 - dx * k; S.lat0 = Math.max(-89, Math.min(89, drag.lat0 + dy * k));
+      drawGlobe(); return;
+    }
+    const c = pick(ev);
+    if (c == null || !S.values) { $("hover").textContent = ""; return; }
+    const info = src.fieldInfo(S.field);
+    const code = S.anomaly && S.mask ? S.mask[c] : 0;
+    $("hover").textContent = `${fmtPlace(meta.lat[c], meta.lon[c])}: ${fmtValue(S.values[c], info.units, S.mode === "change")}` +
+      (code ? ` — ${S.field} ${meta.anomaly_kinds[code - 1]} here` : "");
+  });
+  canvas.addEventListener("pointerup", (ev) => {
+    canvas.classList.remove("dragging");
+    const wasDrag = drag && drag.moved; drag = null;
+    if (wasDrag) return;
+    const c = pick(ev);
+    if (c != null) { S.selected = c; drawGlobe(); drawProfile(); drawSection(); drawTrace(); }
+  });
+  addEventListener("resize", () => { drawGlobe(); drawLegend(); drawProfile(); drawSection(); drawStrip(); });
+  runLabel();
+}
+let timer = null;
+function play() {
+  // once through the steps, from here to the last (from the first when already at the end)
+  const slider = $("step-slider"), last = Number(slider.max);
+  if (S.p >= last) { S.p = 0; slider.value = 0; update(); }
+  S.playing = true; $("play").textContent = "❚❚";
+  timer = setInterval(() => {
+    if (S.p >= last) { stop(); return; }
+    S.p += 1; slider.value = S.p; update();
+    if (S.p >= last) stop();
+  }, 350);
+}
+function stop() { S.playing = false; $("play").textContent = "▶"; if (timer) clearInterval(timer); timer = null; }
+
+// ---------------------------------------------------------------- following a run still recording
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function runLabel() {
+  const meta = S.source.meta, steps = S.source.stepList(), actionSteps = S.source.actionSteps();
+  $("run").textContent = `${meta.label || meta.run || meta.directory} · ${meta.columns} columns · ${steps.length} recorded steps` +
+    (actionSteps.length ? ` · processes recorded at step ${actionSteps.join(", ")}` : "") + (meta.complete ? "" : " · still recording");
+}
+async function follow() {
+  // every 2 s while the run records: more steps on the slider, and the newest shown when the
+  // slider was on the newest (move it back to stop following)
+  while (!EMBEDDED && !S.source.meta.complete) {
+    await sleep(2000);
+    let meta;
+    try { meta = await api("api/meta"); } catch (error) { continue; }
+    const slider = $("step-slider"), atNewest = S.p >= Number(slider.max);
+    const grew = meta.step_frames.length !== S.source.meta.step_frames.length;
+    S.source.meta = meta;
+    slider.max = Math.max(0, meta.step_frames.length - 1);
+    runLabel();
+    if (grew && atNewest && S.bar === "steps" && !S.playing) { S.p = Number(slider.max); slider.value = S.p; await update(); }
+  }
+}
+function followTheme() {
+  // inside the Workflow Builder: take the builder's light or dark, and drop this page's own switch
+  if (window.parent === window) return;
+  try {
+    const outer = window.parent.document.documentElement;
+    const apply = () => {
+      if (outer.dataset.theme) document.documentElement.dataset.theme = outer.dataset.theme;
+      if (S.source) { drawGlobe(); drawLegend(); drawProfile(); drawSection(); drawStrip(); }
+    };
+    $("theme").classList.add("hidden");
+    new MutationObserver(apply).observe(outer, { attributes: true, attributeFilter: ["data-theme"] });
+    apply();
+  } catch (error) { /* another origin: keep this page's own switch */ }
+}
+
+(async function main() {
+  followTheme();
+  for (;;) {
+    try {
+      S.source = cached(EMBEDDED ? new EmbeddedSource(EMBEDDED) : new ServerSource());
+      await S.source.init();
+      break;
+    } catch (error) {
+      if (EMBEDDED) {
+        document.body.insertAdjacentHTML("afterbegin", `<p class="error">Could not load the state: ${String(error.message || error)}</p>`);
+        return;
+      }
+      // the run has not recorded its first step yet (or the server is not reachable): try again
+      $("run").textContent = `Waiting for the first recorded step: ${String(error.message || error)}`;
+      await sleep(2000);
+    }
+  }
+  setupGeometry(); wire();
+  // start over the place with the most columns in view: the meridian of the first column
+  await update();
+  if (!S.source.meta.complete) { const slider = $("step-slider"); S.p = Number(slider.max); slider.value = S.p; await update(); }
+  follow();
+})();
+</script>
+</body>
+</html>
