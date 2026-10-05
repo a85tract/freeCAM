@@ -2110,7 +2110,8 @@ class Driver:
         horizon = self._steps_horizon()
         if horizon is None:
             return
-        taken = int(status.get("native_step", status.get("step", 0)))
+        # the steps run since initialization (which couples once itself, so the counters are one ahead)
+        taken = int(status.get("steps_taken", status.get("step", 0)))
         if taken + int(steps) > int(horizon):
             left = max(horizon - taken, 0)
             raise ValueError(
@@ -2145,7 +2146,7 @@ class Driver:
             raise ValueError("steps must be a positive integer")
         if self._session is None:
             # before the PBS job is asked for: a model not yet started has taken no step
-            self._check_horizon({"native_step": 0}, int(steps))
+            self._check_horizon({"steps_taken": 0}, int(steps))
         if not self._execution_lock.acquire(blocking=False):
             raise RuntimeError("this model already has a run in progress")
         try:

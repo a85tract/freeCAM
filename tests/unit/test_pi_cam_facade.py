@@ -1513,9 +1513,15 @@ def test_a_step_past_the_horizon_is_refused_on_every_rank_before_it_runs() -> No
     from freecam.pi_cam.driver import PICAMDriver
     from freecam.pi_cam.errors import PICAMStateError
 
-    rank = SimpleNamespace(boundary=SimpleNamespace(steps_horizon=1488), _native_step=1488)
+    month = SimpleNamespace(steps_horizon=1488)
+    # initialization couples once itself: its counters read 1 before the first step of a run
+    after_month = SimpleNamespace(boundary=month, coupling_step=1489, _first_coupling_step=1, _native_step=1489)
+    assert PICAMDriver.steps_taken.fget(after_month) == 1488
     with pytest.raises(PICAMStateError, match="run 1488 steps .* step 1489 cannot be coupled"):
-        PICAMDriver.step(rank)
+        PICAMDriver.step(after_month)
+    # the month's last step goes on (into the rest of step(), which this stand-in does not have)
+    with pytest.raises(AttributeError, match="timeline"):
+        PICAMDriver.step(SimpleNamespace(boundary=month, coupling_step=1488, _first_coupling_step=1))
 
 
 def test_a_new_model_reads_the_horizon_from_the_seed_run_before_it_starts(tmp_path) -> None:

@@ -1169,6 +1169,12 @@ class PICAMDriver:
         return tuple(islice(self._trace, start, None))
 
     @property
+    def steps_taken(self) -> int:
+        """Complete steps run since initialization (which itself couples once)."""
+
+        return self.coupling_step - getattr(self, "_first_coupling_step", 0)
+
+    @property
     def native_step(self) -> int:
         """Python's mirror of CAM's internal time-manager step."""
 
@@ -1204,6 +1210,9 @@ class PICAMDriver:
         if recorder is not None:
             recorder.describe(self.pool, getattr(self.backend, "_library", None))
             recorder.flush()
+        #: the coupling step initialization leaves: it couples once itself, so the steps a run
+        #: takes are counted from here (steps_taken)
+        self._first_coupling_step = self.coupling_step
 
     def _initialize(self) -> None:
         if self.lifecycle != PICAMLifecycle.CREATED:
@@ -2369,12 +2378,13 @@ class PICAMDriver:
 
     def step(self) -> tuple[PICAMActionTrace, ...]:
         horizon = getattr(self.boundary, "steps_horizon", None)
-        if horizon is not None and self._native_step >= horizon:
-            # the CESM surface components were set up for this many steps and stopped there, after
-            # writing their restart files: refuse the step on every rank before any of it runs
+        if horizon is not None and self.coupling_step - getattr(self, "_first_coupling_step", 0) >= horizon:
+            # the CESM surface components were set up for this many steps after initialization and
+            # stopped there, after writing their restart files: refuse the step on every rank
+            # before any of it runs
             raise PICAMStateError(
                 f"the CESM surface components run {horizon} steps and this model has taken them; "
-                f"step {self._native_step + 1} cannot be coupled")
+                f"step {horizon + 1} cannot be coupled")
         timeline = self.timeline
         recorder = getattr(self, "state_recorder", None)
         if timeline is None and recorder is None:

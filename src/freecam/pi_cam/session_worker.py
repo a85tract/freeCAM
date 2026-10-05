@@ -45,6 +45,7 @@ def _status(driver: Any) -> dict[str, object]:
         "step": driver.clock.nstep,
         "native_step": driver.native_step,
         "coupling_step": driver.coupling_step,
+        "steps_taken": driver.steps_taken,
         "date": driver.clock.yyyymmdd,
         "seconds": driver.clock.seconds,
         "actions": driver.trace_count,
