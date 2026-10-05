@@ -271,7 +271,9 @@ what each action changed, one column -- and the service asks the ranks between
 two steps (a run of the page's steps one at a time lets a waiting question go
 before the next step): one field of one snapshot is gathered to rank 0, a sum
 over the globe is reduced on the ranks, a column comes from the rank that
-holds it. Each rank keeps the newest `keep_steps` step snapshots (1000) and
+holds it. With *Anomalies* on, the globe asks for the shown step's codes alone,
+and the list over the steps for counts the ranks add up, of the steps recorded
+since it last asked: a frame never changes, so nothing is looked at twice. Each rank keeps the newest `keep_steps` step snapshots (1000) and
 `keep_actions` action snapshots (2000, dropped a whole step at a time); an
 older frame is refused. The state goes with the model: after *Close model*
 there is nothing to show, so a run to look at later records into a directory

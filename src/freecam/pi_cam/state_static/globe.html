@@ -200,7 +200,7 @@ class ServerSource {
   changes(step, field) { return api("/api/changes", { step, field }); }
   trace(step, col, lev) { return api("/api/trace", { step, col, lev }); }
   actionOwners(step) { return (this.meta.action_owners || {})[String(step)] || []; }
-  // anomalies: the server scans the rank files once per step (and once for every step frame)
+  // anomalies: the server looks at an action step's frames once, and counts each step frame once
   anomalies(step) { return api("/api/anomalies", { step }); }
   stepAnomalies() { return api("/api/anomalies", {}); }
   mask(frame, field) { return api("/api/anomaly_mask", { ...this.where(frame), field }, "u8"); }
@@ -1224,6 +1224,8 @@ async function follow() {
     slider.max = Math.max(0, meta.step_frames.length - 1);
     runLabel();
     if (grew && atNewest && S.bar === "steps" && !S.playing) { S.p = Number(slider.max); slider.value = S.p; await update(); }
+    // the list of anomalies over the steps takes in the new steps (the server counts only those)
+    if (grew && S.anomaly && S.bar === "steps") { S.stepAnom = null; loadAnomalies(); }
   }
 }
 function followTheme() {

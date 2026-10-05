@@ -539,10 +539,11 @@ class StateRecorder:
         ``layout``: the fields, the columns and the level pressures.  ``frames``: the frames
         recorded after the first ``since_steps`` and ``since_actions``, and how many are no longer
         kept.  ``frame``: one field (or one ``level`` of it) of one snapshot over every column,
-        (levels, columns).  ``codes``: each field's anomaly code per frame and column.  ``change_sums``: per action
-        frame, each field's largest change and sum of squared changes over every column.
-        ``column``: one column through some frames.  ``seconds``: every kept action frame's time
-        on every rank, (ranks, frames)."""
+        (levels, columns).  ``codes``: each field's anomaly code per frame and column.
+        ``anomaly_counts``: per frame, field and code, how many columns have it.
+        ``change_sums``: per action frame, each field's largest change and sum of squared
+        changes over every column.  ``column``: one column through some frames.  ``seconds``:
+        every kept action frame's time on every rank, (ranks, frames)."""
 
         if not self.memory:
             raise ValueError("this recorder writes its snapshots to files: read its directory")
@@ -586,6 +587,18 @@ class StateRecorder:
             if not root:
                 return None
             return {name: np.concatenate([part[name] for part in parts], axis=1) for name in local}
+        if what == "anomaly_counts":
+            from .state_view import anomaly_codes
+
+            kind, indices = request["kind"], [int(i) for i in request["indices"]]
+            local = np.zeros((len(indices), len(self._resolved), 4), np.int64)
+            for k, index in enumerate(indices):
+                block = self._local(kind, index)
+                for f, field in enumerate(self._resolved):
+                    codes = anomaly_codes(block[self._field_rows(field.spec.name)], field.spec.name, field.spec.scale)
+                    local[k, f] = np.bincount(codes, minlength=4)[:4]
+            parts = self._gather(local)
+            return np.sum(parts, axis=0) if root else None
         if what == "change_sums":
             indices = [int(i) for i in request["indices"]]
             names = [field.spec.name for field in self._resolved]

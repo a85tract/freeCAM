@@ -780,3 +780,31 @@ def test_surface_fields_tendencies_and_a_surface_constituent_are_recorded(tmp_pa
             field_spec(wrong)
     with pytest.raises(ValueError, match="no constituent axis"):
         StateRecorder(None, rank=0, size=1, fields=["cam_in.ts:Q"]).describe(pools[0])
+
+
+def test_the_live_anomalies_take_in_new_steps_counting_each_once(monkeypatch) -> None:
+    # a page following the run with the anomalies on: it looked at three steps, the model took a
+    # fourth, and the page asks for the fourth one's mask and the list over the steps
+    from freecam.pi_cam.state_view import LiveStateData
+
+    pools, recorders = _record(None, monkeypatch, close=False)
+    asked: list = []
+
+    def query(request):
+        asked.append((request["q"], tuple(request.get("indices", ()))))
+        return ask(recorders, request)
+
+    live = LiveStateData(query)
+    assert live.step_anomalies()["first"] == []
+    np.testing.assert_array_equal(live.anomaly_mask("steps", 2, "T"), [0] * 6)
+    pools[1]["phys_state.t"][0, :, 0] = 50.0                           # column 4 (rank 1) at 50 K
+    for r in (1, 0):
+        recorders[r].step_done(3, pools[r])
+    live.reload()
+    np.testing.assert_array_equal(live.anomaly_mask("steps", 3, "T"), [0, 0, 0, 0, 3, 0])
+    summary = live.step_anomalies()
+    assert summary["fields"]["T"]["columns"] == [0, 0, 0, 1]
+    assert summary["first"] == [{"field": "T", "p": 3, "step": 3, "columns": 1, "kinds": ["out of range"],
+                                 "every_column_from": None}]
+    assert [indices for what, indices in asked if what == "anomaly_counts"] == [(0, 1, 2), (3,)]
+    assert [indices for what, indices in asked if what == "codes"] == [(2,), (3,)]   # one frame for a mask

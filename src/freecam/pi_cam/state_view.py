@@ -167,11 +167,13 @@ class StateData:
         # (a run following on adds frames; a new run in the same directory changes the layout)
         layout = (tuple(self.field_order), self.levels_total, self.rank_columns.tobytes(), dict(self.dtypes).__repr__())
         with self._lock:
-            if layout != getattr(self, "_layout", None):
+            # a new run in the same directory: another layout, or fewer frames than were counted
+            if layout != getattr(self, "_layout", None) or len(self.step_frames) < len(getattr(self, "_counts", ())):
                 self._cache.clear()
+                self._counts: list[np.ndarray] = []
+                self._anomalies: dict[Any, dict[str, np.ndarray]] = {}
             self._layout = layout
             self._changes.clear()
-            self._anomalies: dict[Any, dict[str, np.ndarray]] = {}
             self._seconds = None
         self._loaded = self._signature()
 
@@ -494,11 +496,50 @@ class StateData:
         return self._cached_codes(("actions", step), "actions", self.action_steps[step])
 
     def step_codes(self) -> dict[str, np.ndarray]:
-        """Each field's anomaly code at the end of every recorded step, (steps, columns)."""
+        """Each field's anomaly code at the end of every recorded step, (steps, columns): every
+        frame read, for a page embedding them (not kept: the run may go on)."""
 
         if not self.step_frames:
             return {name: np.zeros((0, len(self.lat)), np.uint8) for name in self.field_order}
-        return self._cached_codes(("steps",), "steps", list(range(len(self.step_frames))))
+        return self._codes("steps", list(range(len(self.step_frames))))
+
+    def _frame_codes(self, kind: str, index: int) -> dict[str, np.ndarray]:
+        """One frame's anomaly code per column of every field; a written frame never changes, so
+        it is kept with the frames."""
+
+        key = ("codes", kind, int(index))
+        with self._lock:
+            cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+        codes = {name: np.asarray(values[0], dtype=np.uint8) for name, values in self._codes(kind, [int(index)]).items()}
+        with self._lock:
+            self._cache[key] = codes
+            while len(self._cache) > self._cache_frames:
+                self._cache.popitem(last=False)
+        return codes
+
+    def _anomaly_counts(self, kind: str, indices: list[int]) -> np.ndarray:
+        """Per frame, field and code, how many columns have it: (frames, fields, 4)."""
+
+        counts = np.zeros((len(indices), len(self.field_order), 4), np.int64)
+        for k, index in enumerate(indices):
+            codes = self._codes(kind, [int(index)])
+            for f, name in enumerate(self.field_order):
+                counts[k, f] = np.bincount(codes[name][0], minlength=4)[:4]
+        return counts
+
+    def step_counts(self) -> np.ndarray:
+        """Per recorded step, field and code, how many columns have it, (steps, fields, 4): only the
+        steps recorded since the last call are looked at."""
+
+        with self._changes_lock:
+            total = len(self.step_frames)
+            done = len(self._counts)
+            if done < total:
+                self._counts.extend(self._anomaly_counts("steps", list(range(done, total))))
+            rows = self._counts[:total]
+        return np.array(rows, dtype=np.int64) if rows else np.zeros((0, len(self.field_order), 4), np.int64)
 
     def anomaly_mask(self, kind: str, index: int, field: str) -> np.ndarray:
         """One frame's anomaly code per column, for the globe."""
@@ -507,7 +548,9 @@ class StateData:
             raise KeyError(f"no field {field!r}; the run recorded {self.field_order}")
         index = int(index)
         if kind == "steps":
-            return self.step_codes()[field][index]
+            if not 0 <= index < len(self.step_frames):
+                raise ValueError(f"no steps frame {index}")
+            return self._frame_codes("steps", index)[field]
         if kind != "actions" or not 0 <= index < len(self.action_frames):
             raise ValueError(f"no {kind} frame {index}")
         step = self.action_frames[index][0]
@@ -545,17 +588,17 @@ class StateData:
     def step_anomalies(self) -> dict[str, Any]:
         """Anomalous columns at the end of every recorded step, and the first step each field had any."""
 
-        codes = self.step_codes()
+        counts = self.step_counts()
         fields, first = {}, []
-        for name in self.field_order:
-            counts = [int((row != 0).sum()) for row in codes[name]]
-            fields[name] = {"rule": anomaly_rule(name), "columns": counts}
-            bad = [p for p, n in enumerate(counts) if n]
+        for f, name in enumerate(self.field_order):
+            columns = [int(n) for n in counts[:, f, 1:].sum(axis=1)]
+            fields[name] = {"rule": anomaly_rule(name), "columns": columns}
+            bad = [p for p, n in enumerate(columns) if n]
             if bad:
                 p = bad[0]
-                kinds = sorted({ANOMALY_KINDS[int(v) - 1] for v in np.unique(codes[name][p]) if v})
-                everywhere = next((q for q, n in enumerate(counts) if n == len(self.lat)), None)
-                first.append({"field": name, "p": p, "step": self.step_frames[p], "columns": counts[p], "kinds": kinds,
+                kinds = sorted(ANOMALY_KINDS[code - 1] for code in range(1, 4) if counts[p, f, code])
+                everywhere = next((q for q, n in enumerate(columns) if n == len(self.lat)), None)
+                first.append({"field": name, "p": p, "step": self.step_frames[p], "columns": columns[p], "kinds": kinds,
                               "every_column_from": None if everywhere is None else self.step_frames[everywhere]})
         first.sort(key=lambda f: (f["p"], f["field"]))
         return {"steps": self.step_frames, "fields": fields, "first": first}
@@ -621,6 +664,7 @@ class LiveStateData(StateData):
         self._changes: dict[tuple[int, str], list[dict[str, Any]]] = {}
         self._changes_lock = threading.Lock()
         self._anomalies: dict[Any, dict[str, np.ndarray]] = {}
+        self._counts: list[np.ndarray] = []
         self._seconds = None
         layout = self._ask({"q": "layout"})
         self.manifest = {key: layout[key] for key in ("run", "ranks", "dtype", "fields", "every", "action_steps",
@@ -676,8 +720,6 @@ class LiveStateData(StateData):
         if land is not None and np.shape(land) == self.lat.shape:
             self.landfrac, self._land = np.asarray(land, dtype=np.float64), True
         with self._lock:
-            # the anomaly codes of every step grow with the steps; a step's own are kept
-            self._anomalies = {key: value for key, value in self._anomalies.items() if key[0] != "steps"}
             self._seconds = None
 
     def _kept(self, kind: str, index: int) -> None:
@@ -750,6 +792,15 @@ class LiveStateData(StateData):
             for name in self.field_order:
                 codes[name][kept] = np.asarray(answer[name], dtype=np.uint8)
         return codes
+
+    def _anomaly_counts(self, kind: str, indices: list[int]) -> np.ndarray:
+        # summed over the ranks; a frame no longer kept has none counted
+        counts = np.zeros((len(indices), len(self.field_order), 4), np.int64)
+        kept = [k for k, index in enumerate(indices) if index >= self.kept_from[kind]]
+        if kept:
+            answer = self._ask({"q": "anomaly_counts", "kind": kind, "indices": [int(indices[k]) for k in kept]})
+            counts[kept] = np.asarray(answer, dtype=np.int64)
+        return counts
 
     def _change_sums(self, indices: list[int]) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
         for index in indices:
