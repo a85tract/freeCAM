@@ -403,12 +403,24 @@ def _state_options(state: bool | str | Path | Mapping[str, Any]) -> dict[str, An
         return {"dir": Path(state).expanduser()}
     if not isinstance(state, Mapping):
         raise TypeError("state must be False, True, a directory, or a mapping of recorder options")
-    unknown = sorted(set(state) - {"dir", "fields", "every", "action_steps", "flush_every"})
+    known = {"dir", "fields", "every", "action_steps", "flush_every", "store", "keep_steps", "keep_actions"}
+    unknown = sorted(set(state) - known)
     if unknown:
-        raise ValueError(f"state options {unknown} are not dir, fields, every, action_steps or flush_every")
+        raise ValueError(f"state options {unknown} are not {', '.join(sorted(known))}")
     from .state_record import field_spec
 
     options = dict(state)
+    store = options.get("store", "files")
+    if store not in ("files", "memory"):
+        raise ValueError(f"state store is files or memory, not {store!r}")
+    if store == "memory" and options.get("dir") is not None:
+        raise ValueError("a state kept in memory has no directory")
+    for key in ("keep_steps", "keep_actions"):
+        if options.get(key) is not None:
+            if store != "memory":
+                raise ValueError(f"state {key} bounds the snapshots kept in memory (store='memory')")
+            if int(options[key]) < 1:
+                raise ValueError(f"state {key} must be at least 1")
     if options.get("dir") is not None:
         options["dir"] = Path(options["dir"]).expanduser()
     if "fields" in options:
@@ -1922,7 +1934,9 @@ class Driver:
         self.timeline = timeline if isinstance(timeline, bool) else Path(timeline).expanduser()
         #: record snapshots of state fields for the globe viewer (``freecam globe DIR``): False
         #: (off, the default), True (T, Q, CLDLIQ and CLDICE every step, into the run directory's
-        #: ``state``), a directory, or options {"dir", "fields", "every", "action_steps"}
+        #: ``state``), a directory, or options {"dir", "fields", "every", "action_steps",
+        #: "flush_every"}; {"store": "memory", "keep_steps", "keep_actions", ...} keeps them in the
+        #: ranks' memory instead, for :meth:`query_state` (the Workflow Builder's globe)
         self.record_state = _state_options(record_state)
         # Do not resolve the final ``.venv/bin/python`` symlink: Python uses
         # that invocation path to select the virtual environment's site-packages.
@@ -2293,8 +2307,8 @@ class Driver:
         Only the page starts: no PBS, no MPI.  The handle's ``url`` carries the
         session token; ``close()`` stops the page and leaves the model as it
         is.  The model itself starts on the first Run the page asks for.  With
-        ``globe`` (the default) a model not yet started records its state every
-        step for the page's Globe tab (``record_state``).
+        ``globe`` (the default) a model not yet started keeps its state of every
+        step in its ranks' memory for the page's Globe tab (``record_state``).
         """
 
         from .workflow_builder.ui import launch_ui
@@ -2321,11 +2335,28 @@ class Driver:
     def state_dir(self) -> Path | None:
         """Where the rank workers record their state snapshots, or None when it is off."""
 
-        if self.record_state is None:
+        if self.record_state is None or self.record_state.get("store") == "memory":
             return None
         if self.record_state.get("dir") is None:
             return None if self.run_dir is None else self.run_dir / "state"
         return Path(self.record_state["dir"]).resolve()
+
+    @property
+    def state_live(self) -> bool:
+        """The model is up and keeps its state snapshots in memory: :meth:`query_state` answers."""
+
+        session = self._session
+        return (self.record_state is not None and self.record_state.get("store") == "memory"
+                and session is not None and bool(getattr(session, "ready", False)))
+
+    def query_state(self, request: Mapping[str, Any]) -> Any:
+        """Ask the running model for some of the state snapshots its ranks keep in memory
+        (``record_state={"store": "memory"}``): what the Workflow Builder's globe shows.  During
+        a run it is answered between two steps."""
+
+        if not self.state_live:
+            raise RuntimeError("no model keeping its state in memory is running")
+        return self._session.state_query(request)
 
     def _live_session(self) -> PICAMNotebookSession:
         if self._session is None:
@@ -2341,7 +2372,9 @@ class Driver:
             boundary = self._prepare_online_boundary(run_dir)
             timeline_options = {} if self.timeline is False else {
                 "timeline_dir": (Path(run_dir) / "timeline") if self.timeline is True else Path(self.timeline).resolve()}
-            if self.record_state is not None:
+            if self.record_state is not None and self.record_state.get("store") == "memory":
+                timeline_options["state_options"] = dict(self.record_state)
+            elif self.record_state is not None:
                 directory = self.record_state.get("dir")
                 timeline_options["state_options"] = {
                     **self.record_state, "dir": Path(run_dir) / "state" if directory is None else Path(directory).resolve()}

@@ -11,7 +11,9 @@ meridian through it a height-latitude section.
     freecam globe DIR --html page.html    # one self-contained page, a subset of the data
 
 The server reads only what a view asks for; a run still being recorded is
-re-read as its files grow.  The self-contained page embeds chosen fields and
+re-read as its files grow.  :class:`LiveStateData` is the same viewer over a
+running model that keeps its snapshots in its ranks' memory: each view asks
+the ranks for what it shows (the Workflow Builder's Globe tab).  The self-contained page embeds chosen fields and
 levels, quantized to 8 bits (a colour map has no more), compressed.
 """
 
@@ -30,7 +32,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from urllib.parse import parse_qs, urlparse
 
 import numpy as np
@@ -152,6 +154,8 @@ class StateData:
         self.levels_total = sum(levels)
         self.level_offset = {name: sum(levels[:i]) for i, name in enumerate(self.field_order)}
         self.step_frames = [int(step) for step in self.manifest.get("step_frames", [])]
+        #: frames before these are no longer kept (none: a directory keeps every frame)
+        self.kept_from = {"steps": 0, "actions": 0}
         frames = self.manifest.get("action_frames", [])
         self.action_frames = [(int(frame[0]), str(frame[1])) for frame in frames]
         #: what computed each action frame (None where the run did not record it)
@@ -191,13 +195,16 @@ class StateData:
             if cached is not None:
                 self._cache.move_to_end(key)
                 return cached
-        # the field's levels of the frame are one contiguous read
-        block = self._read(kind, index, offset=self.level_offset[field], levels=int(self.fields[field]["levels"]))
+        block = self._field_frame(kind, index, field)
         with self._lock:
             self._cache[key] = block
             while len(self._cache) > self._cache_frames:
                 self._cache.popitem(last=False)
         return block
+
+    def _field_frame(self, kind: str, index: int, field: str) -> np.ndarray:
+        # the field's levels of the frame are one contiguous read
+        return self._read(kind, index, offset=self.level_offset[field], levels=int(self.fields[field]["levels"]))
 
     def _read(self, kind: str, index: int, *, offset: int = 0, levels: int | None = None) -> np.ndarray:
         """``levels`` levels (all by default) of one frame from ``offset`` on, (levels, columns), as
@@ -245,7 +252,7 @@ class StateData:
         for step, name in self.action_frames:
             steps.setdefault(str(step), []).append(name)
         return {
-            "directory": self.directory.name,
+            "directory": "" if self.directory is None else self.directory.name,
             # the run directory's name only: a page is shared, and a path names the site
             "run": Path(str(self.manifest.get("run", ""))).name,
             "complete": bool(self.manifest.get("complete")),
@@ -265,6 +272,9 @@ class StateData:
             "start_of_step": START_OF_STEP,
             "anomaly_rules": {name: anomaly_rule(name) for name in self.field_order},
             "anomaly_kinds": list(ANOMALY_KINDS),
+            # frames before these are no longer kept (a model keeping the newest in memory)
+            "kept_from": dict(self.kept_from),
+            "live": self.directory is None,
         }
 
     def level(self, kind: str, index: int, field: str, level: int, mode: str = "value") -> np.ndarray:
@@ -311,14 +321,18 @@ class StateData:
                 return self._seconds
         if not self.manifest.get("action_seconds"):
             return None
-        count = len(self.action_frames)
-        values = np.fromfile(self.directory / "action_seconds.bin", dtype="<f8", count=count * self.nranks)
-        if values.size != count * self.nranks:
+        seconds = self._load_seconds(len(self.action_frames))
+        if seconds is None:
             return None
-        seconds = values.reshape(count, self.nranks).T
         with self._lock:
             self._seconds = seconds
         return seconds
+
+    def _load_seconds(self, count: int) -> np.ndarray | None:
+        values = np.fromfile(self.directory / "action_seconds.bin", dtype="<f8", count=count * self.nranks)
+        if values.size != count * self.nranks:
+            return None
+        return values.reshape(count, self.nranks).T
 
     def changes(self, step: int, field: str) -> list[dict[str, Any]]:
         """Per action frame of ``step``: how much the action changed ``field`` (largest and
@@ -548,6 +562,31 @@ class StateData:
 
     def _step_changes(self, step: int) -> dict[str, list[dict[str, Any]]]:
         indices = self.action_steps[step]
+        largest, squares = self._change_sums(indices)
+        rows = {}
+        for name in self.field_order:
+            scale = abs(float(self.fields[name]["scale"]))
+            values = int(self.fields[name]["levels"]) * self.ncol
+            rms = np.sqrt(np.asarray(squares[name]) / max(values, 1)) * scale
+            rows[name] = [{"index": index, "name": self.action_frames[index][1],
+                           "max": float(largest[name][k] * scale), "rms": float(rms[k])}
+                          for k, index in enumerate(indices)]
+        seconds = self.action_seconds()
+        if seconds is not None:
+            # how long each action took: the mean over the ranks (their share of the step) and
+            # the slowest rank's time
+            ranks = self.rank_columns > 0
+            for name in self.field_order:
+                for row in rows[name]:
+                    column = seconds[ranks, row["index"]]
+                    row["seconds_mean"] = float(column.mean()) if column.size else 0.0
+                    row["seconds_max"] = float(column.max()) if column.size else 0.0
+        return rows
+
+    def _change_sums(self, indices: list[int]) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+        """Per action frame, each field's largest change from the frame before and the sum of the
+        squared changes, over every column and level (stored units)."""
+
         count = len(indices)
         largest = {name: np.zeros(count) for name in self.field_order}
         squares = {name: np.zeros(count) for name in self.field_order}
@@ -563,25 +602,169 @@ class StateData:
                         largest[name][k] = np.abs(change).max()
                         squares[name][k] = (change ** 2).sum()
             before = block
-        rows = {}
-        for name in self.field_order:
-            scale = abs(float(self.fields[name]["scale"]))
-            values = int(self.fields[name]["levels"]) * self.ncol
-            rms = np.sqrt(squares[name] / max(values, 1)) * scale
-            rows[name] = [{"index": index, "name": self.action_frames[index][1],
-                           "max": float(largest[name][k] * scale), "rms": float(rms[k])}
-                          for k, index in enumerate(indices)]
-        seconds = self.action_seconds()
-        if seconds is not None:
-            # how long each action took: the mean over the ranks (their share of the step) and
-            # the slowest rank's time
-            ranks = self.rank_columns > 0
+        return largest, squares
+
+
+class LiveStateData(StateData):
+    """The snapshots a running model keeps in its ranks' memory (``record_state={"store":
+    "memory"}``), asked of the ranks through ``query`` (:meth:`freecam.pi_cam.facade.Driver.
+    query_state`): one field of one snapshot is gathered over every column, a sum over the
+    globe is reduced on the ranks, one column comes from the rank that holds it.  Every view of
+    :class:`StateData` works the same; a frame the ranks no longer keep is refused."""
+
+    def __init__(self, query: Callable[[Mapping[str, Any]], Any], *, cache_frames: int = 48) -> None:
+        self.directory = None
+        self._query = query
+        self._cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
+        self._cache_frames = int(cache_frames)
+        self._lock = threading.Lock()
+        self._changes: dict[tuple[int, str], list[dict[str, Any]]] = {}
+        self._changes_lock = threading.Lock()
+        self._anomalies: dict[Any, dict[str, np.ndarray]] = {}
+        self._seconds = None
+        layout = self._ask({"q": "layout"})
+        self.manifest = {key: layout[key] for key in ("run", "ranks", "dtype", "fields", "every", "action_steps",
+                                                      "action_seconds", "keep_steps", "keep_actions")}
+        self.manifest["complete"] = False
+        self.rank = np.asarray(layout["rank"], dtype=np.int64)
+        self.lat = np.asarray(layout["lat"], dtype=np.float64)
+        self.lon = np.asarray(layout["lon"], dtype=np.float64)
+        self.level_pressure = np.asarray(layout["level_pressure_pa"], dtype=np.float64)
+        self.nranks = int(layout["ranks"])
+        self.rank_columns = np.bincount(self.rank, minlength=self.nranks)
+        self.ncol = len(self.lat)
+        # a column's rank and its place among that rank's columns
+        self._rank_start = np.concatenate([[0], np.cumsum(self.rank_columns)])
+        self.landfrac = np.zeros(self.ncol)
+        self._land = False
+        self.dtypes = dict(layout["dtype"])
+        self.fields = {field["name"]: field for field in layout["fields"]}
+        self.field_order = [field["name"] for field in layout["fields"]]
+        levels = [int(field["levels"]) for field in layout["fields"]]
+        self.levels_total = sum(levels)
+        self.level_offset = {name: sum(levels[:i]) for i, name in enumerate(self.field_order)}
+        self.step_frames, self.action_frames, self.action_owners = [], [], []
+        self.action_steps = {}
+        self.kept_from = {"steps": 0, "actions": 0}
+        self.reload()
+
+    def _ask(self, request: Mapping[str, Any]) -> Any:
+        try:
+            return self._query(dict(request))
+        except (KeyError, ValueError):
+            raise
+        except Exception as error:      # the ranks' refusal, as the page's API reports one
+            raise ValueError(str(error).strip().splitlines()[-1] if str(error).strip() else repr(error)) from None
+
+    def changed(self) -> bool:
+        return True                     # a running model: the caller paces how often it asks
+
+    def reload(self) -> None:
+        """Take the frames recorded since the last reload (kept frames never change)."""
+
+        update = self._ask({"q": "frames", "since_steps": len(self.step_frames),
+                            "since_actions": len(self.action_frames), "landfrac": not self._land})
+        self.step_frames.extend(int(step) for step in update["step_frames"])
+        for frame in update["action_frames"]:
+            self.action_frames.append((int(frame[0]), str(frame[1])))
+            self.action_owners.append(frame[2] if len(frame) > 2 else None)
+            self.action_steps.setdefault(int(frame[0]), []).append(len(self.action_frames) - 1)
+        self.kept_from = {kind: int(update["kept_from"][kind]) for kind in KINDS}
+        self.manifest["complete"] = bool(update["complete"])
+        self.manifest["last_step"] = update["last_step"]
+        land = update.get("landfrac")
+        if land is not None and np.shape(land) == self.lat.shape:
+            self.landfrac, self._land = np.asarray(land, dtype=np.float64), True
+        with self._lock:
+            # the anomaly codes of every step grow with the steps; a step's own are kept
+            self._anomalies = {key: value for key, value in self._anomalies.items() if key[0] != "steps"}
+            self._seconds = None
+
+    def _kept(self, kind: str, index: int) -> None:
+        if int(index) < self.kept_from[kind]:
+            keep = self.manifest["keep_steps"] if kind == "steps" else self.manifest["keep_actions"]
+            raise ValueError(f"{kind} frame {index} is no longer kept: the model keeps its newest {keep} in memory")
+
+    def _field_frame(self, kind: str, index: int, field: str) -> np.ndarray:
+        self._kept(kind, index)
+        block = self._ask({"q": "frame", "kind": kind, "index": int(index), "field": field})
+        return np.asarray(block, dtype=np.dtype(self.dtypes[kind]))
+
+    def _read(self, kind: str, index: int, *, offset: int = 0, levels: int | None = None) -> np.ndarray:
+        raise NotImplementedError("a live view asks the ranks for one field, a sum, or a column")
+
+    def level(self, kind: str, index: int, field: str, level: int, mode: str = "value") -> np.ndarray:
+        """As :meth:`StateData.level`, from one level asked of the ranks (what a page following
+        the run asks every step), not the whole field."""
+
+        if kind not in KINDS:
+            raise ValueError(f"kind is steps or actions, not {kind!r}")
+        if field not in self.fields:
+            raise KeyError(f"no field {field!r}; the run recorded {self.field_order}")
+        index, level = int(index), int(level)
+        if not 0 <= index < self.frames(kind):
+            raise ValueError(f"{kind} frame {index} is not recorded (0..{self.frames(kind) - 1})")
+        if not 0 <= level < int(self.fields[field]["levels"]):
+            raise ValueError(f"{field} has levels 0..{int(self.fields[field]['levels']) - 1}")
+        scale = float(self.fields[field]["scale"])
+        now = self._level_row(kind, index, field, level).astype(np.float64)
+        if mode == "value":
+            shown = now * scale
+        elif mode == "change":
+            before = self.previous(kind, index)
+            shown = (np.zeros(now.shape) if before is None
+                     else (now - self._level_row(kind, before, field, level)) * scale)
+        else:
+            raise ValueError(f"mode is value or change, not {mode!r}")
+        return np.ascontiguousarray(shown.astype(np.float32), dtype="<f4")
+
+    def _level_row(self, kind: str, index: int, field: str, level: int) -> np.ndarray:
+        with self._lock:
+            whole = self._cache.get((kind, index, field))
+            row = whole[level] if whole is not None else self._cache.get((kind, index, field, level))
+        if row is not None:
+            return row
+        self._kept(kind, index)
+        row = np.asarray(self._ask({"q": "frame", "kind": kind, "index": index, "field": field, "level": level}),
+                         dtype=np.dtype(self.dtypes[kind])).reshape(-1)
+        with self._lock:
+            self._cache[(kind, index, field, level)] = row
+            while len(self._cache) > self._cache_frames:
+                self._cache.popitem(last=False)
+        return row
+
+    def _column_frames(self, kind: str, indices: list[int], column: int) -> np.ndarray:
+        for index in indices:
+            self._kept(kind, index)
+        rank = int(self.rank[column])
+        values = self._ask({"q": "column", "kind": kind, "indices": [int(i) for i in indices], "rank": rank,
+                            "local": int(column - self._rank_start[rank])})
+        return np.asarray(values, dtype=np.float64)
+
+    def _codes(self, kind: str, indices: list[int]) -> dict[str, np.ndarray]:
+        # the frames no longer kept have no codes (none anomalous)
+        codes = {name: np.zeros((len(indices), self.ncol), np.uint8) for name in self.field_order}
+        kept = [k for k, index in enumerate(indices) if index >= self.kept_from[kind]]
+        if kept:
+            answer = self._ask({"q": "codes", "kind": kind, "indices": [int(indices[k]) for k in kept]})
             for name in self.field_order:
-                for row in rows[name]:
-                    column = seconds[ranks, row["index"]]
-                    row["seconds_mean"] = float(column.mean()) if column.size else 0.0
-                    row["seconds_max"] = float(column.max()) if column.size else 0.0
-        return rows
+                codes[name][kept] = np.asarray(answer[name], dtype=np.uint8)
+        return codes
+
+    def _change_sums(self, indices: list[int]) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+        for index in indices:
+            self._kept("actions", index)
+        answer = self._ask({"q": "change_sums", "indices": [int(i) for i in indices]})
+        return ({name: np.asarray(answer["largest"][name], dtype=np.float64) for name in self.field_order},
+                {name: np.asarray(answer["squares"][name], dtype=np.float64) for name in self.field_order})
+
+    def _load_seconds(self, count: int) -> np.ndarray | None:
+        kept = np.asarray(self._ask({"q": "seconds"}), dtype=np.float64).reshape(self.nranks, -1)
+        seconds = np.full((self.nranks, count), np.nan)
+        first = self.kept_from["actions"]
+        width = min(kept.shape[1], count - first)
+        seconds[:, first:first + width] = kept[:, :width]
+        return seconds
 
 
 # -- the self-contained page ---------------------------------------------------
@@ -1058,5 +1241,5 @@ def anomalies_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["ANOMALY_KINDS", "StateData", "anomalies_main", "anomalies_text", "anomaly_codes", "anomaly_rule", "main",
+__all__ = ["ANOMALY_KINDS", "LiveStateData", "StateData", "anomalies_main", "anomalies_text", "anomaly_codes", "anomaly_rule", "main",
            "owner_text", "serve", "snapshot_data", "snapshot_html", "trace_main", "trace_text"]

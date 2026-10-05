@@ -14,6 +14,13 @@ barrier at the start, one gather of the column coordinates, one reduction of the
 level pressures after initialization, and one gather of the land fraction after
 the first step.
 
+Without a directory the snapshots stay in memory, each rank keeping its own columns of the
+newest ``keep_steps`` step snapshots and ``keep_actions`` action snapshots: nothing is written
+and nothing is sent while the model steps.  A viewer asks for what it shows with
+:meth:`StateRecorder.query`, which every rank answers together between two steps (the
+Workflow Builder's Globe tab, through the notebook session): one field of one snapshot is
+gathered to rank 0, a sum over every column is reduced there.
+
 Layout of a state directory::
 
     manifest.json        rank 0: fields (name, units, levels), frames written, complete
@@ -42,6 +49,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -57,6 +65,11 @@ START_OF_STEP = "start of step"
 
 #: the stored precision of each kind of snapshot
 DTYPES = {"steps": np.float32, "actions": np.float64}
+
+#: in memory: the snapshots each rank keeps by default (4 fields of 30 levels: 13 KB a step
+#: snapshot, 26 KB an action snapshot, of a rank's 27 columns at 512 ranks)
+KEEP_STEPS = 1000
+KEEP_ACTIONS = 2000
 
 
 @dataclass(frozen=True)
@@ -180,16 +193,21 @@ class _Resolved:
 
 
 class StateRecorder:
-    """One rank's state snapshots, gathered to rank 0 and appended to ``directory/*.bin``."""
+    """One rank's state snapshots, gathered to rank 0 and appended to ``directory/*.bin``, or,
+    without a directory, kept in this rank's memory for :meth:`query`."""
 
-    def __init__(self, directory: str | Path, *, rank: int, size: int, comm: Any | None = None,
+    def __init__(self, directory: str | Path | None, *, rank: int, size: int, comm: Any | None = None,
                  fields: Iterable[str] = DEFAULT_FIELDS, every: int = 1, action_steps: Iterable[int] = (),
-                 flush_every: int = 24, run_label: str = "") -> None:
+                 flush_every: int = 24, run_label: str = "", keep_steps: int = KEEP_STEPS,
+                 keep_actions: int = KEEP_ACTIONS) -> None:
         if every < 1:
             raise ValueError("every must be at least 1")
         if flush_every < 1:
             raise ValueError("flush_every must be at least 1")
-        self.directory = Path(directory)
+        if keep_steps < 1 or keep_actions < 1:
+            raise ValueError("keep_steps and keep_actions must be at least 1")
+        self.memory = directory is None
+        self.directory = None if directory is None else Path(directory)
         self.rank = int(rank)
         self.size = int(size)
         self.comm = comm
@@ -212,6 +230,14 @@ class StateRecorder:
         self._frames: dict[str, list] = {"steps": [], "actions": []}
         self._written = {"steps": 0, "actions": 0}
         self._last_step = -1
+        # in memory: this rank's snapshots, oldest first, and how many were dropped before them
+        self.keep_steps, self.keep_actions = int(keep_steps), int(keep_actions)
+        self._kept: dict[str, deque] = {"steps": deque(), "actions": deque()}
+        self._kept_seconds: deque[float] = deque()
+        self._dropped = {"steps": 0, "actions": 0}
+        self._columns: dict[str, np.ndarray] | None = None
+        self._landfrac: np.ndarray | None = None
+        self._complete = False
         self._started = False
         self._described = False
         self._surface = False
@@ -229,6 +255,9 @@ class StateRecorder:
     def start(self) -> None:
         """Rank 0 creates the directory and empties the files (collectively: all ranks, then on)."""
 
+        if self.memory:
+            self._started = True
+            return
         if self.rank == 0:
             self.directory.mkdir(parents=True, exist_ok=True)
             for kind in ("steps", "actions", "action_seconds"):
@@ -265,9 +294,13 @@ class StateRecorder:
         lon_all = np.concatenate([np.asarray(v[1], dtype=np.float64) for v in gathered])
         if lat_all.size and float(np.nanmax(np.abs(lat_all))) <= np.pi / 2 + 1e-6:
             lat_all, lon_all = np.degrees(lat_all), np.degrees(lon_all)
+        self._constituents = constituents
+        if self.memory:
+            self._columns = {"rank": np.concatenate(ranks), "lat": lat_all, "lon": lon_all,
+                             "level_pressure_pa": pressure}
+            return
         np.savez(self.directory / "columns.npz", rank=np.concatenate(ranks), lat=lat_all, lon=lon_all,
                  level_pressure_pa=pressure)
-        self._constituents = constituents
         self._write_manifest(complete=False)
 
     def _level_pressure(self, pool: Mapping[str, Any], ncol: Sequence[int]) -> np.ndarray:
@@ -327,7 +360,9 @@ class StateRecorder:
             # CESM's own clock): every rank gets here at the same step
             self._surface = True
             self.write_surface(pool)
-        if len(self._pending["steps"]) >= self.flush_every or len(self._pending["actions"]) >= 4 * self.flush_every:
+        if self.memory:
+            self._keep()
+        elif len(self._pending["steps"]) >= self.flush_every or len(self._pending["actions"]) >= 4 * self.flush_every:
             self.flush()
 
     def write_surface(self, pool: Mapping[str, Any]) -> None:
@@ -347,7 +382,11 @@ class StateRecorder:
         if self.rank != 0:
             return
         land = np.concatenate([np.asarray(v, dtype=np.float64) for v in gathered]) if gathered else np.zeros(0)
-        np.savez(self.directory / "surface.npz", landfrac=np.where(np.isfinite(land), land, 0.0))
+        land = np.where(np.isfinite(land), land, 0.0)
+        if self.memory:
+            self._landfrac = land
+            return
+        np.savez(self.directory / "surface.npz", landfrac=land)
 
     def flush(self, *, collective: bool = True) -> None:
         """Gather the pending snapshots to rank 0, which appends them and names them in the
@@ -361,6 +400,9 @@ class StateRecorder:
         """
 
         if not self._started:
+            return
+        if self.memory:
+            self._keep()
             return
         if not collective:
             for pending in self._pending.values():
@@ -388,11 +430,160 @@ class StateRecorder:
         if self.rank == 0 and self._described:
             self._write_manifest(complete=False)
 
-    def _gather(self, values: np.ndarray) -> list[np.ndarray]:
+    def _gather(self, values: Any) -> list[Any]:
         gather = getattr(self.comm, "gather", None)
         if callable(gather) and self.size > 1:
             return gather(values, root=0) or []
         return [values]
+
+    # -- in memory -----------------------------------------------------------
+    def _keep(self) -> None:
+        """Move the pending snapshots into this rank's memory, dropping the oldest beyond the
+        bounds (action snapshots a whole step at a time)."""
+
+        for kind, pending in self._pending.items():
+            self._kept[kind].extend(pending)
+            self._written[kind] += len(pending)
+            pending.clear()
+        self._kept_seconds.extend(self._pending_seconds)
+        self._pending_seconds.clear()
+        while len(self._kept["steps"]) > self.keep_steps:
+            self._kept["steps"].popleft()
+            self._dropped["steps"] += 1
+        actions, frames = self._kept["actions"], self._frames["actions"]
+        while len(actions) > self.keep_actions:
+            oldest = frames[self._dropped["actions"]][0]
+            if oldest == frames[-1][0]:
+                break                                   # never the step just recorded
+            while actions and frames[self._dropped["actions"]][0] == oldest:
+                actions.popleft()
+                self._kept_seconds.popleft()
+                self._dropped["actions"] += 1
+
+    def _local(self, kind: str, index: int) -> np.ndarray:
+        """This rank's part of a kept snapshot, (sum(levels), columns)."""
+
+        if kind not in DTYPES:
+            raise ValueError(f"kind is steps or actions, not {kind!r}")
+        index, first = int(index), self._dropped[kind]
+        if index < first:
+            keep = self.keep_steps if kind == "steps" else self.keep_actions
+            raise ValueError(f"{kind} frame {index} is no longer kept: the model keeps the newest {keep}")
+        if index >= first + len(self._kept[kind]):
+            raise ValueError(f"{kind} frame {index} is not recorded yet")
+        levels = sum(field.levels for field in self._resolved)
+        return self._kept[kind][index - first].reshape(levels, -1)
+
+    def _field_rows(self, name: str) -> slice:
+        offset = 0
+        for field in self._resolved:
+            if field.spec.name == name:
+                return slice(offset, offset + field.levels)
+            offset += field.levels
+        raise ValueError(f"no field {name!r}; the run records {[f.spec.name for f in self._resolved]}")
+
+    def query(self, request: Mapping[str, Any]) -> Any:
+        """Answer a viewer's request from the snapshots kept in memory.  Collective: every rank
+        is asked the same request at the same point (between two steps); the answer is rank 0's,
+        None on the others (``column``: the owning rank's).
+
+        ``layout``: the fields, the columns and the level pressures.  ``frames``: the frames
+        recorded after the first ``since_steps`` and ``since_actions``, and how many are no longer
+        kept.  ``frame``: one field (or one ``level`` of it) of one snapshot over every column,
+        (levels, columns).  ``codes``: each field's anomaly code per frame and column.  ``change_sums``: per action
+        frame, each field's largest change and sum of squared changes over every column.
+        ``column``: one column through some frames.  ``seconds``: every kept action frame's time
+        on every rank, (ranks, frames)."""
+
+        if not self.memory:
+            raise ValueError("this recorder writes its snapshots to files: read its directory")
+        if not self._described:
+            raise ValueError("no step recorded yet")
+        what = request.get("q")
+        root = self.rank == 0
+        if what == "layout":
+            return self._layout_payload() if root else None
+        if what == "frames":
+            if not root:
+                return None
+            since_steps, since_actions = int(request.get("since_steps", 0)), int(request.get("since_actions", 0))
+            return {"step_frames": self._frames["steps"][since_steps:self._written["steps"]],
+                    "action_frames": self._frames["actions"][since_actions:self._written["actions"]],
+                    "kept_from": dict(self._dropped), "last_step": self._last_step,
+                    "complete": self._complete,
+                    # the land fraction (gathered at the first step) only to a viewer still without it
+                    "landfrac": self._landfrac if request.get("landfrac") else None}
+        if what == "frame":
+            block = self._local(request["kind"], request["index"])[self._field_rows(str(request["field"]))]
+            if request.get("level") is not None:
+                level = int(request["level"])
+                if not 0 <= level < len(block):
+                    raise ValueError(f"{request['field']} has levels 0..{len(block) - 1}")
+                block = block[level:level + 1]
+            parts = self._gather(np.ascontiguousarray(block))
+            return np.concatenate(parts, axis=1) if root else None
+        if what == "codes":
+            from .state_view import anomaly_codes
+
+            kind, indices = request["kind"], [int(i) for i in request["indices"]]
+            local = {field.spec.name: np.zeros((len(indices), len(self._local(kind, indices[0])[0]) if indices else 0),
+                                               np.uint8) for field in self._resolved}
+            for k, index in enumerate(indices):
+                block = self._local(kind, index)
+                for field in self._resolved:
+                    name = field.spec.name
+                    local[name][k] = anomaly_codes(block[self._field_rows(name)], name, field.spec.scale)
+            parts = self._gather(local)
+            if not root:
+                return None
+            return {name: np.concatenate([part[name] for part in parts], axis=1) for name in local}
+        if what == "change_sums":
+            indices = [int(i) for i in request["indices"]]
+            names = [field.spec.name for field in self._resolved]
+            largest = np.zeros((len(names), len(indices)))
+            squares = np.zeros((len(names), len(indices)))
+            before = None
+            for k, index in enumerate(indices):
+                block = self._local("actions", index).astype(np.float64)
+                if before is not None:
+                    for f, name in enumerate(names):
+                        rows = self._field_rows(name)
+                        change = block[rows] - before[rows]
+                        if change.size:
+                            largest[f, k] = np.abs(change).max()
+                            squares[f, k] = (change ** 2).sum()
+                before = block
+            parts = self._gather((largest, squares))
+            if not root:
+                return None
+            # NaN where a change was not finite: the largest of any rank's, as one file would give
+            most = np.stack([part[0] for part in parts]).max(axis=0)
+            total = np.stack([part[1] for part in parts]).sum(axis=0)
+            return {"largest": {name: most[f] for f, name in enumerate(names)},
+                    "squares": {name: total[f] for f, name in enumerate(names)}}
+        if what == "column":
+            if self.rank != int(request["rank"]):
+                return None
+            local = int(request["local"])
+            return np.stack([self._local(request["kind"], index)[:, local] for index in request["indices"]]
+                            ).astype(np.float64)
+        if what == "seconds":
+            parts = self._gather(np.asarray(self._kept_seconds, dtype=np.float64))
+            return np.stack(parts) if root else None
+        raise ValueError(f"no state query {what!r}")
+
+    def _layout_payload(self) -> dict[str, Any]:
+        assert self._columns is not None
+        return {"run": self.run_label, "ranks": self.size,
+                "dtype": {kind: np.dtype(dtype).str for kind, dtype in DTYPES.items()},
+                "fields": self._field_payload(), "constituents": getattr(self, "_constituents", []),
+                "every": self.every, "action_steps": sorted(self.action_steps), "action_seconds": True,
+                "keep_steps": self.keep_steps, "keep_actions": self.keep_actions, **self._columns}
+
+    def _field_payload(self) -> list[dict[str, Any]]:
+        return [{"name": field.spec.name, "field": field.spec.field, "constituent": field.spec.constituent,
+                 "levels": field.levels, "units": field.spec.units, "scale": field.spec.scale,
+                 "label": field.spec.label} for field in self._resolved]
 
     def abandon(self) -> None:
         """This rank failed: wait for no other rank, mark nothing complete."""
@@ -407,18 +598,22 @@ class StateRecorder:
             return
         self.flush()
         self._closed = True
-        if self.rank == 0 and self._described:
+        self._complete = True
+        if self.rank == 0 and self._described and not self.memory:
             self._write_manifest(complete=True)
 
     # -- metadata ----------------------------------------------------------
     def describe_run(self) -> dict[str, Any]:
         """What this rank recorded, for the run summary."""
 
-        return {"fields": [spec.name for spec in self.specs], "every": self.every,
-                "action_steps": sorted(self.action_steps),
-                "step_snapshots": self._written["steps"] + len(self._pending["steps"]),
-                "action_snapshots": self._written["actions"] + len(self._pending["actions"]),
-                "read_only": True}
+        summary = {"fields": [spec.name for spec in self.specs], "every": self.every,
+                   "action_steps": sorted(self.action_steps),
+                   "step_snapshots": self._written["steps"] + len(self._pending["steps"]),
+                   "action_snapshots": self._written["actions"] + len(self._pending["actions"]),
+                   "store": "memory" if self.memory else "files", "read_only": True}
+        if self.memory:
+            summary["kept"] = {kind: len(kept) for kind, kept in self._kept.items()}
+        return summary
 
     def _write_manifest(self, *, complete: bool) -> None:
         manifest = {
@@ -428,10 +623,7 @@ class StateRecorder:
             "ranks": self.size,
             "dtype": {kind: np.dtype(dtype).str for kind, dtype in DTYPES.items()},
             "layout": "per snapshot: every field in order, each (levels, columns) in C order, the columns in rank order",
-            "fields": [{"name": field.spec.name, "field": field.spec.field,
-                        "constituent": field.spec.constituent, "levels": field.levels,
-                        "units": field.spec.units, "scale": field.spec.scale, "label": field.spec.label}
-                       for field in self._resolved],
+            "fields": self._field_payload(),
             "constituents": getattr(self, "_constituents", []),
             "every": self.every,
             "action_steps": sorted(self.action_steps),
@@ -470,5 +662,5 @@ def parse_steps(text: str) -> tuple[int, ...]:
     return tuple(sorted(set(steps)))
 
 
-__all__ = ["DEFAULT_FIELDS", "FieldSpec", "KNOWN_FIELDS", "SCHEMA_VERSION", "START_OF_STEP", "StateRecorder",
-           "field_spec", "parse_steps"]
+__all__ = ["DEFAULT_FIELDS", "FieldSpec", "KEEP_ACTIONS", "KEEP_STEPS", "KNOWN_FIELDS", "SCHEMA_VERSION",
+           "START_OF_STEP", "StateRecorder", "field_spec", "parse_steps"]

@@ -254,12 +254,30 @@ function GlobeTab({ mode, run, token }: { mode: Mode; run: RunStatus | null; tok
     return <p className="muted">This model records no state for the globe: it was started without it, or the page was opened with <code>globe=False</code>. Close model, then Run again.</p>;
   }
   if (!globe.ready) {
-    return <p className="muted">The globe starts with the first Run: it shows each step as the model records it.</p>;
+    if (run?.state === "initializing" || run?.state === "queued") {
+      return (
+        <p className="muted">
+          The model is starting{run.job_id ? <> (PBS job <code>{run.job_id}</code>)</> : null}: its job may wait in the
+          queue before its ranks initialize. The globe shows the first step as soon as the model takes it.
+        </p>
+      );
+    }
+    if (globe.memory && run?.state === "closed") {
+      return <p className="muted">The model is closed, and the state it kept in memory with it. Run again to follow a new one.</p>;
+    }
+    return <p className="muted">The globe starts with the first Run: it shows each step as the model takes it.</p>;
   }
   return (
     <div className="globe-tab">
       <div className="code-tabs">
-        <span className="muted">Recorded in <code>{globe.dir}</code>; the newest step is shown while the run goes on.</span>
+        {globe.memory ? (
+          <span className="muted">
+            Read from the ranks&apos; memory between steps (the newest {globe.keep_steps ?? 1000} steps are kept; nothing is
+            written); the newest step is shown while the run goes on.
+          </span>
+        ) : (
+          <span className="muted">Recorded in <code>{globe.dir}</code>; the newest step is shown while the run goes on.</span>
+        )}
         {token && <a href={`globe/?token=${encodeURIComponent(token)}`} target="_blank" rel="noreferrer">Open in a new tab</a>}
       </div>
       <iframe className="globe-frame" src="globe/" title="Globe of the model state" />

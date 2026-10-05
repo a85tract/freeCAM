@@ -157,7 +157,7 @@ a step: it owns the order of the actions, and the state pool is the model's
 own memory. The recorder is off unless asked for:
 
 ```bash
-# the rank command line (the online 50-step job's knobs are PYCAM_STATE=1, PYCAM_STATE_*)
+# the rank command line (the online 50-step job's knobs are PYCAM_STATE=1 or memory, PYCAM_STATE_*)
 mpiexec -n 512 python -m freecam.pi_cam.cli ... --state-dir <run>/state \
     --state-fields T,Q,CLDLIQ,CLDICE --state-every 1 --state-action-steps 24
 ```
@@ -165,6 +165,7 @@ mpiexec -n 512 python -m freecam.pi_cam.cli ... --state-dir <run>/state \
 ```python
 fc.Driver(case="PI-atm", record_state=True)      # T, Q, CLDLIQ and CLDICE every step, into <run>/state
 fc.Driver(case="PI-atm", record_state={"fields": ["T", "CLDLIQ"], "every": 6, "action_steps": [24]})
+fc.Driver(case="PI-atm", record_state={"store": "memory", "keep_steps": 1000})   # nothing written (below)
 ```
 
 Every rank copies the chosen fields of its own columns (read-only: a float32
@@ -217,20 +218,14 @@ the original: the online 50-step gate recording the four default fields every
 step, written every step as the Workflow Builder records them, and after every
 action at step 24 -- 50 step and 49 action snapshots -- is bit-for-bit with the
 oracle (`validation/pi_cam_exact_cesm_online_state-record-live_50step*.json`,
-job 7712576).
-
-#### In the Workflow Builder
-
-The page started by `driver.ui()` or `freecam ui` has a *Globe* tab with the
-same viewer, served by the page's own service under `/globe/` and following
-the run the page started: each step appears as the model records it, and the
-slider stays on the newest step until it is moved back. For that the page has
-a model that is not yet running record `T`, `Q`, `CLDLIQ` and `CLDICE` every
-step and write them every step (`record_state={"flush_every": 1}`); a
-`record_state` the caller chose is kept, with its fields and interval.
-`driver.ui(globe=False)` or `freecam ui --no-globe` leaves the model as it is,
-and a model already running keeps what it was started with. *Open in a new
-tab* gives the viewer a window of its own.
+job 7712576). Kept in memory instead, as the Workflow Builder keeps them, the
+same four fields of every step are bit-for-bit too
+(`..._state-record-memory_50step*.json`, job 7712854), and cost the model
+next to nothing: 50 steps at 512 ranks advanced in 19.80 s, against 19.63 and
+19.66 s recording nothing and 21.85 s writing the snapshots every step (four
+jobs run back to back). Written every step, rank 0's write of each step holds
+the others back at the next exchange; kept in memory, each rank only copies its
+own columns.
 
 Rank 0 names a step in the manifest only once every rank's part of it is in
 the file, so a page following the run never reads a step that is not all
@@ -238,6 +233,35 @@ there. A rank that fails waits for no other rank: what was written stays, what
 it had not yet sent is dropped, and the run is not marked complete. A
 directory written before this layout (schema 1, one file per rank) is refused;
 record the run again.
+
+#### In the Workflow Builder
+
+The page started by `driver.ui()` or `freecam ui` has a *Globe* tab with the
+same viewer, served by the page's own service under `/globe/` and following
+the run the page started: each step appears as the model takes it, and the
+slider stays on the newest step until it is moved back. *Open in a new tab*
+gives the viewer a window of its own.
+
+For that the page has a model that is not yet running keep `T`, `Q`, `CLDLIQ`
+and `CLDICE` of every step in its ranks' memory
+(`record_state={"store": "memory"}`): each rank copies its own columns into
+its own memory (13 KB a step at 512 ranks) and nothing is written or sent while
+the model steps. The page asks for what it shows -- one field at one level,
+what each action changed, one column -- and the service asks the ranks between
+two steps (a run of the page's steps one at a time lets a waiting question go
+before the next step): one field of one snapshot is gathered to rank 0, a sum
+over the globe is reduced on the ranks, a column comes from the rank that
+holds it. Each rank keeps the newest `keep_steps` step snapshots (1000) and
+`keep_actions` action snapshots (2000, dropped a whole step at a time); an
+older frame is refused. The state goes with the model: after *Close model*
+there is nothing to show, so a run to look at later records into a directory
+instead.
+
+A `record_state` the caller chose is kept, with its fields, interval and action
+steps; with a directory, or `store="files"`, the run writes its files every
+step and the tab reads them. `driver.ui(globe=False)` or `freecam ui
+--no-globe` leaves the model as it is, and a model already running keeps what
+it was started with.
 
 #### Who changed a column
 

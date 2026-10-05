@@ -101,6 +101,12 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         for _ in range(int(command.get("count", 1))):
             driver.step()
         return _status(driver) if comm.rank == 0 else None
+    if operation == "state_query":
+        # the globe's view of the snapshots the ranks keep in memory: every rank answers
+        recorder = getattr(driver, "state_recorder", None)
+        if recorder is None:
+            raise RuntimeError("this model records no state (start it with record_state)")
+        return recorder.query(command["request"])
     if operation == "configure_output":
         driver.configure_output(
             history_every=command.get("history_every"),
@@ -509,6 +515,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--state-action-steps", default="")
     parser.add_argument("--state-flush-every", type=int, default=24,
                         help="write the snapshots every N recorded steps; 1 for a page that follows the run")
+    parser.add_argument("--state-memory", action="store_true",
+                        help="keep the snapshots in each rank's memory, for the session's state queries, "
+                             "instead of writing them to --state-dir")
+    parser.add_argument("--state-keep-steps", type=int, default=None,
+                        help="with --state-memory: the newest step snapshots each rank keeps")
+    parser.add_argument("--state-keep-actions", type=int, default=None,
+                        help="with --state-memory: the newest action snapshots each rank keeps")
     args = parser.parse_args(argv)
     comm = MPI.COMM_WORLD
     connection = None
@@ -549,14 +562,16 @@ def main(argv: list[str] | None = None) -> int:
                     args.timeline_dir, rank=comm.rank, size=comm.size, comm=comm,
                     flush_every=args.timeline_flush_every, run_label=str(args.run_dir),
                 ))
-            if args.state_dir is not None:
-                from .state_record import StateRecorder, parse_steps
+            if args.state_dir is not None or args.state_memory:
+                from .state_record import KEEP_ACTIONS, KEEP_STEPS, StateRecorder, parse_steps
 
                 driver.attach_state_recorder(StateRecorder(
-                    args.state_dir, rank=comm.rank, size=comm.size, comm=comm,
+                    None if args.state_memory else args.state_dir, rank=comm.rank, size=comm.size, comm=comm,
                     fields=[name for name in args.state_fields.split(",") if name.strip()],
                     every=args.state_every, action_steps=parse_steps(args.state_action_steps),
                     flush_every=args.state_flush_every, run_label=str(args.run_dir),
+                    keep_steps=args.state_keep_steps or KEEP_STEPS,
+                    keep_actions=args.state_keep_actions or KEEP_ACTIONS,
                 ))
             driver.initialize()
             startup_error = None

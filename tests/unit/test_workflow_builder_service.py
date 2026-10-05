@@ -164,17 +164,24 @@ class _RecordingDriver(FakeDriver):
         self.state_dir = state_dir
 
 
-def test_the_page_turns_state_recording_on_before_the_model_starts(tmp_path):
+def test_the_page_keeps_the_state_in_memory_before_the_model_starts(tmp_path):
     driver = _RecordingDriver(nsteps=3, run_dir=tmp_path / "run")
     service = WorkflowService(driver, generated_dir=tmp_path / "generated")
-    assert driver.record_state == {"dir": None, "flush_every": 1}
-    driver.record_state = {"dir": None, "fields": ["T"], "flush_every": 6}
+    assert driver.record_state == {"store": "memory", "action_steps": []}
+    assert service.run_payload()["globe"] == {"enabled": True, "dir": None, "memory": True, "keep_steps": 1000,
+                                              "ready": False}
+    driver.record_state = {"dir": None, "fields": ["T"], "every": 2}
     WorkflowService(driver, generated_dir=tmp_path / "generated")
-    assert driver.record_state["flush_every"] == 6                    # a choice of the caller's stays
+    assert driver.record_state["store"] == "memory" and driver.record_state["fields"] == ["T"]   # the caller's stay
+    driver.record_state = {"store": "files"}
+    WorkflowService(driver, generated_dir=tmp_path / "generated")
+    assert driver.record_state == {"store": "files", "flush_every": 1, "action_steps": []}
+    driver.record_state = {"dir": tmp_path / "state"}                  # a directory of the caller's: files
+    WorkflowService(driver, generated_dir=tmp_path / "generated")
+    assert "store" not in driver.record_state and driver.record_state["flush_every"] == 1
     off = _RecordingDriver(nsteps=3, run_dir=tmp_path / "run")
     WorkflowService(off, generated_dir=tmp_path / "generated", globe=False)
     assert off.record_state is None
-    assert service.run_payload()["globe"] == {"enabled": True, "dir": None, "ready": False}
 
 
 def test_the_globe_routes_need_the_token_and_a_recording(client, service):
@@ -191,6 +198,7 @@ def test_the_globe_serves_the_run_it_records(tmp_path, monkeypatch):
 
     state = tmp_path / "state"
     driver = _RecordingDriver(nsteps=3, run_dir=tmp_path / "run", state_dir=state)
+    driver.record_state = {"store": "files"}
     service = WorkflowService(driver, generated_dir=tmp_path / "generated")
     client = TestClient(create_app(service, static_dir=service._generated_dir))
     waiting = client.get("/globe/api/meta", headers=_headers(service))
@@ -206,3 +214,51 @@ def test_the_globe_serves_the_run_it_records(tmp_path, monkeypatch):
     assert client.get("/globe/api/level", params={"token": "wrong", "field": "T", "lev": 1}).status_code == 401
     bad = client.get("/globe/api/level", headers=_headers(service), params={"field": "T"})
     assert bad.status_code == 400
+
+
+class _LiveDriver(_RecordingDriver):
+    """A driver whose ranks keep their state in memory, answered by two fake recorders."""
+
+    def __init__(self, *args, recorders=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.recorders = recorders
+        if recorders is not None:                                      # a model started keeping it
+            self._session = object()
+            self.record_state = {"store": "memory", "action_steps": []}
+        self.asked: list[str] = []
+
+    @property
+    def state_live(self):
+        return self._session is not None
+
+    def query_state(self, request):
+        from test_pi_cam_state_record import ask
+
+        self.asked.append(request["q"])
+        return ask(self.recorders, request)
+
+
+def test_the_globe_asks_the_ranks_of_a_model_keeping_its_state_in_memory(tmp_path, monkeypatch):
+    from test_pi_cam_state_record import record_in_memory
+
+    starting = _LiveDriver(nsteps=3, run_dir=tmp_path / "run")
+    service = WorkflowService(starting, generated_dir=tmp_path / "generated")
+    service._run.state = "initializing"
+    client = TestClient(create_app(service, static_dir=service._generated_dir))
+    waiting = client.get("/globe/api/meta", headers=_headers(service))
+    assert waiting.status_code == 409 and "the model is starting" in waiting.json()["detail"]
+
+    driver = _LiveDriver(nsteps=3, run_dir=tmp_path / "run", recorders=record_in_memory(monkeypatch))
+    service = WorkflowService(driver, generated_dir=tmp_path / "generated")
+    client = TestClient(create_app(service, static_dir=service._generated_dir))
+    assert service.run_payload()["globe"]["ready"] is True and service.run_payload()["globe"]["memory"] is True
+    meta = client.get("/globe/api/meta", headers=_headers(service))
+    assert meta.status_code == 200 and meta.json()["live"] is True and meta.json()["step_frames"] == [0, 1, 2]
+    level = client.get("/globe/api/level", headers=_headers(service),
+                       params={"kind": "steps", "i": 2, "field": "T", "lev": 1})
+    assert level.status_code == 200 and len(level.content) == 4 * 6
+    assert driver.asked == ["layout", "frames", "frame"]               # nothing but what the page shows
+    # a model closed and started again is another: its state is asked for afresh
+    driver._session = object()
+    client.get("/globe/api/meta", headers=_headers(service))
+    assert driver.asked[-2:] == ["layout", "frames"]

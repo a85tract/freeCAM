@@ -25,6 +25,7 @@ cam_reference=${FREECAM_REFERENCE_RUN}
 #   FREECAM_PROVIDER_ORACLE     the captured exchange the provider checks itself against; empty: none
 #   FREECAM_RECORD_DIR          where the records go (default validation)
 #   PYCAM_STATE=1               also record state snapshots, for `freecam globe <root>/state`
+#   PYCAM_STATE=memory          keep them in every rank's memory instead, as the Workflow Builder does
 #   PYCAM_STATE_FIELDS          the fields (default T,Q,CLDLIQ,CLDICE)
 #   PYCAM_STATE_EVERY           steps between step snapshots (default 1)
 #   PYCAM_STATE_ACTION_STEPS    steps also recorded after every plan action (24, 23-24, 12-48/12)
@@ -43,10 +44,15 @@ root=${FREECAM_SCRATCH}/pyCAM/PI-cam/exact-cesm-online-50step-${PBS_JOBID}
 cam_run=${root}/cam-run
 cesm_run=${root}/cesm-provider-run
 state_flags=()
-if [ "${PYCAM_STATE:-0}" = 1 ]; then
-  state_flags=(--state-dir "${root}/state" --state-fields "${PYCAM_STATE_FIELDS:-T,Q,CLDLIQ,CLDICE}"
+if [ "${PYCAM_STATE:-0}" = 1 ] || [ "${PYCAM_STATE:-0}" = memory ]; then
+  state_flags=(--state-fields "${PYCAM_STATE_FIELDS:-T,Q,CLDLIQ,CLDICE}"
     --state-every "${PYCAM_STATE_EVERY:-1}" --state-action-steps "${PYCAM_STATE_ACTION_STEPS:-}"
     --state-flush-every "${PYCAM_STATE_FLUSH_EVERY:-24}")
+  if [ "${PYCAM_STATE}" = memory ]; then
+    state_flags+=(--state-memory)
+  else
+    state_flags+=(--state-dir "${root}/state")
+  fi
 fi
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1

@@ -106,6 +106,7 @@ class WorkflowService:
         self._worker: threading.Thread | None = None
         self._generated_dir = generated_dir
         self._globe_data: Any = None
+        self._globe_source: Any = None
         self._globe_checked = 0.0
         self._globe_lock = threading.Lock()
         self.log("info", "workflow builder ready")
@@ -162,9 +163,11 @@ class WorkflowService:
     # -- the globe ------------------------------------------------------------
 
     def _record_for_globe(self) -> None:
-        """Have the model record its state every step, written every step, so the page's globe
-        follows the run.  Only before the model starts: a model already running keeps what it
-        was started with."""
+        """Have the model keep its state of every step in its ranks' memory, so the page's globe
+        follows the run with nothing written: the page asks the ranks for what it shows, between
+        two steps.  Only before the model starts: a model already running keeps what it was
+        started with.  The caller's own options are kept; a directory, or ``store="files"``, of
+        theirs keeps the files (written every step)."""
 
         if not hasattr(self.driver, "record_state"):
             return
@@ -173,34 +176,56 @@ class WorkflowService:
                 self.log("info", "the globe needs state recording, which this model was started without; "
                                  "Close model and Run again to record it")
             return
-        if self.driver.record_state is None:
-            self.driver.record_state = {"dir": None, "flush_every": 1}
-        else:
-            self.driver.record_state = {**self.driver.record_state,
-                                        "flush_every": self.driver.record_state.get("flush_every", 1)}
+        from ..facade import _state_options
+
+        options = dict(self.driver.record_state or {})
+        if "store" not in options and options.get("dir") is None:
+            options["store"] = "memory"
+        if options.get("store", "files") == "files":
+            options.setdefault("flush_every", 1)
+        self.driver.record_state = _state_options(options)
 
     def globe_status(self) -> dict[str, Any]:
-        directory = getattr(self.driver, "state_dir", None) if hasattr(self.driver, "record_state") else None
+        options = getattr(self.driver, "record_state", None) if hasattr(self.driver, "record_state") else None
+        if options is not None and options.get("store") == "memory":
+            from ..state_record import KEEP_STEPS
+
+            return {"enabled": True, "dir": None, "memory": True,
+                    "keep_steps": int(options.get("keep_steps") or KEEP_STEPS),
+                    "ready": bool(getattr(self.driver, "state_live", False))}
+        directory = getattr(self.driver, "state_dir", None) if options is not None else None
         ready = directory is not None and (Path(directory) / "manifest.json").is_file()
-        return {"enabled": getattr(self.driver, "record_state", None) is not None,
-                "dir": None if directory is None else str(directory), "ready": ready}
+        return {"enabled": options is not None, "dir": None if directory is None else str(directory),
+                "memory": False, "ready": ready}
 
     def globe_data(self) -> Any:
-        """The recorded state of the run this page started, reloaded when the recorder has
-        written more (checked at most every two seconds)."""
+        """The recorded state of the run this page started: asked of the running model's ranks
+        (kept in memory), or read from its directory; brought up to date at most every two
+        seconds."""
 
-        from ..state_view import StateData
+        from ..state_view import LiveStateData, StateData
 
         status = self.globe_status()
         if not status["enabled"]:
             raise ServiceRefused("this model records no state for the globe (Close model and Run again)")
         if not status["ready"]:
+            if self._run.state in {"initializing", "queued"}:
+                raise ServiceRefused("the model is starting (its PBS job is queued or its ranks are initializing): "
+                                     "the globe begins with its first step")
+            if status["memory"] and self._run.state == "closed":
+                raise ServiceRefused("the model is closed, and the state it kept in memory with it: Run again")
             raise ServiceRefused("no step recorded yet: the globe starts with the first Run")
-        directory = Path(status["dir"])
+        # the model this page started: a model closed and started again is another
+        source = getattr(self.driver, "_session", None) if status["memory"] else Path(status["dir"])
         with self._globe_lock:
             now = time.monotonic()
-            if self._globe_data is None or Path(self._globe_data.directory) != directory:
-                self._globe_data, self._globe_checked = StateData(directory), now
+            other = source is not self._globe_source if status["memory"] else source != self._globe_source
+            if self._globe_data is None or other:
+                try:
+                    data = LiveStateData(self.driver.query_state) if status["memory"] else StateData(source)
+                except ValueError as error:          # no step recorded yet
+                    raise ServiceRefused(str(error)) from None
+                self._globe_data, self._globe_source, self._globe_checked = data, source, now
             elif now - self._globe_checked > 2.0:
                 self._globe_checked = now
                 if self._globe_data.changed():

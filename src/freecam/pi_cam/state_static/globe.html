@@ -1206,7 +1206,10 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function runLabel() {
   const meta = S.source.meta, steps = S.source.stepList(), actionSteps = S.source.actionSteps();
   $("run").textContent = `${meta.label || meta.run || meta.directory} · ${meta.columns} columns · ${steps.length} recorded steps` +
-    (actionSteps.length ? ` · processes recorded at step ${actionSteps.join(", ")}` : "") + (meta.complete ? "" : " · still recording");
+    (actionSteps.length ? ` · processes recorded at step ${actionSteps.join(", ")}` : "") +
+    // a running model keeping its state in memory: the oldest steps are dropped as it goes on
+    (meta.live ? " · live, from the model's memory" + ((meta.kept_from || {}).steps ? ` (the first ${meta.kept_from.steps} steps no longer kept)` : "")
+      : (meta.complete ? "" : " · still recording"));
 }
 async function follow() {
   // every 2 s while the run records: more steps on the slider, and the newest shown when the

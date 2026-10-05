@@ -20,7 +20,7 @@ export interface RunStatus {
   started_at: string | null;
   finished_at: string | null;
   /** the state the model records for the Globe tab: absent from services older than it */
-  globe?: { enabled: boolean; dir: string | null; ready: boolean };
+  globe?: { enabled: boolean; dir: string | null; ready: boolean; memory?: boolean; keep_steps?: number };
 }
 
 export interface ServiceState {

@@ -74,11 +74,38 @@ def pool(rank: int, ncol: list[int]) -> dict[str, np.ndarray]:
 
 
 def record(directory: Path, monkeypatch, *, steps: int = 3, action_steps=(1,), first: int = 0) -> list[dict]:
+    return _record(directory, monkeypatch, steps=steps, action_steps=action_steps, first=first)[0]
+
+
+def record_in_memory(monkeypatch, *, steps: int = 3, action_steps=(1,), **options) -> list[StateRecorder]:
+    """The same run as ``record``, kept in the two ranks' memory (the model still up)."""
+
+    return _record(None, monkeypatch, steps=steps, action_steps=action_steps, close=False, **options)[1]
+
+
+def ask(recorders: list[StateRecorder], request: dict):
+    """A state query as the rank workers answer it: every rank (rank 1 first, as the fake comm
+    needs), and the first answer in rank order."""
+
+    answers, errors = {}, []
+    for r in (1, 0):
+        try:
+            answers[r] = recorders[r].query(request)
+        except ValueError as error:
+            errors.append(str(error))
+    if errors:
+        assert len(errors) == 2, errors                                # every rank refuses alike
+        raise RuntimeError(f"PI-CAM command 'state_query' failed\nValueError: {errors[0]}")
+    return next((answers[r] for r in (0, 1) if answers[r] is not None), None)
+
+
+def _record(directory: Path | None, monkeypatch, *, steps: int = 3, action_steps=(1,), first: int = 0,
+            close: bool = True, **options) -> tuple[list[dict], list[StateRecorder]]:
     monkeypatch.setattr(state_record, "constituent_names", lambda library, count: NAMES[:count])
     comm = Comm()
     pools = [pool(0, [3, 1]), pool(1, [2, 0])]
     recorders = [StateRecorder(directory, rank=r, size=2, comm=comm.for_rank(r), fields=["T", "CLDLIQ"],
-                               every=1, action_steps=action_steps, flush_every=2) for r in (0, 1)]
+                               every=1, action_steps=action_steps, flush_every=2, **options) for r in (0, 1)]
     for recorder in recorders:
         recorder.start()
     for r in (1, 0):
@@ -97,9 +124,10 @@ def record(directory: Path, monkeypatch, *, steps: int = 3, action_steps=(1,), f
                                            "kernels": {"k": {"by": "ml", "file": "m.pt", "device": "cpu"}}})
         for r in (1, 0):
             recorders[r].step_done(step, pools[r])
-    for r in (1, 0):
-        recorders[r].close()
-    return pools
+    if close:
+        for r in (1, 0):
+            recorders[r].close()
+    return pools, recorders
 
 
 def test_every_rank_records_its_own_columns_and_rank_zero_describes_them(tmp_path: Path, monkeypatch) -> None:
@@ -298,6 +326,12 @@ def test_the_notebook_driver_passes_its_state_options_to_the_rank_workers(tmp_pa
     assert facade._state_options(False) is None
     assert facade._state_options(True) == {"dir": None}
     assert facade._state_options(tmp_path) == {"dir": tmp_path}
+    memory = facade._state_options({"store": "memory", "keep_steps": 50})
+    assert memory == {"store": "memory", "keep_steps": 50, "action_steps": []}
+    for wrong in ({"store": "disk"}, {"store": "memory", "dir": tmp_path}, {"keep_steps": 5},
+                  {"store": "memory", "keep_actions": 0}):
+        with pytest.raises(ValueError):
+            facade._state_options(wrong)
     options = facade._state_options({"fields": ["T", "CLDLIQ"], "action_steps": [24, 3, 24]})
     assert options == {"fields": ["T", "CLDLIQ"], "action_steps": [3, 24]}
     with pytest.raises(ValueError):
@@ -309,8 +343,11 @@ def test_the_notebook_driver_passes_its_state_options_to_the_rank_workers(tmp_pa
     assert driver.state_dir is None
     driver.record_state = {"dir": tmp_path / "globe"}
     assert driver.state_dir == (tmp_path / "globe").resolve()
+    driver.record_state = memory
+    assert driver.state_dir is None
     assert "state_options" in inspect.getsource(facade.Driver._live_session)
-    assert '"--state-dir", str(options["dir"])' in inspect.getsource(session.PICAMNotebookSession)
+    source = inspect.getsource(session.PICAMNotebookSession)
+    assert '"--state-dir", str(options["dir"])' in source and '"--state-memory"' in source
     worker = (Path(session.__file__).parent / "session_worker.py").read_text()
     assert worker.index("attach_state_recorder") < worker.index("driver.initialize()")
 
@@ -619,3 +656,99 @@ def test_the_viewer_sees_a_manifest_rewritten_within_the_same_second(tmp_path: P
     assert data.changed()
     data.reload()
     assert data.step_frames == [0]
+
+
+def test_a_model_keeping_its_state_in_memory_writes_nothing(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    recorders = record_in_memory(monkeypatch)
+    assert list(tmp_path.iterdir()) == []
+    assert [len(r._kept["steps"]) for r in recorders] == [3, 3] and [len(r._kept["actions"]) for r in recorders] == [3, 3]
+    with pytest.raises(ValueError, match="writes its snapshots to files"):
+        StateRecorder(tmp_path / "files", rank=0, size=1).query({"q": "layout"})
+
+
+def test_the_live_viewer_answers_as_the_recorded_directory_does(tmp_path: Path, monkeypatch) -> None:
+    from freecam.pi_cam.state_view import LiveStateData, respond
+
+    record(tmp_path, monkeypatch)
+    files = StateData(tmp_path)
+    recorders = record_in_memory(monkeypatch)
+    live = LiveStateData(lambda request: ask(recorders, request))
+    assert live.step_frames == files.step_frames and live.action_frames == files.action_frames
+    assert live.action_owners == files.action_owners
+    np.testing.assert_array_equal(live.landfrac, files.landfrac)
+    for kind, index, field, mode in (("steps", 2, "T", "value"), ("steps", 1, "CLDLIQ", "change"),
+                                     ("actions", 2, "CLDLIQ", "change"), ("actions", 0, "T", "value")):
+        np.testing.assert_array_equal(live.values(kind, index, field, mode), files.values(kind, index, field, mode))
+    assert live.changes(1, "CLDLIQ") == files.changes(1, "CLDLIQ")
+    assert live.changes(1, "T") == files.changes(1, "T")
+    np.testing.assert_array_equal(live.action_seconds(), files.action_seconds())
+    for column in (0, 3, 5):                                           # rank 0's and rank 1's columns
+        assert live.trace(1, column) == files.trace(1, column)
+        assert live.profile("steps", 2, "T", column) == files.profile("steps", 2, "T", column)
+    assert live.section("steps", 2, "T", 20.0) == files.section("steps", 2, "T", 20.0)
+    assert live.anomalies(1) == files.anomalies(1) and live.step_anomalies() == files.step_anomalies()
+    meta = live.meta()
+    assert meta["live"] is True and meta["complete"] is False          # the model is still up
+    assert meta["kept_from"] == {"steps": 0, "actions": 0}
+    same = ("live", "directory", "run", "complete")
+    assert {key: value for key, value in meta.items() if key not in same} == {
+        key: value for key, value in files.meta().items() if key not in same}
+    status, body, _ = respond(live, "/api/level", {"kind": "steps", "i": "2", "field": "T", "lev": "1"})
+    assert status == 200 and len(body) == 4 * 6
+    fresh = LiveStateData(lambda request: ask(recorders, request))  # one level asked, not the field
+    for kind, index, field, level, mode in (("steps", 2, "T", 1, "value"), ("steps", 1, "T", 2, "change"),
+                                            ("actions", 2, "CLDLIQ", 0, "change"), ("steps", 0, "T", 0, "change")):
+        np.testing.assert_array_equal(fresh.level(kind, index, field, level, mode),
+                                      files.level(kind, index, field, level, mode))
+    assert not any(len(key) == 3 for key in fresh._cache)
+
+
+def test_the_live_viewer_follows_the_run_and_refuses_what_is_no_longer_kept(monkeypatch) -> None:
+    from freecam.pi_cam.state_view import LiveStateData, respond
+
+    recorders = record_in_memory(monkeypatch, steps=5, action_steps=(1, 3), keep_steps=2, keep_actions=3)
+    live = LiveStateData(lambda request: ask(recorders, request))
+    assert live.step_frames == [0, 1, 2, 3, 4] and live.kept_from == {"steps": 3, "actions": 3}
+    np.testing.assert_allclose(live.values("steps", 4, "T")[0], [252.5, 253.5, 254.5, 255.5, 262.5, 263.5])
+    with pytest.raises(ValueError, match="no longer kept"):
+        live.values("steps", 2, "T")
+    status, body, _ = respond(live, "/api/level", {"kind": "steps", "i": "0", "field": "T", "lev": "1"})
+    assert status == 400 and b"newest 2" in body
+    assert [row["name"] for row in live.changes(3, "T")][1:] == ["cam_run1.process_0", "cam_run1.process_1"]
+    with pytest.raises(ValueError, match="no longer kept"):
+        live.changes(1, "T")                                           # step 1's actions were dropped whole
+    assert live.step_anomalies()["steps"] == [0, 1, 2, 3, 4]          # codes of the kept steps only
+    # the run goes on: a reload takes the new frames only
+    pools = [pool(0, [3, 1]), pool(1, [2, 0])]
+    for r in (1, 0):
+        recorders[r].step_done(5, pools[r])
+    live.reload()
+    assert live.step_frames == [0, 1, 2, 3, 4, 5] and live.kept_from["steps"] == 4
+
+
+def test_a_state_query_goes_before_the_next_step() -> None:
+    import threading
+
+    from freecam.pi_cam.session import PICAMNotebookError, PICAMNotebookSession
+
+    session = PICAMNotebookSession.__new__(PICAMNotebookSession)
+    session._query_turn = threading.Condition()
+    session._queries_waiting = 0
+    session._ready = False
+    session._connection = None
+    session.request_timeout = 5.0
+    with pytest.raises(PICAMNotebookError, match="still starting"):
+        session.state_query({"q": "layout"})
+    order: list[str] = []
+    session._queries_waiting = 1                                       # a page's query is waiting
+    stepping = threading.Thread(target=lambda: (session._wait_for_queries(), order.append("step")))
+    stepping.start()
+    stepping.join(0.2)
+    assert stepping.is_alive() and order == []                         # the step waits for it
+    order.append("query")
+    with session._query_turn:
+        session._queries_waiting = 0
+        session._query_turn.notify_all()
+    stepping.join(2.0)
+    assert order == ["query", "step"]

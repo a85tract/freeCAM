@@ -231,10 +231,11 @@ describe("the Globe tab", () => {
     expect(document.querySelector("iframe")).toBeNull();
   });
 
-  it("shows the recorded state of the page's own run", async () => {
-    const run = (globe: unknown) => ({ state: "running", step: 3, target_step: 10, job_id: "1.fake", run_dir: "/scratch/run", workflow_hash: null,
+  it("shows the state of the page's own run, kept in the ranks' memory", async () => {
+    let state = "initializing";
+    const run = (globe: unknown) => ({ state, step: 3, target_step: 10, job_id: "1.fake", run_dir: "/scratch/run", workflow_hash: null,
       applied_hash: null, message: null, model_calls: {}, started_at: null, finished_at: null, globe });
-    let globe: unknown = { enabled: true, dir: "/scratch/run/state", ready: false };
+    let globe: unknown = { enabled: true, dir: null, memory: true, keep_steps: 1000, ready: false };
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -247,9 +248,12 @@ describe("the Globe tab", () => {
     render(<App />);
     await screen.findByRole("listbox", { name: "Step order" });
     await user.click(screen.getByRole("tab", { name: "Globe" }));
-    expect(await screen.findByText(/The globe starts with the first Run/)).toBeInTheDocument();
-    globe = { enabled: true, dir: "/scratch/run/state", ready: true };
+    expect(await screen.findByText(/The model is starting/)).toBeInTheDocument();
+    expect(screen.getByText("1.fake")).toBeInTheDocument();
+    state = "running";
+    globe = { enabled: true, dir: null, memory: true, keep_steps: 1000, ready: true };
     const frame = await screen.findByTitle("Globe of the model state", undefined, { timeout: 4000 });
     expect(frame).toHaveAttribute("src", "globe/");
+    expect(screen.getByText(/Read from the ranks.{1,8}memory between steps/)).toBeInTheDocument();
   });
 });
