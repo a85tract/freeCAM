@@ -35,7 +35,7 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
-from .state_record import START_OF_STEP
+from .state_record import SCHEMA_VERSION, START_OF_STEP
 
 #: a trace's change below this fraction of the column's largest value is float noise
 NOISE = 1e-12
@@ -109,8 +109,14 @@ class StateData:
 
     # -- loading -----------------------------------------------------------
     def _signature(self) -> tuple:
+        # rank 0 replaces the manifest (a new file each time), and several writes can fall in
+        # one second, which is all the modification time some file systems keep: the inode
+        # and the size tell the writes apart where the time does not
         manifest = self.directory / "manifest.json"
-        return (manifest.stat().st_mtime_ns if manifest.exists() else 0,)
+        if not manifest.exists():
+            return (0, 0, 0)
+        stat = manifest.stat()
+        return (stat.st_mtime_ns, stat.st_ino, stat.st_size)
 
     def changed(self) -> bool:
         return self._signature() != self._loaded
@@ -120,6 +126,11 @@ class StateData:
         if not manifest_file.is_file():
             raise FileNotFoundError(f"{self.directory} has no manifest.json: not a state directory")
         self.manifest = json.loads(manifest_file.read_text())
+        version = self.manifest.get("schema_version")
+        if version != SCHEMA_VERSION:
+            raise ValueError(f"{self.directory} is a state directory of schema {version}; this viewer reads "
+                             f"schema {SCHEMA_VERSION} (one file per kind, every column in rank order): "
+                             f"record the run again")
         columns = np.load(self.directory / "columns.npz")
         self.rank = np.asarray(columns["rank"], dtype=np.int64)
         self.lat = np.asarray(columns["lat"], dtype=np.float64)
@@ -127,6 +138,7 @@ class StateData:
         self.level_pressure = np.asarray(columns["level_pressure_pa"], dtype=np.float64)
         self.nranks = int(self.manifest["ranks"])
         self.rank_columns = np.bincount(self.rank, minlength=self.nranks)
+        self.ncol = len(self.lat)
         surface = self.directory / "surface.npz"
         self.landfrac = (np.asarray(np.load(surface)["landfrac"], dtype=np.float64)
                          if surface.is_file() else np.zeros(len(self.lat)))
@@ -147,8 +159,13 @@ class StateData:
         self.action_steps: dict[int, list[int]] = {}
         for index, (step, _) in enumerate(self.action_frames):
             self.action_steps.setdefault(step, []).append(index)
+        # a written frame never changes: keep the frames read so far unless the layout did
+        # (a run following on adds frames; a new run in the same directory changes the layout)
+        layout = (tuple(self.field_order), self.levels_total, self.rank_columns.tobytes(), dict(self.dtypes).__repr__())
         with self._lock:
-            self._cache.clear()
+            if layout != getattr(self, "_layout", None):
+                self._cache.clear()
+            self._layout = layout
             self._changes.clear()
             self._anomalies: dict[Any, dict[str, np.ndarray]] = {}
             self._seconds = None
@@ -174,25 +191,26 @@ class StateData:
             if cached is not None:
                 self._cache.move_to_end(key)
                 return cached
-        levels = int(self.fields[field]["levels"])
-        parts = []
-        for rank in range(self.nranks):
-            n = int(self.rank_columns[rank])
-            if n == 0:
-                continue
-            dtype = np.dtype(self.dtypes[kind])
-            start = (index * n * self.levels_total + n * self.level_offset[field]) * dtype.itemsize
-            values = np.fromfile(self.directory / "ranks" / f"rank-{rank:04d}.{kind}.bin", dtype=dtype,
-                                 count=levels * n, offset=start)
-            if values.size != levels * n:
-                raise ValueError(f"rank {rank}'s {kind} file ends before frame {index}")
-            parts.append(values.reshape(levels, n))
-        block = np.concatenate(parts, axis=1) if parts else np.zeros((levels, 0), np.dtype(self.dtypes[kind]))
+        # the field's levels of the frame are one contiguous read
+        block = self._read(kind, index, offset=self.level_offset[field], levels=int(self.fields[field]["levels"]))
         with self._lock:
             self._cache[key] = block
             while len(self._cache) > self._cache_frames:
                 self._cache.popitem(last=False)
         return block
+
+    def _read(self, kind: str, index: int, *, offset: int = 0, levels: int | None = None) -> np.ndarray:
+        """``levels`` levels (all by default) of one frame from ``offset`` on, (levels, columns), as
+        stored."""
+
+        levels = self.levels_total if levels is None else int(levels)
+        dtype = np.dtype(self.dtypes[kind])
+        count = levels * self.ncol
+        values = np.fromfile(self.directory / f"{kind}.bin", dtype=dtype, count=count,
+                             offset=(int(index) * self.levels_total + int(offset)) * self.ncol * dtype.itemsize)
+        if values.size != count:
+            raise ValueError(f"the {kind} file ends before frame {index}")
+        return values.reshape(levels, self.ncol)
 
     def previous(self, kind: str, index: int) -> int | None:
         """The frame a change is measured from: the previous recorded step, or the previous
@@ -294,15 +312,10 @@ class StateData:
         if not self.manifest.get("action_seconds"):
             return None
         count = len(self.action_frames)
-        seconds = np.zeros((self.nranks, count))
-        for rank in range(self.nranks):
-            if int(self.rank_columns[rank]) == 0:
-                continue
-            values = np.fromfile(self.directory / "ranks" / f"rank-{rank:04d}.action_seconds.bin", dtype="<f8",
-                                 count=count)
-            if values.size != count:
-                return None
-            seconds[rank] = values
+        values = np.fromfile(self.directory / "action_seconds.bin", dtype="<f8", count=count * self.nranks)
+        if values.size != count * self.nranks:
+            return None
+        seconds = values.reshape(count, self.nranks).T
         with self._lock:
             self._seconds = seconds
         return seconds
@@ -310,7 +323,7 @@ class StateData:
     def changes(self, step: int, field: str) -> list[dict[str, Any]]:
         """Per action frame of ``step``: how much the action changed ``field`` (largest and
         root-mean-square change over every column and level, in the viewer's units).  Computed
-        for every field of the step at once, from one read of each rank's frames, and kept."""
+        for every field of the step at once, from one read of each frame, and kept."""
 
         if field not in self.fields:
             raise KeyError(f"no field {field!r}; the run recorded {self.field_order}")
@@ -425,50 +438,31 @@ class StateData:
 
     def _column_frames(self, kind: str, indices: list[int], column: int) -> np.ndarray:
         """Every recorded level of one column in the given frames, (frames, levels), stored units
-        as float64: read from the one rank file that holds the column, not the whole globe."""
+        as float64: only the pages that hold the column are read, not the whole globe."""
 
-        # frames concatenate the ranks' columns in rank order, so the column is a slice of one file
-        starts = np.concatenate([[0], np.cumsum(self.rank_columns)])
-        rank = int(np.searchsorted(starts, column, side="right") - 1)
-        n, local = int(self.rank_columns[rank]), column - int(starts[rank])
         dtype = np.dtype(self.dtypes[kind])
-        per = n * self.levels_total
-        rows = []
-        with open(self.directory / "ranks" / f"rank-{rank:04d}.{kind}.bin", "rb") as handle:
-            for index in indices:
-                handle.seek(int(index) * per * dtype.itemsize)
-                values = np.fromfile(handle, dtype=dtype, count=per)
-                if values.size != per:
-                    raise ValueError(f"rank {rank}'s {kind} file ends before frame {index}")
-                rows.append(values.reshape(self.levels_total, n)[:, local])
-        return np.stack(rows).astype(np.float64)
+        frames = max(int(index) for index in indices) + 1
+        path = self.directory / f"{kind}.bin"
+        if path.stat().st_size < frames * self.levels_total * self.ncol * dtype.itemsize:
+            raise ValueError(f"the {kind} file ends before frame {frames - 1}")
+        stored = np.memmap(path, dtype=dtype, mode="r", shape=(frames, self.levels_total, self.ncol))
+        try:
+            return np.asarray(stored[list(indices), :, int(column)], dtype=np.float64)
+        finally:
+            del stored
 
     # -- anomalies -----------------------------------------------------------
     def _codes(self, kind: str, indices: list[int]) -> dict[str, np.ndarray]:
         """Each field's anomaly code per frame and column, (frames, columns) uint8, for ``indices``
-        of ``kind`` (contiguous): one read of each rank's file."""
+        of ``kind``: one frame read at a time."""
 
-        first, count = indices[0], len(indices)
-        if indices != list(range(first, first + count)):
-            raise ValueError(f"the {kind} frames {indices[:3]}... are not contiguous")
-        dtype = np.dtype(self.dtypes[kind])
-        parts: dict[str, list[np.ndarray]] = {name: [] for name in self.field_order}
-        for rank in range(self.nranks):
-            n = int(self.rank_columns[rank])
-            if n == 0:
-                continue
-            per = n * self.levels_total
-            block = np.fromfile(self.directory / "ranks" / f"rank-{rank:04d}.{kind}.bin", dtype=dtype,
-                                count=count * per, offset=first * per * dtype.itemsize)
-            if block.size != count * per:
-                raise ValueError(f"rank {rank}'s {kind} file ends before frame {first + count - 1}")
-            block = block.reshape(count, self.levels_total, n)
+        codes = {name: np.zeros((len(indices), self.ncol), np.uint8) for name in self.field_order}
+        for k, index in enumerate(indices):
+            block = self._read(kind, index)
             for name in self.field_order:
                 offset, levels = self.level_offset[name], int(self.fields[name]["levels"])
-                parts[name].append(anomaly_codes(block[:, offset:offset + levels, :], name,
-                                                 float(self.fields[name]["scale"])))
-        return {name: np.concatenate(parts[name], axis=1) if parts[name] else np.zeros((count, 0), np.uint8)
-                for name in self.field_order}
+                codes[name][k] = anomaly_codes(block[offset:offset + levels], name, float(self.fields[name]["scale"]))
+        return codes
 
     def _cached_codes(self, key: Any, kind: str, indices: list[int]) -> dict[str, np.ndarray]:
         with self._changes_lock:
@@ -554,34 +548,26 @@ class StateData:
 
     def _step_changes(self, step: int) -> dict[str, list[dict[str, Any]]]:
         indices = self.action_steps[step]
-        first, count = indices[0], len(indices)
-        if indices != list(range(first, first + count)):
-            raise ValueError(f"the action frames of step {step} are not contiguous")
-        dtype = np.dtype(self.dtypes["actions"])
+        count = len(indices)
         largest = {name: np.zeros(count) for name in self.field_order}
         squares = {name: np.zeros(count) for name in self.field_order}
-        values = {name: 0 for name in self.field_order}
-        for rank in range(self.nranks):
-            n = int(self.rank_columns[rank])
-            if n == 0:
-                continue
-            per = n * self.levels_total
-            block = np.fromfile(self.directory / "ranks" / f"rank-{rank:04d}.actions.bin", dtype=dtype,
-                                count=count * per, offset=first * per * dtype.itemsize)
-            if block.size != count * per:
-                raise ValueError(f"rank {rank}'s actions file ends before step {step}'s frames")
-            block = block.reshape(count, self.levels_total, n)
-            for name in self.field_order:
-                offset, levels = self.level_offset[name], int(self.fields[name]["levels"])
-                change = np.diff(block[:, offset:offset + levels, :].astype(np.float64), axis=0)
-                if change.size:
-                    largest[name][1:] = np.maximum(largest[name][1:], np.abs(change).max(axis=(1, 2)))
-                    squares[name][1:] += (change ** 2).sum(axis=(1, 2))
-                values[name] += levels * n
+        # one frame read at a time, each against the one before it
+        before = None
+        for k, index in enumerate(indices):
+            block = self._read("actions", index).astype(np.float64)
+            if before is not None:
+                for name in self.field_order:
+                    offset, levels = self.level_offset[name], int(self.fields[name]["levels"])
+                    change = block[offset:offset + levels] - before[offset:offset + levels]
+                    if change.size:
+                        largest[name][k] = np.abs(change).max()
+                        squares[name][k] = (change ** 2).sum()
+            before = block
         rows = {}
         for name in self.field_order:
             scale = abs(float(self.fields[name]["scale"]))
-            rms = np.sqrt(squares[name] / max(values[name], 1)) * scale
+            values = int(self.fields[name]["levels"]) * self.ncol
+            rms = np.sqrt(squares[name] / max(values, 1)) * scale
             rows[name] = [{"index": index, "name": self.action_frames[index][1],
                            "max": float(largest[name][k] * scale), "rms": float(rms[k])}
                           for k, index in enumerate(indices)]

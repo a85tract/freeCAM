@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import zlib
 from contextlib import contextmanager
 from pathlib import Path
@@ -72,7 +73,7 @@ def pool(rank: int, ncol: list[int]) -> dict[str, np.ndarray]:
             "phys_state.pmid": pmid, "phys_state.ncol": np.array(ncol, dtype=np.int32), "cam_in.landfrac": landfrac}
 
 
-def record(directory: Path, monkeypatch, *, steps: int = 3, action_steps=(1,)) -> list[dict]:
+def record(directory: Path, monkeypatch, *, steps: int = 3, action_steps=(1,), first: int = 0) -> list[dict]:
     monkeypatch.setattr(state_record, "constituent_names", lambda library, count: NAMES[:count])
     comm = Comm()
     pools = [pool(0, [3, 1]), pool(1, [2, 0])]
@@ -82,7 +83,7 @@ def record(directory: Path, monkeypatch, *, steps: int = 3, action_steps=(1,)) -
         recorder.start()
     for r in (1, 0):
         recorders[r].describe(pools[r])
-    for step in range(steps):
+    for step in range(first, first + steps):
         for r in (1, 0):
             recorders[r].step_start(step, pools[r])
         for action, (dt, dq) in enumerate(((0.5, 0.0), (0.0, 2.0e-6))):
@@ -115,9 +116,20 @@ def test_every_rank_records_its_own_columns_and_rank_zero_describes_them(tmp_pat
     np.testing.assert_allclose(columns["lat"], [-60, -40, -20, 0, 20, 40])
     np.testing.assert_allclose(columns["level_pressure_pa"], [10000.0, 50000.0, 90000.0])
     np.testing.assert_array_equal(np.load(tmp_path / "surface.npz")["landfrac"], [1, 1, 1, 1, 0, 0])
-    # a rank's file: 3 step snapshots of (3 + 3 levels) x its columns
-    assert (tmp_path / "ranks" / "rank-0001.steps.bin").stat().st_size == 3 * 6 * 2 * 4
-    assert (tmp_path / "ranks" / "rank-0000.actions.bin").stat().st_size == 3 * 6 * 4 * 8
+    # rank 0 writes every rank's columns: 3 step snapshots of (3 + 3 levels) x 6 columns
+    assert (tmp_path / "steps.bin").stat().st_size == 3 * 6 * 6 * 4
+    assert (tmp_path / "actions.bin").stat().st_size == 3 * 6 * 6 * 8
+    assert (tmp_path / "action_seconds.bin").stat().st_size == 3 * 2 * 8          # (frames, ranks)
+    assert not (tmp_path / "ranks").exists()
+    # one snapshot's level is every column, rank 0's then rank 1's
+    first = np.fromfile(tmp_path / "steps.bin", dtype="<f4", count=6 * 6).reshape(6, 6)
+    np.testing.assert_allclose(first[0], [250.5, 251.5, 252.5, 253.5, 260.5, 261.5])
+
+
+def test_the_land_fraction_is_kept_from_the_first_recorded_step(tmp_path: Path, monkeypatch) -> None:
+    record(tmp_path, monkeypatch, first=1, action_steps=(2,))          # a run counting steps from 1
+    assert json.loads((tmp_path / "manifest.json").read_text())["step_frames"] == [1, 2, 3]
+    np.testing.assert_array_equal(np.load(tmp_path / "surface.npz")["landfrac"], [1, 1, 1, 1, 0, 0])
 
 
 def test_the_viewer_reads_frames_changes_profiles_and_sections(tmp_path: Path, monkeypatch) -> None:
@@ -519,26 +531,57 @@ def test_the_page_carries_the_anomaly_codes(tmp_path: Path, monkeypatch) -> None
     assert embedded["snapshot"]["anomalies"]["steps"]["summary"]["first"][0]["field"] == "CLDLIQ"
 
 
-def test_a_flush_waits_for_every_rank_before_the_manifest_names_the_frame(tmp_path: Path, monkeypatch) -> None:
-    events: list = []
-    monkeypatch.setattr(RankComm, "Barrier", lambda self: events.append(("barrier", self.rank)))
+def test_the_manifest_never_names_a_frame_the_files_do_not_hold(tmp_path: Path, monkeypatch) -> None:
+    named: list = []
     write = StateRecorder._write_manifest
-    monkeypatch.setattr(StateRecorder, "_write_manifest",
-                        lambda self, *, complete: (events.append(("manifest", complete)), write(self, complete=complete)))
+
+    def checked(self, *, complete):
+        # every rank's part of each frame the manifest is about to name is in the file already
+        sizes = {kind: (tmp_path / f"{kind}.bin").stat().st_size for kind in ("steps", "actions", "action_seconds")}
+        assert sizes["steps"] == self._written["steps"] * 6 * 6 * 4
+        assert sizes["actions"] == self._written["actions"] * 6 * 6 * 8
+        assert sizes["action_seconds"] == self._written["actions"] * 2 * 8
+        named.append((self._written["steps"], complete))
+        write(self, complete=complete)
+
+    monkeypatch.setattr(StateRecorder, "_write_manifest", checked)
     record(tmp_path, monkeypatch)
-    manifests = [k for k, event in enumerate(events) if event[0] == "manifest"]
-    assert len(manifests) >= 3
-    # after the description, every manifest rank 0 writes comes right after its wait for the other rank
-    for k in manifests[1:]:
-        if events[k] == ("manifest", False):
-            assert events[k - 1] == ("barrier", 0), events[k - 3:k + 1]
-    assert events[manifests[-1]] == ("manifest", True)
+    assert named[0] == (0, False) and (2, False) in named and named[-1] == (3, True)
+
+
+def test_rank_zero_gathers_many_snapshots_a_few_at_a_time(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(state_record, "GATHER_CHUNK", 2)
+    sent: list = []
+    gather = RankComm.gather
+    monkeypatch.setattr(RankComm, "gather", lambda self, value, root=0: (
+        sent.append((value.dtype.str, len(value))) if self.rank == 1 and getattr(value, "ndim", 0) == 2 else None,
+        gather(self, value, root))[1])
+    record(tmp_path, monkeypatch, steps=5, action_steps=(1, 2))
+    # flushes at steps 1 and 3 and at the close: 2, 2 and 1 step snapshots; 3 action snapshots
+    # at each of the first two, sent as 2 and 1
+    assert [count for dtype, count in sent if dtype == "<f4"] == [2, 2, 1]
+    assert [count for dtype, count in sent if dtype == "<f8"] == [2, 1, 2, 1]
+    data = StateData(tmp_path)
+    np.testing.assert_allclose(data.values("steps", 4, "T")[0], [252.5, 253.5, 254.5, 255.5, 262.5, 263.5])
+    np.testing.assert_allclose(data.values("actions", 4, "T", "change"), 0.5)
+
+
+def test_a_directory_of_another_schema_is_refused(tmp_path: Path, monkeypatch) -> None:
+    record(tmp_path, monkeypatch)
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    manifest["schema_version"] = 1
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="schema 1"):
+        StateData(tmp_path)
 
 
 def test_a_failing_rank_keeps_what_it_recorded_and_waits_for_no_one(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(state_record, "constituent_names", lambda library, count: NAMES[:count])
-    barriers: list = []
-    monkeypatch.setattr(RankComm, "Barrier", lambda self: barriers.append(self.rank))
+    collectives: list = []
+    monkeypatch.setattr(RankComm, "Barrier", lambda self: collectives.append(("barrier", self.rank)))
+    gather = RankComm.gather
+    monkeypatch.setattr(RankComm, "gather", lambda self, value, root=0: (
+        collectives.append(("gather", self.rank)), gather(self, value, root))[1])
     comm = Comm()
     pools = [pool(0, [3, 1]), pool(1, [2, 0])]
     recorders = [StateRecorder(tmp_path, rank=r, size=2, comm=comm.for_rank(r), fields=["T"], every=1,
@@ -549,8 +592,30 @@ def test_a_failing_rank_keeps_what_it_recorded_and_waits_for_no_one(tmp_path: Pa
         recorders[r].describe(pools[r])
     for r in (1, 0):
         recorders[r].step_done(0, pools[r])
-    barriers.clear()
+    for r in (1, 0):
+        recorders[r].flush()                            # step 0 is in the file
+    collectives.clear()
+    for r in (1, 0):
+        recorders[r].step_done(1, pools[r])
     recorders[1].abandon()                              # rank 1 fails on its own
-    assert barriers == []
-    assert (tmp_path / "ranks" / "rank-0001.steps.bin").stat().st_size == 3 * 2 * 4
+    assert collectives == []
+    assert recorders[1].describe_run()["step_snapshots"] == 1     # step 1 is dropped, not sent
+    assert (tmp_path / "steps.bin").stat().st_size == 3 * 6 * 4
     assert json.loads((tmp_path / "manifest.json").read_text())["complete"] is False
+
+
+def test_the_viewer_sees_a_manifest_rewritten_within_the_same_second(tmp_path: Path, monkeypatch) -> None:
+    # several writes can fall in one second, all a file system may keep of the modification time
+    record(tmp_path, monkeypatch)
+    data = StateData(tmp_path)
+    manifest_file = tmp_path / "manifest.json"
+    stamp = manifest_file.stat().st_mtime_ns
+    manifest = json.loads(manifest_file.read_text())
+    manifest["step_frames"] = manifest["step_frames"][:1]
+    temporary = manifest_file.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(manifest))
+    temporary.replace(manifest_file)
+    os.utime(manifest_file, ns=(stamp, stamp))
+    assert data.changed()
+    data.reload()
+    assert data.step_frames == [0]

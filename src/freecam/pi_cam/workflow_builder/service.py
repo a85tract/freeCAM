@@ -144,7 +144,8 @@ class WorkflowService:
         with self._lock:
             return {
                 "mode": "local",
-                "snapshot": self.snapshot,
+                # the default this service was made with: the Driver's case and step count
+                "snapshot": {**self.snapshot, "default_document": self.default.to_payload()},
                 "draft": None if self._draft is None else self._draft.to_payload(),
                 "run": self._run_payload(),
                 "case": self.default.case,

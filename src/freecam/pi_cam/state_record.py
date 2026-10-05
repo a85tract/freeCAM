@@ -6,29 +6,32 @@ default -- at the end of every ``every``-th step, and, at the steps named in
 ``action_steps``, also at the start of the step and after every plan action, so
 the viewer can show what each process did.  The copies are read-only (float32
 views of this rank's real columns); nothing the model computes is touched.
-Each rank appends its snapshots to its own files every ``flush_every``
-snapshots; nothing is sent between ranks while the model steps.  The only
-collectives are one barrier at the start, one gather of the column
-coordinates, one reduction of the level pressures after initialization, and one
-gather of the land fraction after the first step.
+Every ``flush_every`` snapshots the ranks send theirs to rank 0, which appends
+them, every column in rank order, to one file per kind: one writer, so a page
+following the run reads one file a frame instead of one per rank, and the ranks
+never touch the file system for a snapshot.  The other collectives are one
+barrier at the start, one gather of the column coordinates, one reduction of the
+level pressures after initialization, and one gather of the land fraction after
+the first step.
 
 Layout of a state directory::
 
-    manifest.json               rank 0: fields (name, units, levels), frames written, complete
-    columns.npz                 rank 0: each column's rank, lat, lon (degrees); level pressures
-    surface.npz                 rank 0: each column's land fraction (after the first step)
-    ranks/rank-NNNN.steps.bin   step snapshots, float32, appended
-    ranks/rank-NNNN.actions.bin action snapshots, float64, appended
-    ranks/rank-NNNN.action_seconds.bin  each action frame's wall time on the rank, float64
-                                (0 for the start of a step; the copy is not counted)
+    manifest.json        rank 0: fields (name, units, levels), frames written, complete
+    columns.npz          rank 0: each column's rank, lat, lon (degrees); level pressures
+    surface.npz          rank 0: each column's land fraction (after the first step)
+    steps.bin            step snapshots, float32, appended
+    actions.bin          action snapshots, float64, appended
+    action_seconds.bin   each action frame's wall time on every rank, (frames, ranks), float64
+                         (0 for the start of a step; the copy is not counted)
 
 Each action frame of the manifest is ``[step, action, owner]``: owner says what computed the
 action (the original Fortran, the coupler exchange, output, a Python process, or a Python stage
 class with what stood in its replaced kernel slots), as rank 0 saw it.
 
-One snapshot of one rank is every field in manifest order, each ``(levels,
-columns)`` in C order (a level of a rank is contiguous), so snapshot ``i`` of a
-rank with ``n`` columns starts at value ``i * n * sum(levels)``.  Action
+One snapshot is every field in manifest order, each ``(levels, columns)`` in C
+order over every column (a level is contiguous), so snapshot ``i`` starts at
+value ``i * columns * sum(levels)``; the columns are in rank order, as
+``columns.npz`` lists them.  Action
 snapshots keep the model's float64: what one process changes in one step can be
 smaller than float32 resolves at the field's magnitude (2e-5 K at 280 K).  The
 frames' steps (and, for action snapshots, their action names) are in the
@@ -45,7 +48,10 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+#: snapshots gathered to rank 0 at once, so a write of many keeps its memory bounded
+GATHER_CHUNK = 8
 
 START_OF_STEP = "start of step"
 
@@ -174,7 +180,7 @@ class _Resolved:
 
 
 class StateRecorder:
-    """One rank's state snapshots, appended to ``directory/ranks/rank-NNNN.*.bin``."""
+    """One rank's state snapshots, gathered to rank 0 and appended to ``directory/*.bin``."""
 
     def __init__(self, directory: str | Path, *, rank: int, size: int, comm: Any | None = None,
                  fields: Iterable[str] = DEFAULT_FIELDS, every: int = 1, action_steps: Iterable[int] = (),
@@ -208,11 +214,12 @@ class StateRecorder:
         self._last_step = -1
         self._started = False
         self._described = False
+        self._surface = False
         self._closed = False
 
     # -- paths -------------------------------------------------------------
-    def rank_file(self, kind: str) -> Path:
-        return self.directory / "ranks" / f"rank-{self.rank:04d}.{kind}.bin"
+    def data_file(self, kind: str) -> Path:
+        return self.directory / f"{kind}.bin"
 
     @property
     def manifest_file(self) -> Path:
@@ -220,11 +227,12 @@ class StateRecorder:
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> None:
-        """Create the directory and truncate this rank's files (collectively: all ranks, then on)."""
+        """Rank 0 creates the directory and empties the files (collectively: all ranks, then on)."""
 
-        (self.directory / "ranks").mkdir(parents=True, exist_ok=True)
-        for kind in ("steps", "actions", "action_seconds"):
-            self.rank_file(kind).write_bytes(b"")
+        if self.rank == 0:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            for kind in ("steps", "actions", "action_seconds"):
+                self.data_file(kind).write_bytes(b"")
         barrier = getattr(self.comm, "Barrier", None)
         if callable(barrier):
             barrier()
@@ -314,7 +322,10 @@ class StateRecorder:
             self._pending["steps"].append(self._snapshot(pool))
             self._frames["steps"].append(int(step))
         self._last_step = max(self._last_step, int(step))
-        if int(step) == 0:
+        if not self._surface:
+            # the first step this rank records (0 for a notebook run, 1 for a run started from
+            # CESM's own clock): every rank gets here at the same step
+            self._surface = True
             self.write_surface(pool)
         if len(self._pending["steps"]) >= self.flush_every or len(self._pending["actions"]) >= 4 * self.flush_every:
             self.flush()
@@ -339,36 +350,52 @@ class StateRecorder:
         np.savez(self.directory / "surface.npz", landfrac=np.where(np.isfinite(land), land, 0.0))
 
     def flush(self, *, collective: bool = True) -> None:
-        """Append the pending snapshots to this rank's files; rank 0 refreshes the manifest.
+        """Gather the pending snapshots to rank 0, which appends them and names them in the
+        manifest.
 
-        Every rank flushes at the same steps, so the flush waits for all of them before
-        rank 0 advertises the new frames: a page following the run never reads a frame some
-        rank has not written yet.  ``collective=False`` is for a rank failing on its own: it
-        saves what it has and touches no other rank and no manifest.
+        Every rank flushes at the same steps with the same snapshots pending, so the gathers
+        line up; rank 0 names a frame only after every rank's part of it is written, and a
+        page following the run never reads a frame some rank has not sent.  ``collective=False``
+        is for a rank failing on its own: it waits for no other rank, and its pending snapshots
+        are dropped (what was written stays).
         """
 
         if not self._started:
             return
-        for kind, pending in self._pending.items():
-            if pending:
-                with self.rank_file(kind).open("ab") as handle:
-                    np.concatenate(pending).astype(DTYPES[kind], copy=False).tofile(handle)
-                self._written[kind] += len(pending)
-                pending.clear()
-        if self._pending_seconds:
-            with self.rank_file("action_seconds").open("ab") as handle:
-                np.asarray(self._pending_seconds, dtype="<f8").tofile(handle)
-            self._pending_seconds.clear()
         if not collective:
+            for pending in self._pending.values():
+                pending.clear()
+            self._pending_seconds.clear()
             return
-        barrier = getattr(self.comm, "Barrier", None)
-        if callable(barrier) and self.size > 1:
-            barrier()
+        for kind, pending in self._pending.items():
+            for begin in range(0, len(pending), GATHER_CHUNK):
+                chunk = np.stack(pending[begin:begin + GATHER_CHUNK]).astype(DTYPES[kind], copy=False)
+                parts = self._gather(chunk)
+                if self.rank == 0:
+                    # each rank's (snapshots, sum(levels) * its columns) -> (snapshots, sum(levels), columns)
+                    levels = sum(field.levels for field in self._resolved)
+                    blocks = [np.asarray(part).reshape(len(chunk), levels, -1) for part in parts]
+                    with self.data_file(kind).open("ab") as handle:
+                        np.concatenate(blocks, axis=2).astype(DTYPES[kind], copy=False).tofile(handle)
+            self._written[kind] += len(pending)
+            pending.clear()
+        if self._pending_seconds:
+            parts = self._gather(np.asarray(self._pending_seconds, dtype="<f8"))
+            if self.rank == 0:
+                with self.data_file("action_seconds").open("ab") as handle:
+                    np.stack([np.asarray(part, dtype="<f8") for part in parts], axis=1).tofile(handle)
+            self._pending_seconds.clear()
         if self.rank == 0 and self._described:
             self._write_manifest(complete=False)
 
+    def _gather(self, values: np.ndarray) -> list[np.ndarray]:
+        gather = getattr(self.comm, "gather", None)
+        if callable(gather) and self.size > 1:
+            return gather(values, root=0) or []
+        return [values]
+
     def abandon(self) -> None:
-        """This rank failed: keep what it recorded, wait for no other rank, mark nothing complete."""
+        """This rank failed: wait for no other rank, mark nothing complete."""
 
         if self._closed or not self._started:
             return
@@ -400,7 +427,7 @@ class StateRecorder:
             "run": self.run_label,
             "ranks": self.size,
             "dtype": {kind: np.dtype(dtype).str for kind, dtype in DTYPES.items()},
-            "layout": "per rank and snapshot: every field in order, each (levels, columns) in C order",
+            "layout": "per snapshot: every field in order, each (levels, columns) in C order, the columns in rank order",
             "fields": [{"name": field.spec.name, "field": field.spec.field,
                         "constituent": field.spec.constituent, "levels": field.levels,
                         "units": field.spec.units, "scale": field.spec.scale, "label": field.spec.label}

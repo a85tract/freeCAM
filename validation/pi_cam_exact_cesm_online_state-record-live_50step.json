@@ -536,7 +536,7 @@
     "provider": "CESMOnlineBoundaryProvider",
     "python_owned_internal": false,
     "reverse_allocator_callbacks": false,
-    "run_dir": "${FREECAM_SCRATCH}/pyCAM/PI-cam/exact-cesm-online-50step-7711982.desched1/cesm-provider-run",
+    "run_dir": "${FREECAM_SCRATCH}/pyCAM/PI-cam/exact-cesm-online-50step-7712576.desched1/cesm-provider-run",
     "shadow_a2x_bfb_steps": 0,
     "shadow_atmosphere": false
   },
@@ -599,103 +599,103 @@
     "samples": [
       {
         "label": "python_ready",
-        "maximum_rank_hwm_bytes": 227020800,
-        "maximum_rank_rss_bytes": 227020800,
-        "maximum_rank_ru_maxrss_bytes": 227020800,
+        "maximum_rank_hwm_bytes": 224186368,
+        "maximum_rank_rss_bytes": 224186368,
+        "maximum_rank_ru_maxrss_bytes": 224186368,
         "step": 0,
-        "total_hwm_bytes": 112247521280,
-        "total_pss_bytes": 93005537280,
-        "total_rss_bytes": 112247521280
+        "total_hwm_bytes": 112079048704,
+        "total_pss_bytes": 92870196224,
+        "total_rss_bytes": 112079048704
       },
       {
         "label": "initialized",
-        "maximum_rank_hwm_bytes": 839356416,
-        "maximum_rank_rss_bytes": 783294464,
-        "maximum_rank_ru_maxrss_bytes": 839356416,
+        "maximum_rank_hwm_bytes": 835620864,
+        "maximum_rank_rss_bytes": 835620864,
+        "maximum_rank_ru_maxrss_bytes": 835620864,
         "step": 0,
-        "total_hwm_bytes": 246731988992,
-        "total_pss_bytes": 206509984768,
-        "total_rss_bytes": 246485340160
+        "total_hwm_bytes": 246767534080,
+        "total_pss_bytes": 206655543296,
+        "total_rss_bytes": 246665814016
       },
       {
         "label": "step_1",
-        "maximum_rank_hwm_bytes": 839356416,
-        "maximum_rank_rss_bytes": 783294464,
-        "maximum_rank_ru_maxrss_bytes": 839356416,
+        "maximum_rank_hwm_bytes": 835620864,
+        "maximum_rank_rss_bytes": 835620864,
+        "maximum_rank_ru_maxrss_bytes": 835620864,
         "step": 1,
-        "total_hwm_bytes": 247270436864,
-        "total_pss_bytes": 206537035776,
-        "total_rss_bytes": 247023788032
+        "total_hwm_bytes": 247288487936,
+        "total_pss_bytes": 206668713984,
+        "total_rss_bytes": 247188865024
       },
       {
         "label": "step_10",
-        "maximum_rank_hwm_bytes": 839356416,
-        "maximum_rank_rss_bytes": 783294464,
-        "maximum_rank_ru_maxrss_bytes": 839356416,
+        "maximum_rank_hwm_bytes": 837718016,
+        "maximum_rank_rss_bytes": 837718016,
+        "maximum_rank_ru_maxrss_bytes": 837718016,
         "step": 10,
-        "total_hwm_bytes": 251379236864,
-        "total_pss_bytes": 206654157824,
-        "total_rss_bytes": 251132588032
+        "total_hwm_bytes": 251390517248,
+        "total_pss_bytes": 206748127232,
+        "total_rss_bytes": 251290894336
       },
       {
         "label": "step_20",
-        "maximum_rank_hwm_bytes": 839356416,
-        "maximum_rank_rss_bytes": 783294464,
-        "maximum_rank_ru_maxrss_bytes": 839356416,
+        "maximum_rank_hwm_bytes": 837718016,
+        "maximum_rank_rss_bytes": 837718016,
+        "maximum_rank_ru_maxrss_bytes": 837718016,
         "step": 20,
-        "total_hwm_bytes": 253265612800,
-        "total_pss_bytes": 206685158400,
-        "total_rss_bytes": 253018963968
+        "total_hwm_bytes": 253282439168,
+        "total_pss_bytes": 206823540736,
+        "total_rss_bytes": 253182816256
       },
       {
         "label": "step_30",
-        "maximum_rank_hwm_bytes": 839356416,
-        "maximum_rank_rss_bytes": 783294464,
-        "maximum_rank_ru_maxrss_bytes": 839356416,
+        "maximum_rank_hwm_bytes": 837718016,
+        "maximum_rank_rss_bytes": 837718016,
+        "maximum_rank_ru_maxrss_bytes": 837718016,
         "step": 30,
-        "total_hwm_bytes": 255327580160,
-        "total_pss_bytes": 207660016640,
-        "total_rss_bytes": 255083532288
+        "total_hwm_bytes": 255104094208,
+        "total_pss_bytes": 207353245696,
+        "total_rss_bytes": 254722306048
       },
       {
         "label": "step_40",
-        "maximum_rank_hwm_bytes": 839356416,
-        "maximum_rank_rss_bytes": 783294464,
-        "maximum_rank_ru_maxrss_bytes": 839356416,
+        "maximum_rank_hwm_bytes": 837718016,
+        "maximum_rank_rss_bytes": 837718016,
+        "maximum_rank_ru_maxrss_bytes": 837718016,
         "step": 40,
-        "total_hwm_bytes": 256637681664,
-        "total_pss_bytes": 208235450368,
-        "total_rss_bytes": 256393633792
+        "total_hwm_bytes": 256401059840,
+        "total_pss_bytes": 207963194368,
+        "total_rss_bytes": 256019271680
       },
       {
         "label": "step_50",
-        "maximum_rank_hwm_bytes": 898637824,
-        "maximum_rank_rss_bytes": 889171968,
-        "maximum_rank_ru_maxrss_bytes": 898637824,
+        "maximum_rank_hwm_bytes": 921321472,
+        "maximum_rank_rss_bytes": 921321472,
+        "maximum_rank_ru_maxrss_bytes": 921321472,
         "step": 50,
-        "total_hwm_bytes": 259281960960,
-        "total_pss_bytes": 209887029248,
-        "total_rss_bytes": 259259928576
+        "total_hwm_bytes": 259085393920,
+        "total_pss_bytes": 209410667520,
+        "total_rss_bytes": 258774269952
       },
       {
         "label": "pre_finalize",
-        "maximum_rank_hwm_bytes": 898637824,
-        "maximum_rank_rss_bytes": 889171968,
-        "maximum_rank_ru_maxrss_bytes": 898637824,
+        "maximum_rank_hwm_bytes": 921321472,
+        "maximum_rank_rss_bytes": 921321472,
+        "maximum_rank_ru_maxrss_bytes": 921321472,
         "step": 50,
-        "total_hwm_bytes": 259301064704,
-        "total_pss_bytes": 209914886144,
-        "total_rss_bytes": 259281166336
+        "total_hwm_bytes": 259105464320,
+        "total_pss_bytes": 209435923456,
+        "total_rss_bytes": 258794340352
       },
       {
         "label": "finalized",
-        "maximum_rank_hwm_bytes": 898637824,
-        "maximum_rank_rss_bytes": 884707328,
-        "maximum_rank_ru_maxrss_bytes": 898637824,
+        "maximum_rank_hwm_bytes": 921321472,
+        "maximum_rank_rss_bytes": 915046400,
+        "maximum_rank_ru_maxrss_bytes": 921321472,
         "step": 50,
-        "total_hwm_bytes": 259437899776,
-        "total_pss_bytes": 209928745984,
-        "total_rss_bytes": 259368919040
+        "total_hwm_bytes": 259155795968,
+        "total_pss_bytes": 209450761216,
+        "total_rss_bytes": 258860343296
       }
     ]
   },
@@ -705,7 +705,7 @@
   "native_library_sha256": "d1eebfc52c66f19e53bc2faa84e910198fa9c3cfb4cbea39dd4227d48ae5ab22",
   "native_manifest": "build/pi_cam_promoted/native_cam_manifest.json",
   "native_state_ownership": "python-owned-zero-copy-derived-shell",
-  "pbs_job_id": "7711982.desched1",
+  "pbs_job_id": "7712576.desched1",
   "python_stages": [],
   "radiation_process": null,
   "radiation_python": false,
@@ -3821,14 +3821,14 @@
   "step_plan_actions": 48,
   "steps": 50,
   "timing": {
-    "advance_seconds": 21.91949492799995,
-    "advance_sypd": 11.249134310607598,
+    "advance_seconds": 22.711660868999843,
+    "advance_sypd": 10.856772822031484,
     "aggregation": "maximum across all MPI ranks",
     "clock": "MPI.Wtime with MPI barriers",
-    "finalize_seconds": 0.39933820499982176,
-    "initialize_seconds": 24.14393277399995,
+    "finalize_seconds": 0.3828414889999294,
+    "initialize_seconds": 24.575506396000037,
     "simulated_days": 1.0416666666666667,
-    "total_seconds": 46.504327415999796
+    "total_seconds": 47.732983219999824
   },
   "validation_scope": "online original-CESM components/coupler with per-boundary BFB oracle"
 }

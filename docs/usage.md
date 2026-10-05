@@ -168,11 +168,14 @@ fc.Driver(case="PI-atm", record_state={"fields": ["T", "CLDLIQ"], "every": 6, "a
 ```
 
 Every rank copies the chosen fields of its own columns (read-only: a float32
-copy of each real column at the end of every `--state-every`-th step) and
-appends them to its own file; at the `--state-action-steps` it also copies the
-state as the step begins and after every plan action, in float64, since what
-one process changes in one step can be smaller than float32 resolves (2e-5 K at
-280 K). Nothing is exchanged while the model steps. `T`, `Q`, `CLDLIQ`,
+copy of each real column at the end of every `--state-every`-th step); at the
+`--state-action-steps` it also copies the state as the step begins and after
+every plan action, in float64, since what one process changes in one step can
+be smaller than float32 resolves (2e-5 K at 280 K). Every
+`--state-flush-every` snapshots the ranks send theirs to rank 0, which appends
+each snapshot, every column in rank order, to one file per kind (`steps.bin`,
+`actions.bin`): the other ranks never touch the file system for a snapshot,
+and a viewer reads one file a frame, not one per rank. `T`, `Q`, `CLDLIQ`,
 `CLDICE`, `U`, `V`, `OMEGA` and `PS` are named directly; any
 `phys_state.<field>` or `phys_state.q:<constituent>` can be named too. A 3-D
 field costs 13,826 columns x 30 levels x 4 bytes = 1.7 MB a snapshot at ne16,
@@ -214,7 +217,7 @@ the original: the online 50-step gate recording the four default fields every
 step, written every step as the Workflow Builder records them, and after every
 action at step 24 -- 50 step and 49 action snapshots -- is bit-for-bit with the
 oracle (`validation/pi_cam_exact_cesm_online_state-record-live_50step*.json`,
-job 7711982).
+job 7712576).
 
 #### In the Workflow Builder
 
@@ -229,10 +232,12 @@ step and write them every step (`record_state={"flush_every": 1}`); a
 and a model already running keeps what it was started with. *Open in a new
 tab* gives the viewer a window of its own.
 
-Every rank writes at the same steps, and rank 0 names a step in the manifest
-only once every rank has written it, so a page following the run never reads a
-step some rank has not written yet. A rank that fails keeps what it recorded
-and waits for no other rank; the run is then not marked complete.
+Rank 0 names a step in the manifest only once every rank's part of it is in
+the file, so a page following the run never reads a step that is not all
+there. A rank that fails waits for no other rank: what was written stays, what
+it had not yet sent is dropped, and the run is not marked complete. A
+directory written before this layout (schema 1, one file per rank) is refused;
+record the run again.
 
 #### Who changed a column
 
