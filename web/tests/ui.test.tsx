@@ -236,9 +236,24 @@ describe("the Globe tab", () => {
     const run = (globe: unknown) => ({ state, step: 3, target_step: 10, job_id: "1.fake", run_dir: "/scratch/run", workflow_hash: null,
       applied_hash: null, message: null, model_calls: {}, started_at: null, finished_at: null, globe });
     let globe: unknown = { enabled: true, dir: null, memory: true, keep_steps: 1000, ready: false };
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const available = [
+      { name: "T", label: "temperature", units: "K", group: "atmosphere", source: "phys_state.t" },
+      { name: "PRECC", label: "convective precipitation", units: "mm/day", group: "surface", source: "cam_out.precc" },
+    ];
+    let options = { enabled: true, editable: true, memory: true, fields: ["T"], every: 1, action_steps: [] as number[],
+      keep_steps: 1000, available };
+    const sent: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (url.includes("api/globe/options")) {
+        if (init?.method === "PUT") {
+          const changes = JSON.parse(String(init.body));
+          sent.push(changes);
+          options = { ...options, ...changes };
+        }
+        return json(options);
+      }
       if (url.includes("api/state")) return json({ mode: "local", snapshot, draft: null, run: run(globe), case: "PI-atm", nsteps: 10,
         resources: { ranks: 512, nodes: 4, queue: "main", walltime: "01:00:00", account_set: true }, driver_initialized: true, version: "test" });
       if (url.includes("api/events")) return json({ events: [], run: run(globe) });
@@ -250,10 +265,18 @@ describe("the Globe tab", () => {
     await user.click(screen.getByRole("tab", { name: "Globe" }));
     expect(await screen.findByText(/The model is starting/)).toBeInTheDocument();
     expect(screen.getByText("1.fake")).toBeInTheDocument();
+    // what the globe keeps is chosen before the model runs
+    const precc = await screen.findByRole("checkbox", { name: /PRECC/ });
+    expect(precc).not.toBeChecked();
+    await user.click(precc);
+    expect(sent).toEqual([{ fields: ["T", "PRECC"] }]);
+    expect(await screen.findByRole("checkbox", { name: /PRECC/ })).toBeChecked();
+    options = { ...options, editable: false };
     state = "running";
     globe = { enabled: true, dir: null, memory: true, keep_steps: 1000, ready: true };
     const frame = await screen.findByTitle("Globe of the model state", undefined, { timeout: 4000 });
     expect(frame).toHaveAttribute("src", "globe/");
     expect(screen.getByText(/Read from the ranks.{1,8}memory between steps/)).toBeInTheDocument();
+    expect(await screen.findByText(/Keeping T, PRECC every step/)).toBeInTheDocument();
   });
 });

@@ -69,8 +69,13 @@ def pool(rank: int, ncol: list[int]) -> dict[str, np.ndarray]:
             pmid[i, :, c] = [10000.0, 50000.0, 90000.0]
             landfrac[i, c] = float(rank == 0)
             column += 1
+    ts = np.where(np.isnan(lat), np.nan, 280.0 + 10.0 * rank)
+    qbot = np.zeros((PCOLS, PCNST, chunks), order="F")
+    qbot[:, 1, :] = q[:, PVER - 1, 1, :]
+    dtdt = np.full((PCOLS, PVER, chunks), 1.0 / 86400.0, order="F")
     return {"phys_state.lat": lat, "phys_state.lon": lon, "phys_state.t": t, "phys_state.q": q,
-            "phys_state.pmid": pmid, "phys_state.ncol": np.array(ncol, dtype=np.int32), "cam_in.landfrac": landfrac}
+            "phys_state.pmid": pmid, "phys_state.ncol": np.array(ncol, dtype=np.int32), "cam_in.landfrac": landfrac,
+            "cam_in.ts": ts, "cam_out.qbot": qbot, "phys_tend.dtdt": dtdt}
 
 
 def record(directory: Path, monkeypatch, *, steps: int = 3, action_steps=(1,), first: int = 0) -> list[dict]:
@@ -752,3 +757,26 @@ def test_a_state_query_goes_before_the_next_step() -> None:
         session._query_turn.notify_all()
     stepping.join(2.0)
     assert order == ["query", "step"]
+
+
+def test_surface_fields_tendencies_and_a_surface_constituent_are_recorded(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(state_record, "constituent_names", lambda library, count: NAMES[:count])
+    pools = [pool(0, [3, 1]), pool(1, [2, 0])]
+    recorder = StateRecorder(None, rank=0, size=1, fields=["TS", "DTDT", "cam_out.qbot:CLDLIQ", "phys_state.t"])
+    recorder.start()
+    recorder.describe(pools[0])
+    recorder.step_done(0, pools[0])
+    layout = recorder.query({"q": "layout"})
+    fields = {field["name"]: field for field in layout["fields"]}
+    assert fields["TS"]["levels"] == 1 and fields["TS"]["units"] == "K"
+    assert fields["DTDT"]["levels"] == PVER and fields["DTDT"]["scale"] == 86400.0
+    assert fields["cam_out.qbot:CLDLIQ"]["levels"] == 1
+    np.testing.assert_allclose(recorder.query({"q": "frame", "kind": "steps", "index": 0, "field": "TS"}), [[280.0] * 4])
+    np.testing.assert_allclose(recorder.query({"q": "frame", "kind": "steps", "index": 0, "field": "cam_out.qbot:CLDLIQ"}),
+                               [[1.0e-5, 2.0e-5, 3.0e-5, 4.0e-5]], rtol=1e-6)
+    assert field_spec("cam_in.shf").group == "surface" and field_spec("phys_tend.dudt").group == "tendency"
+    for wrong in ("pbuf.CLD", "cam_in", "cam_in.", "cam_out.x-y"):
+        with pytest.raises(ValueError, match="owner"):
+            field_spec(wrong)
+    with pytest.raises(ValueError, match="no constituent axis"):
+        StateRecorder(None, rank=0, size=1, fields=["cam_in.ts:Q"]).describe(pools[0])

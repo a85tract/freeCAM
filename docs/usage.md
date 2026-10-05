@@ -176,9 +176,25 @@ be smaller than float32 resolves (2e-5 K at 280 K). Every
 `--state-flush-every` snapshots the ranks send theirs to rank 0, which appends
 each snapshot, every column in rank order, to one file per kind (`steps.bin`,
 `actions.bin`): the other ranks never touch the file system for a snapshot,
-and a viewer reads one file a frame, not one per rank. `T`, `Q`, `CLDLIQ`,
-`CLDICE`, `U`, `V`, `OMEGA` and `PS` are named directly; any
-`phys_state.<field>` or `phys_state.q:<constituent>` can be named too. A 3-D
+and a viewer reads one file a frame, not one per rank.
+
+A field is named by a short name or by where it lives in the state pool. The
+short names, each the pool field it reads at the moment of the snapshot:
+
+| Group | Short names (pool field) |
+| --- | --- |
+| Atmosphere | `T`, `Q`, `CLDLIQ`, `CLDICE`, `NUMLIQ`, `NUMICE` (`phys_state.t`, `phys_state.q:<name>`); `U`, `V`, `OMEGA`; `ZM` (`phys_state.zm`, height above the surface) |
+| Surface | `PS`; `PSL`, `PRECC`, `PRECL`, `PRECSC`, `PRECSL` (in mm/day), `FLDS` (`cam_out.flwds`), `FSNS` (`cam_out.netsw`); `TS`, `TREFHT`, `QREFHT`, `U10`, `SHFLX`, `LHFLX` (`cam_in.shf`, `cam_in.lhf`, upward), `TAUX`, `TAUY` (`cam_in.wsx`, `cam_in.wsy`), `ICEFRAC`, `OCNFRAC`, `SNOWHLND` |
+| Physics tendencies | `DTDT`, `DUDT`, `DVDT` (`phys_tend.*`, per day) |
+
+Any other `<owner>.<field>` of `phys_state`, `cam_in`, `cam_out` and
+`phys_tend` can be named too (2-D or 3-D), and `<owner>.<field>:<constituent>`
+for a field with a constituent axis (`phys_state.q:NUMLIQ`,
+`cam_out.qbot:Q`). The surface fields are what the surface components handed
+the atmosphere (`cam_in`) and what the atmosphere hands them (`cam_out`), as
+the state pool holds them when the snapshot is taken: at the end of a step,
+after the step's export. Physics-buffer fields (cloud fraction, heating rates)
+are not in the state pool and cannot be recorded yet. A 3-D
 field costs 13,826 columns x 30 levels x 4 bytes = 1.7 MB a snapshot at ne16,
 so a month of every step is 2.5 GB a field: record every few steps for long
 runs.
@@ -242,11 +258,15 @@ the run the page started: each step appears as the model takes it, and the
 slider stays on the newest step until it is moved back. *Open in a new tab*
 gives the viewer a window of its own.
 
-For that the page has a model that is not yet running keep `T`, `Q`, `CLDLIQ`
-and `CLDICE` of every step in its ranks' memory
-(`record_state={"store": "memory"}`): each rank copies its own columns into
-its own memory (13 KB a step at 512 ranks) and nothing is written or sent while
-the model steps. The page asks for what it shows -- one field at one level,
+For that the page has a model that is not yet running keep `T`, `Q`, `CLDLIQ`,
+`CLDICE`, `U`, `V`, `OMEGA`, `PS`, `TS`, `PRECC`, `PRECL`, `SHFLX` and `LHFLX`
+of every step in its ranks' memory (`record_state={"store": "memory"}`): each
+rank copies its own columns into its own memory (a 3-D field 3 KB a step at 512
+ranks, a surface field 0.1 KB) and nothing is written or sent while the model
+steps. Until the model starts, the tab lists the named fields to keep, by
+group, with the interval and the steps also recorded after every process
+(`GET`/`PUT /api/globe/options`); a running model keeps what it was started
+with. The page asks for what it shows -- one field at one level,
 what each action changed, one column -- and the service asks the ranks between
 two steps (a run of the page's steps one at a time lets a waiting question go
 before the next step): one field of one snapshot is gathered to rank 0, a sum

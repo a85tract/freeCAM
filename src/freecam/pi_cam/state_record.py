@@ -78,42 +78,88 @@ class FieldSpec:
 
     name: str                       # the viewer's name (T, Q, CLDLIQ, ...)
     field: str                      # the state-pool field
-    constituent: str | int | None   # an index into the constituent axis of phys_state.q, by name or number
+    constituent: str | int | None   # an index into the field's constituent axis, by name or number
     units: str                      # the units the viewer shows
     scale: float                    # stored value x scale = shown value
     label: str
+    group: str = "atmosphere"       # where a picker lists it: atmosphere, surface or tendency
 
 
-#: the fields a short name stands for; any ``phys_state.<name>`` (2-D or 3-D) and any
-#: ``phys_state.q:<constituent>`` may be named as well
+#: the state-pool structures a field may come from: the physics state, what the surface
+#: components hand the atmosphere and what it hands them, and the physics tendencies
+OWNERS = ("phys_state", "cam_in", "cam_out", "phys_tend")
+
+#: seconds in a day: a rate per second shown per day
+DAY = 86400.0
+
+
+def _surface(name: str, field: str, units: str, scale: float, label: str) -> FieldSpec:
+    return FieldSpec(name, field, None, units, scale, label, "surface")
+
+
+#: the fields a short name stands for (named as CAM's history names them where it has one; each is
+#: the state-pool field it names, at the moment of the snapshot); any ``<owner>.<field>`` of
+#: OWNERS (2-D or 3-D) and any ``<owner>.<field>:<constituent>`` may be named as well
 KNOWN_FIELDS: dict[str, FieldSpec] = {
     "T": FieldSpec("T", "phys_state.t", None, "K", 1.0, "temperature"),
     "Q": FieldSpec("Q", "phys_state.q", "Q", "g/kg", 1.0e3, "water vapour"),
     "CLDLIQ": FieldSpec("CLDLIQ", "phys_state.q", "CLDLIQ", "mg/kg", 1.0e6, "cloud liquid water"),
     "CLDICE": FieldSpec("CLDICE", "phys_state.q", "CLDICE", "mg/kg", 1.0e6, "cloud ice"),
+    "NUMLIQ": FieldSpec("NUMLIQ", "phys_state.q", "NUMLIQ", "1/mg", 1.0e-6, "cloud droplet number"),
+    "NUMICE": FieldSpec("NUMICE", "phys_state.q", "NUMICE", "1/mg", 1.0e-6, "cloud ice number"),
     "U": FieldSpec("U", "phys_state.u", None, "m/s", 1.0, "zonal wind"),
     "V": FieldSpec("V", "phys_state.v", None, "m/s", 1.0, "meridional wind"),
     "OMEGA": FieldSpec("OMEGA", "phys_state.omega", None, "Pa/s", 1.0, "vertical pressure velocity"),
-    "PS": FieldSpec("PS", "phys_state.ps", None, "hPa", 1.0e-2, "surface pressure"),
+    "ZM": FieldSpec("ZM", "phys_state.zm", None, "m", 1.0, "height above the surface"),
+    "PS": _surface("PS", "phys_state.ps", "hPa", 1.0e-2, "surface pressure"),
+    "PSL": _surface("PSL", "cam_out.psl", "hPa", 1.0e-2, "sea-level pressure"),
+    "TS": _surface("TS", "cam_in.ts", "K", 1.0, "surface temperature"),
+    "TREFHT": _surface("TREFHT", "cam_in.tref", "K", 1.0, "2 m temperature"),
+    "QREFHT": _surface("QREFHT", "cam_in.qref", "g/kg", 1.0e3, "2 m specific humidity"),
+    "U10": _surface("U10", "cam_in.u10", "m/s", 1.0, "10 m wind speed"),
+    "PRECC": _surface("PRECC", "cam_out.precc", "mm/day", 1.0e3 * DAY, "convective precipitation"),
+    "PRECL": _surface("PRECL", "cam_out.precl", "mm/day", 1.0e3 * DAY, "large-scale precipitation"),
+    "PRECSC": _surface("PRECSC", "cam_out.precsc", "mm/day", 1.0e3 * DAY, "convective snowfall (water)"),
+    "PRECSL": _surface("PRECSL", "cam_out.precsl", "mm/day", 1.0e3 * DAY, "large-scale snowfall (water)"),
+    "SHFLX": _surface("SHFLX", "cam_in.shf", "W/m2", 1.0, "sensible heat flux, upward"),
+    "LHFLX": _surface("LHFLX", "cam_in.lhf", "W/m2", 1.0, "latent heat flux, upward"),
+    "FLDS": _surface("FLDS", "cam_out.flwds", "W/m2", 1.0, "longwave down at the surface"),
+    "FSNS": _surface("FSNS", "cam_out.netsw", "W/m2", 1.0, "net shortwave at the surface"),
+    "TAUX": _surface("TAUX", "cam_in.wsx", "N/m2", 1.0, "zonal surface stress"),
+    "TAUY": _surface("TAUY", "cam_in.wsy", "N/m2", 1.0, "meridional surface stress"),
+    "ICEFRAC": _surface("ICEFRAC", "cam_in.icefrac", "", 1.0, "sea-ice fraction"),
+    "OCNFRAC": _surface("OCNFRAC", "cam_in.ocnfrac", "", 1.0, "ocean fraction"),
+    "SNOWHLND": _surface("SNOWHLND", "cam_in.snowhland", "m", 1.0, "snow depth over land (water)"),
+    "DTDT": FieldSpec("DTDT", "phys_tend.dtdt", None, "K/day", DAY, "physics temperature tendency", "tendency"),
+    "DUDT": FieldSpec("DUDT", "phys_tend.dudt", None, "m/s/day", DAY, "physics zonal wind tendency", "tendency"),
+    "DVDT": FieldSpec("DVDT", "phys_tend.dvdt", None, "m/s/day", DAY, "physics meridional wind tendency",
+                      "tendency"),
 }
 
 DEFAULT_FIELDS = ("T", "Q", "CLDLIQ", "CLDICE")
 
+#: what the Workflow Builder's globe keeps by default: in memory a field costs each rank a few KB a
+#: step, so the winds, the surface pressure and the surface's temperature, fluxes and rain as well
+BUILDER_FIELDS = ("T", "Q", "CLDLIQ", "CLDICE", "U", "V", "OMEGA", "PS", "TS", "PRECC", "PRECL", "SHFLX", "LHFLX")
+
 
 def field_spec(name: str) -> FieldSpec:
-    """``T``, ``phys_state.omega`` or ``phys_state.q:CLDLIQ`` -> the field's spec."""
+    """``T``, ``phys_state.omega``, ``cam_in.shf`` or ``phys_state.q:CLDLIQ`` -> the field's spec."""
 
     name = str(name).strip()
     if name in KNOWN_FIELDS:
         return KNOWN_FIELDS[name]
     field, _, constituent = name.partition(":")
-    if not field.startswith("phys_state."):
-        raise ValueError(f"cannot record {name!r}: name one of {sorted(KNOWN_FIELDS)}, a phys_state.<field>, "
-                         f"or phys_state.q:<constituent>")
+    owner, dot, member = field.partition(".")
+    if owner not in OWNERS or not dot or not member.isidentifier():
+        raise ValueError(f"cannot record {name!r}: name one of {sorted(KNOWN_FIELDS)}, an <owner>.<field> of "
+                         f"{', '.join(OWNERS)}, or <owner>.<field>:<constituent>")
+    group = {"cam_in": "surface", "cam_out": "surface", "phys_tend": "tendency"}.get(owner, "atmosphere")
     if constituent:
         index: str | int = int(constituent) if constituent.isdigit() else constituent
-        return FieldSpec(name, field, index, "kg/kg", 1.0, f"{field} {constituent}")
-    return FieldSpec(name, field, None, "", 1.0, field)
+        units = "kg/kg" if field == "phys_state.q" else ""
+        return FieldSpec(name, field, index, units, 1.0, f"{field} {constituent}", group)
+    return FieldSpec(name, field, None, "", 1.0, field, group)
 
 
 def constituent_names(library: Any, count: int) -> list[str]:
@@ -150,15 +196,18 @@ def _take(array: np.ndarray, ncol: Sequence[int]) -> np.ndarray:
 class _Resolved:
     """A field spec bound to this rank's pool: which array, which constituent, how many levels."""
 
-    def __init__(self, spec: FieldSpec, pool: Mapping[str, Any], constituents: Sequence[str]) -> None:
+    def __init__(self, spec: FieldSpec, pool: Mapping[str, Any], constituents: Sequence[str],
+                 pcnst: int = 0) -> None:
         self.spec = spec
         try:
             array = np.asarray(pool[spec.field])
         except KeyError:
             raise ValueError(f"cannot record {spec.name!r}: the state pool has no {spec.field!r}") from None
         self.index: int | None = None
+        #: the constituent axis: 2 of (pcols, levels, pcnst, chunks), 1 of a surface field's (pcols, pcnst, chunks)
+        self.axis = 2 if array.ndim == 4 else 1
         if spec.constituent is not None:
-            if array.ndim != 4:
+            if not (array.ndim == 4 or (array.ndim == 3 and pcnst > 0 and array.shape[1] == pcnst)):
                 raise ValueError(f"cannot record {spec.name!r}: {spec.field} has no constituent axis")
             if isinstance(spec.constituent, int):
                 self.index = spec.constituent
@@ -167,9 +216,9 @@ class _Resolved:
             else:
                 raise ValueError(f"cannot record {spec.name!r}: the image names no constituent "
                                  f"{spec.constituent!r} (it has {list(constituents)[:12]}...)")
-            if not 0 <= self.index < array.shape[2]:
+            if not 0 <= self.index < array.shape[self.axis]:
                 raise ValueError(f"cannot record {spec.name!r}: constituent {self.index} is out of range")
-            self.levels = int(array.shape[1])
+            self.levels = int(array.shape[1]) if self.axis == 2 else 1
         elif array.ndim == 3:
             self.levels = int(array.shape[1])
         elif array.ndim == 2:
@@ -183,7 +232,7 @@ class _Resolved:
 
         array = np.asarray(pool[self.spec.field])
         if self.index is not None:
-            array = array[:, :, self.index, :]
+            array = array[:, :, self.index, :] if self.axis == 2 else array[:, self.index, :]
         if array.ndim == 2:
             array = array[:, None, :]
         # (pcols, levels, chunks) -> (levels, columns): each chunk's first ncol columns, in order
@@ -274,7 +323,7 @@ class StateRecorder:
         q = pool.get("phys_state.q", np.zeros((0, 0, 0, 0))) if hasattr(pool, "get") else np.zeros((0, 0, 0, 0))
         pcnst = int(np.asarray(q).shape[2]) if np.asarray(q).ndim == 4 else 0
         constituents = constituent_names(library, pcnst)
-        self._resolved = [_Resolved(spec, pool, constituents) for spec in self.specs]
+        self._resolved = [_Resolved(spec, pool, constituents, pcnst) for spec in self.specs]
         ncol = _real_columns(pool)
         if ncol is None:
             raise ValueError("the state pool has no phys_state.ncol: cannot tell real columns from padding")
@@ -662,5 +711,5 @@ def parse_steps(text: str) -> tuple[int, ...]:
     return tuple(sorted(set(steps)))
 
 
-__all__ = ["DEFAULT_FIELDS", "FieldSpec", "KEEP_ACTIONS", "KEEP_STEPS", "KNOWN_FIELDS", "SCHEMA_VERSION",
+__all__ = ["BUILDER_FIELDS", "DEFAULT_FIELDS", "FieldSpec", "KEEP_ACTIONS", "KEEP_STEPS", "KNOWN_FIELDS", "SCHEMA_VERSION",
            "START_OF_STEP", "StateRecorder", "field_spec", "parse_steps"]

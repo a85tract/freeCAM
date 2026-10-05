@@ -87,6 +87,16 @@ def build_app(service: WorkflowService, *, static_dir: Path | None = None) -> Fa
         authorised(request)
         return {"events": service.events(since), "run": service.run_payload()}
 
+    @app.get("/api/globe/options")
+    def globe_options(request: Request) -> Any:
+        authorised(request)
+        return service.globe_options()
+
+    @app.put("/api/globe/options")
+    def set_globe_options(request: Request, body: dict = Body(...)) -> Any:
+        authorised(request)
+        return guarded(lambda: service.set_globe_options(body))
+
     @app.get("/globe/")
     def globe_page() -> Any:
         from ..state_view import _page

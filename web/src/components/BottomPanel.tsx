@@ -1,6 +1,6 @@
-import { useCallback, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useState, type KeyboardEvent, type PointerEvent } from "react";
 
-import type { LogEvent, Mode, RunStatus, ServiceState } from "../api";
+import type { GlobeOptions, LogEvent, Mode, RunStatus, ServiceClient, ServiceState } from "../api";
 import type { GeneratedArtifacts } from "../codegen/generate";
 import type { Issue, ValidationReport, WorkflowDocument } from "../model/types";
 
@@ -31,6 +31,8 @@ interface Props {
   onResize: (height: number) => void;
   /** the session token, for opening the globe in a tab of its own */
   token: string | null;
+  /** the service, for choosing what the globe keeps */
+  client?: ServiceClient | null;
 }
 
 export const BOTTOM_MIN = 120;
@@ -201,7 +203,7 @@ export function BottomPanel(props: Props) {
           </div>
         )}
 
-        {props.tab === "globe" && <GlobeTab mode={props.mode} run={props.run} token={props.token} />}
+        {props.tab === "globe" && <GlobeTab mode={props.mode} run={props.run} token={props.token} client={props.client ?? null} />}
 
         {props.tab === "run" && (
           <div>
@@ -244,8 +246,86 @@ export function BottomPanel(props: Props) {
   );
 }
 
+const GLOBE_GROUPS: [string, string][] = [["atmosphere", "Atmosphere"], ["surface", "Surface"], ["tendency", "Physics tendencies"]];
+
+/** What the globe keeps: chosen before the model starts, shown once it runs. */
+function GlobeFields({ client, run }: { client: ServiceClient; run: RunStatus | null }) {
+  const [options, setOptions] = useState<GlobeOptions | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [steps, setSteps] = useState("");
+  const running = run?.state;
+  useEffect(() => {
+    let live = true;
+    client.globeOptions().then((value) => {
+      if (!live) return;
+      setOptions(value);
+      setSteps(value.action_steps.join(", "));
+    }).catch((reason: unknown) => live && setError(String((reason as Error).message ?? reason)));
+    return () => { live = false; };
+  }, [client, running]);
+  if (!options || !options.enabled) return error ? <p className="error-text">{error}</p> : null;
+  const change = (changes: { fields?: string[]; every?: number; action_steps?: string }) => {
+    client.setGlobeOptions(changes).then((value) => { setOptions(value); setError(null); })
+      .catch((reason: unknown) => setError(String((reason as Error).message ?? reason)));
+  };
+  const known = new Set(options.available.map((field) => field.name));
+  const extra = options.fields.filter((name) => !known.has(name));
+  if (!options.editable) {
+    return (
+      <p className="muted globe-kept">
+        Keeping {options.fields.join(", ")}{options.every > 1 ? ` every ${options.every} steps` : " every step"}
+        {options.action_steps.length ? `, and after every process at step ${options.action_steps.join(", ")}` : ""}.
+        Close model to choose again.
+      </p>
+    );
+  }
+  const toggle = (name: string, on: boolean) => {
+    const fields = on ? [...options.fields, name] : options.fields.filter((field) => field !== name);
+    change({ fields });
+  };
+  return (
+    <details className="globe-fields" open={run?.globe?.ready ? undefined : true}>
+      <summary>
+        Variables the globe keeps ({options.fields.length}){options.memory ? `: in the ranks' memory, the newest ${options.keep_steps} steps` : ""}
+      </summary>
+      {GLOBE_GROUPS.map(([group, title]) => (
+        <fieldset key={group}>
+          <legend>{title}</legend>
+          {options.available.filter((field) => field.group === group).map((field) => (
+            <label key={field.name} title={`${field.source}${field.units ? `, ${field.units}` : ""}`}>
+              <input type="checkbox" checked={options.fields.includes(field.name)}
+                onChange={(event) => toggle(field.name, event.target.checked)} />
+              {" "}<span className="mono">{field.name}</span> <span className="muted">{field.label}</span>
+            </label>
+          ))}
+        </fieldset>
+      ))}
+      {extra.length > 0 && (
+        <fieldset>
+          <legend>Named by the caller</legend>
+          {extra.map((name) => (
+            <label key={name}>
+              <input type="checkbox" checked onChange={() => toggle(name, false)} /> <span className="mono">{name}</span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+      <div className="globe-steps">
+        <label>Every <input type="number" min={1} value={options.every} style={{ width: 60 }}
+          onChange={(event) => change({ every: Math.max(1, Number(event.target.value) || 1) })} /> step(s)</label>
+        <label>Also after every process at steps{" "}
+          <input value={steps} placeholder="e.g. 24 or 12-48/12" onChange={(event) => setSteps(event.target.value)}
+            onBlur={() => change({ action_steps: steps })} /></label>
+      </div>
+      <p className="muted">Each variable kept costs every rank a few KB a step (a 3-D field 3 KB at 512 ranks); the choice
+        applies to the next model started from this page.</p>
+      {error && <p className="error-text">{error}</p>}
+    </details>
+  );
+}
+
 /** The model's state on a globe, step by step as the run started from this page records it. */
-function GlobeTab({ mode, run, token }: { mode: Mode; run: RunStatus | null; token: string | null }) {
+function GlobeTab({ mode, run, token, client }: { mode: Mode; run: RunStatus | null; token: string | null; client: ServiceClient | null }) {
   if (mode === "preview") {
     return <p className="muted">The globe shows the state of a run started from this page, step by step as it runs. The preview has no model behind it.</p>;
   }
@@ -253,22 +333,24 @@ function GlobeTab({ mode, run, token }: { mode: Mode; run: RunStatus | null; tok
   if (!globe || !globe.enabled) {
     return <p className="muted">This model records no state for the globe: it was started without it, or the page was opened with <code>globe=False</code>. Close model, then Run again.</p>;
   }
+  const fields = client ? <GlobeFields client={client} run={run} /> : null;
   if (!globe.ready) {
+    let note = <p className="muted">The globe starts with the first Run: it shows each step as the model takes it.</p>;
     if (run?.state === "initializing" || run?.state === "queued") {
-      return (
+      note = (
         <p className="muted">
           The model is starting{run.job_id ? <> (PBS job <code>{run.job_id}</code>)</> : null}: its job may wait in the
           queue before its ranks initialize. The globe shows the first step as soon as the model takes it.
         </p>
       );
+    } else if (globe.memory && run?.state === "closed") {
+      note = <p className="muted">The model is closed, and the state it kept in memory with it. Run again to follow a new one.</p>;
     }
-    if (globe.memory && run?.state === "closed") {
-      return <p className="muted">The model is closed, and the state it kept in memory with it. Run again to follow a new one.</p>;
-    }
-    return <p className="muted">The globe starts with the first Run: it shows each step as the model takes it.</p>;
+    return <div className="globe-tab">{note}{fields}</div>;
   }
   return (
     <div className="globe-tab">
+      {fields}
       <div className="code-tabs">
         {globe.memory ? (
           <span className="muted">

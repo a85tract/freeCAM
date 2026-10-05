@@ -66,6 +66,13 @@ code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, m
 .bottom .content { flex: 1; overflow: auto; padding: 8px 12px; }
 .globe-tab { display: flex; flex-direction: column; gap: 6px; height: 100%; }
 .globe-frame { flex: 1; width: 100%; min-height: 240px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); }
+.globe-fields summary { cursor: pointer; }
+.globe-fields fieldset { display: flex; flex-wrap: wrap; gap: 4px 14px; border: 1px solid var(--border); border-radius: 6px; margin: 6px 0; padding: 4px 8px 6px; }
+.globe-fields legend { padding: 0 4px; font-weight: 600; }
+.globe-fields label { white-space: nowrap; }
+.globe-steps { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; margin: 4px 0; }
+.globe-kept { margin: 0; }
+.error-text { color: var(--danger); }
 
 button.primary { background: var(--accent); color: var(--accent-text); border: 1px solid transparent; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
 button.secondary, .row button, .entry button, .inspector button.action { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }

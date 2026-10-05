@@ -333,6 +333,7 @@ function Editor({ mode, snapshot, service: initialService, client }: { mode: Mod
             if (tab === "globe" && bottomHeight < 420) setBottomHeight(clampHeight(Math.round(window.innerHeight * 0.6)));
           }}
           token={client.token}
+          client={mode === "local" ? client : null}
           document={state.document}
           browserReport={browserReport}
           localReport={localReport}

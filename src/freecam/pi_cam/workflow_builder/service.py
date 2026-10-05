@@ -177,13 +177,72 @@ class WorkflowService:
                                  "Close model and Run again to record it")
             return
         from ..facade import _state_options
+        from ..state_record import BUILDER_FIELDS
 
         options = dict(self.driver.record_state or {})
         if "store" not in options and options.get("dir") is None:
             options["store"] = "memory"
         if options.get("store", "files") == "files":
             options.setdefault("flush_every", 1)
+        else:
+            options.setdefault("fields", list(BUILDER_FIELDS))
         self.driver.record_state = _state_options(options)
+
+    def globe_options(self) -> dict[str, Any]:
+        """What the globe keeps, whether it may still change (not once the model runs), and the
+        fields a picker offers."""
+
+        from ..state_record import DEFAULT_FIELDS, KEEP_STEPS, KNOWN_FIELDS
+
+        options = getattr(self.driver, "record_state", None) if hasattr(self.driver, "record_state") else None
+        return {
+            "enabled": options is not None,
+            "editable": options is not None and not self.driver_initialized,
+            "memory": options is not None and options.get("store") == "memory",
+            "fields": list((options or {}).get("fields") or DEFAULT_FIELDS),
+            "every": int((options or {}).get("every", 1)),
+            "action_steps": list((options or {}).get("action_steps", ())),
+            "keep_steps": int((options or {}).get("keep_steps") or KEEP_STEPS),
+            "available": [{"name": spec.name, "label": spec.label, "units": spec.units, "group": spec.group,
+                           "source": spec.field + (f":{spec.constituent}" if spec.constituent is not None else "")}
+                          for spec in KNOWN_FIELDS.values()],
+        }
+
+    def set_globe_options(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Choose what the globe keeps -- ``fields``, ``every``, ``action_steps`` (a list, or text
+        such as ``"24, 30-32"``) -- before the model starts."""
+
+        from ..facade import _state_options
+        from ..state_record import parse_steps
+
+        with self._lock:
+            if not hasattr(self.driver, "record_state") or self.driver.record_state is None:
+                raise ServiceRefused("this page keeps no state for the globe (it was opened with globe=False)")
+            if self.driver_initialized:
+                raise ServiceRefused("the model is running with what it was started with: Close model to choose again")
+            unknown = sorted(set(payload) - {"fields", "every", "action_steps"})
+            if unknown:
+                raise ServiceRefused(f"globe options {unknown} are not fields, every or action_steps")
+            options = dict(self.driver.record_state)
+            if "fields" in payload:
+                fields = [str(name) for name in payload["fields"]]
+                if not fields:
+                    raise ServiceRefused("keep at least one field")
+                options["fields"] = fields
+            if "every" in payload:
+                options["every"] = int(payload["every"])
+            if "action_steps" in payload:
+                steps = payload["action_steps"]
+                try:
+                    options["action_steps"] = list(parse_steps(steps) if isinstance(steps, str) else steps)
+                except ValueError as error:
+                    raise ServiceRefused(f"action steps: {error}") from None
+            try:
+                self.driver.record_state = _state_options(options)
+            except (TypeError, ValueError) as error:
+                raise ServiceRefused(str(error)) from None
+            self.log("info", f"the globe keeps {', '.join(self.driver.record_state['fields'])}")
+        return self.globe_options()
 
     def globe_status(self) -> dict[str, Any]:
         options = getattr(self.driver, "record_state", None) if hasattr(self.driver, "record_state") else None

@@ -23,6 +23,19 @@ export interface RunStatus {
   globe?: { enabled: boolean; dir: string | null; ready: boolean; memory?: boolean; keep_steps?: number };
 }
 
+/** What the Workflow Builder's globe keeps, and the fields a picker offers. */
+export interface GlobeOptions {
+  enabled: boolean;
+  /** false once the model runs: it keeps what it was started with */
+  editable: boolean;
+  memory: boolean;
+  fields: string[];
+  every: number;
+  action_steps: number[];
+  keep_steps: number;
+  available: { name: string; label: string; units: string; group: string; source: string }[];
+}
+
 export interface ServiceState {
   mode: "local";
   snapshot: CatalogSnapshot;
@@ -134,6 +147,14 @@ export class ServiceClient {
 
   events(since: number): Promise<{ events: LogEvent[]; run: RunStatus }> {
     return this.request(`api/events?since=${since}`);
+  }
+
+  globeOptions(): Promise<GlobeOptions> {
+    return this.request("api/globe/options");
+  }
+
+  setGlobeOptions(changes: { fields?: string[]; every?: number; action_steps?: string }): Promise<GlobeOptions> {
+    return this.request("api/globe/options", { method: "PUT", body: JSON.stringify(changes) });
   }
 }
 

@@ -167,7 +167,9 @@ class _RecordingDriver(FakeDriver):
 def test_the_page_keeps_the_state_in_memory_before_the_model_starts(tmp_path):
     driver = _RecordingDriver(nsteps=3, run_dir=tmp_path / "run")
     service = WorkflowService(driver, generated_dir=tmp_path / "generated")
-    assert driver.record_state == {"store": "memory", "action_steps": []}
+    from freecam.pi_cam.state_record import BUILDER_FIELDS
+
+    assert driver.record_state == {"store": "memory", "fields": list(BUILDER_FIELDS), "action_steps": []}
     assert service.run_payload()["globe"] == {"enabled": True, "dir": None, "memory": True, "keep_steps": 1000,
                                               "ready": False}
     driver.record_state = {"dir": None, "fields": ["T"], "every": 2}
@@ -262,3 +264,29 @@ def test_the_globe_asks_the_ranks_of_a_model_keeping_its_state_in_memory(tmp_pat
     driver._session = object()
     client.get("/globe/api/meta", headers=_headers(service))
     assert driver.asked[-2:] == ["layout", "frames"]
+
+
+def test_the_globe_s_fields_are_chosen_before_the_model_starts(tmp_path):
+    driver = _RecordingDriver(nsteps=3, run_dir=tmp_path / "run")
+    service = WorkflowService(driver, generated_dir=tmp_path / "generated")
+    client = TestClient(create_app(service, static_dir=service._generated_dir))
+    assert client.get("/api/globe/options").status_code == 401
+    options = client.get("/api/globe/options", headers=_headers(service)).json()
+    assert options["editable"] is True and options["memory"] is True and "PRECC" in options["fields"]
+    offered = {field["name"]: field for field in options["available"]}
+    assert offered["PRECL"]["source"] == "cam_out.precl" and offered["PRECL"]["group"] == "surface"
+    assert offered["Q"]["source"] == "phys_state.q:Q" and offered["DTDT"]["units"] == "K/day"
+    chosen = client.put("/api/globe/options", headers=_headers(service),
+                        json={"fields": ["T", "TS", "cam_in.lwup"], "every": 2, "action_steps": "24, 30-31"})
+    assert chosen.status_code == 200
+    assert driver.record_state["fields"] == ["T", "TS", "cam_in.lwup"] and driver.record_state["every"] == 2
+    assert driver.record_state["action_steps"] == [24, 30, 31] and driver.record_state["store"] == "memory"
+    for wrong in ({"fields": []}, {"fields": ["temperature"]}, {"every": 0}, {"action_steps": "3-"},
+                  {"feilds": ["T"]}):
+        refused = client.put("/api/globe/options", headers=_headers(service), json=wrong)
+        assert refused.status_code == 409, wrong
+    assert driver.record_state["fields"] == ["T", "TS", "cam_in.lwup"]          # a refusal changes nothing
+    driver._session = object()                                                  # the model starts
+    assert client.get("/api/globe/options", headers=_headers(service)).json()["editable"] is False
+    late = client.put("/api/globe/options", headers=_headers(service), json={"fields": ["T"]})
+    assert late.status_code == 409 and "Close model" in late.json()["detail"]
