@@ -29,6 +29,27 @@ in the same MPI processes as CAM. The rank-local MCT x2a/a2x arrays are exposed
 as zero-copy NumPy views; there is no shadow atmosphere and no
 Fortran-to-Python callback.
 
+### How long a model runs
+
+The surface components run the steps their `drv_in` names (`stop_n`, in
+steps), write their restart files there and stop; a step after it cannot be
+coupled. The default case's seed is a month, 1488 steps. A `Driver` with a
+longer `nsteps` sets its model up for that many, as the batch jobs do: the
+components' `stop_n` and `restart_n` in the provider's copy of `drv_in`, and
+the configuration's `stop_n` (CAM writes its restart at the end), in a copy
+beside the run that names its original (`derived_from`). A shorter `nsteps`
+leaves the month as it is.
+
+```python
+fc.Driver(case="PI-atm", nsteps=8688, walltime="03:00:00")   # half a year: some 45 minutes at 0.3 s a step
+```
+
+A run that would go past the steps a model was set up for is refused before
+any of it runs, and, when no model has started, before PBS is asked for one;
+the message says how many steps are left. The Workflow Builder's first Run sets
+the model up for the steps it asks for. A long run also needs a `walltime`
+that holds it (two hours by default).
+
 ### Other rank counts
 
 The admitted case runs on 512 MPI ranks. The online case can run on another

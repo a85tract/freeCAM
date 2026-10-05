@@ -676,6 +676,7 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         python_owned_internal: bool = False,
         oracle: str | Path | None = None,
         ranks: int = 512,
+        steps: int | None = None,
     ) -> "CESMOnlineBoundaryProvider":
         """Prepare a private CESM run directory and return an online provider.
 
@@ -683,15 +684,19 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         restart, log, and timing output is deliberately not copied into the
         live provider directory.  On a count other than the admitted 512 the
         copy's drv_in lays the components out over ``ranks``
-        (:func:`freecam.pi_cam.layout.component_layout`); the seed's own is
-        left as it is.
+        (:func:`freecam.pi_cam.layout.component_layout`), and with ``steps`` it
+        runs the components that many steps, restarts written at the end
+        (``stop_n``, ``restart_n``); the seed's own is left as it is.
         """
 
-        from .layout import ADMITTED_RANKS, lay_out
+        from .layout import ADMITTED_RANKS, lay_out, rewrite_drv_in
 
         prepared = prepare_cesm_online_run(seed_run, run_dir)
         if int(ranks) != ADMITTED_RANKS:
             lay_out(prepared / "drv_in", int(ranks))
+        if steps is not None:
+            drv_in = prepared / "drv_in"
+            drv_in.write_text(rewrite_drv_in(drv_in.read_text(), {"stop_n": int(steps), "restart_n": int(steps)}))
         return cls(
             library=library,
             run_dir=prepared,

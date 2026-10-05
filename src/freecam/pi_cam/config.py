@@ -170,7 +170,10 @@ class PICAMConfig:
         if not isinstance(values, Mapping):
             raise PICAMConfigurationError("PI-CAM YAML root must be a mapping")
         values = dict(values)
-        base = source.parent.parent if source.parent.name == "configs" else source.parent
+        # a configuration derived from another (another rank count or length, written beside a
+        # run) resolves its paths, and finds the site's settings, where its original does
+        origin = Path(values.pop("derived_from", None) or source)
+        base = origin.parent.parent if origin.parent.name == "configs" else origin.parent
         for name in ("source_root", "native_manifest", "initial_conditions", "namelist"):
             value = values.get(name)
             if value is not None and not Path(value).is_absolute():

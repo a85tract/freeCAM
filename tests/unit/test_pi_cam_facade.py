@@ -1526,11 +1526,49 @@ def test_a_new_model_reads_the_horizon_from_the_seed_run_before_it_starts(tmp_pa
     seed.mkdir()
     (seed / "drv_in").write_text('&seq_timemgr_inparm\n  stop_option = "nsteps"\n  stop_n = 1488\n/\n')
     driver = Driver(
-        case="PI-atm", nsteps=2000, repo=paths["repo"], config=config, reference_case=paths["reference_case"],
+        case="PI-atm", nsteps=100, repo=paths["repo"], config=config, reference_case=paths["reference_case"],
         reference_run=paths["reference_run"], python_executable="/usr/bin/python3", session_factory=FakeSession,
     )
     driver._online_seed_run = seed
     started = len(FakeSession.instances)
     with pytest.raises(ValueError, match="run 1488 steps .* taken 0, so at most 1488 more"):
-        driver.run()
+        driver.run(2000)                                                 # longer than the model was set up for
     assert len(FakeSession.instances) == started                         # no model asked for
+
+
+def test_a_model_longer_than_the_seed_sets_its_components_and_cam_for_its_length(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    config = paths["config"]
+    config.write_text(config.read_text().replace("stop_n: 5", "stop_n: 1488") + "boundary_mode: online\n")
+    library = tmp_path / "libpycesm_support.so"
+    library.write_bytes(b"test library")
+    seed = tmp_path / "cesm-seed"
+    seed.mkdir()
+    month = '&seq_timemgr_inparm\n  restart_n = 1488\n  stop_n = 1488\n  stop_option = "nsteps"\n/\n'
+    (seed / "drv_in").write_text(month)
+    (seed / "SEMapping.nc").write_bytes(b"mapping")
+
+    def driver(nsteps):
+        return Driver(case="PI-atm", nsteps=nsteps, repo=paths["repo"], config=config, scratch=tmp_path / "scratch",
+                      reference_case=paths["reference_case"], reference_run=paths["reference_run"],
+                      online_library=library, online_seed_run=seed, python_executable="/usr/bin/python3",
+                      session_factory=FakeSession)
+
+    long = driver(1000)
+    long.lengthen(2976)                                                  # the page's first Run: two months
+    assert long.nsteps == 2976 and long._steps_horizon() == 2976
+    _ = long.cam.state
+    drv_in = (long.boundary.run_dir / "drv_in").read_text()
+    assert "stop_n = 2976" in drv_in and "restart_n = 2976" in drv_in and 'stop_option = "nsteps"' in drv_in
+    assert long.boundary.steps_horizon == 2976
+    assert "stop_n: 2976" in Path(long.config_path).read_text()          # CAM's own end (its restart) moves too
+    assert (seed / "drv_in").read_text() == month                        # the seed is left as it is
+    long.lengthen(5000)                                                  # a started model keeps its length
+    assert long.nsteps == 2976
+    long.close()
+
+    short = driver(120)
+    _ = short.cam.state
+    assert (short.boundary.run_dir / "drv_in").read_text() == month      # a month's components, as before
+    assert short.boundary.steps_horizon == 1488 and Path(short.config_path) == config.resolve()
+    short.close()

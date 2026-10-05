@@ -2380,12 +2380,15 @@ class Driver:
     def _live_session(self) -> PICAMNotebookSession:
         if self._session is None:
             run_dir = self._prepare_run_dir()
-            if self._derived_ranks is not None:
+            # a run longer than the configuration's: CAM's own end (its restart at the end) moves with it
+            length = self._planned_steps()
+            longer = length if length is not None and length > int(self.config.stop_n) else None
+            if self._derived_ranks is not None or longer is not None:
                 # the session launches as many ranks as its configuration says
                 from .layout import derive_config
 
                 self.config_path = derive_config(
-                    self.config_path, run_dir.parent / "config.yaml", mpi_size=self._derived_ranks
+                    self.config_path, run_dir.parent / "config.yaml", mpi_size=self._derived_ranks, stop_n=longer
                 ).resolve()
                 self._derived_ranks = None
             boundary = self._prepare_online_boundary(run_dir)
@@ -2455,14 +2458,35 @@ class Driver:
 
     def _steps_horizon(self) -> int | None:
         """How many steps the CESM surface components run: their provider's, or, before the model
-        starts, the seed run's drv_in that the provider copies; None for a boundary without an end."""
+        starts, what it will be set up for; None for a boundary without an end."""
 
         if self.boundary is not None or self.config.boundary_mode != "online":
             return getattr(self.boundary, "steps_horizon", None)
+        return self._planned_steps()
+
+    def _seed_horizon(self) -> int | None:
         from .layout import read_horizon
 
         drv_in = self._resolve_online_seed_run() / "drv_in"
         return read_horizon(drv_in.read_text()) if drv_in.is_file() else None
+
+    def _planned_steps(self) -> int | None:
+        """The steps the CESM components of a model this Driver starts are set up for: the seed
+        run's, or ``nsteps`` when longer (as the batch jobs lengthen it); None when the boundary
+        is not the CESM provider prepared here."""
+
+        if self.boundary is not None or self.config.boundary_mode != "online":
+            return None
+        seed = self._seed_horizon()
+        return None if seed is None else max(seed, int(self.nsteps))
+
+    def lengthen(self, steps: int) -> None:
+        """Before the model starts, set it up to run at least ``steps`` steps: the online case's
+        CESM components then run that long (what the Workflow Builder's first Run asks for).  A
+        started model keeps the length it was started with."""
+
+        if self._session is None and self.config.boundary_mode == "online":
+            self.nsteps = max(int(self.nsteps), int(steps))
 
     def _resolve_online_seed_run(self) -> Path:
         from .. import site
@@ -2489,12 +2513,14 @@ class Driver:
         self._check_pairing(library)
         seed_run = self._resolve_online_seed_run()
         provider_run = run_dir.parent / "cesm-provider-run"
+        seed, length = self._seed_horizon(), self._planned_steps()
         self.boundary = CESMOnlineBoundaryProvider.from_seed_run(
             library=library,
             seed_run=seed_run,
             run_dir=provider_run,
             oracle=self._online_oracle,
             **({} if self._chosen_ranks is None else {"ranks": self._chosen_ranks}),
+            **({"steps": length} if seed is not None and length is not None and length > seed else {}),
         )
         return self.boundary
 

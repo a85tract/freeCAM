@@ -347,6 +347,9 @@ class WorkflowService:
                 raise ServiceRefused("a run is in progress; wait for it or stop it")
             if not self.driver_initialized and not confirm_resources:
                 raise ServiceRefused("the first Run starts the model; confirm the resources to proceed")
+            lengthen = getattr(self.driver, "lengthen", None)
+            if not self.driver_initialized and callable(lengthen):
+                lengthen(int(steps))         # a model set up for the steps this first Run asks
             self._draft = document
             self._run = RunStatus(
                 state="initializing" if not self.driver_initialized else "running",

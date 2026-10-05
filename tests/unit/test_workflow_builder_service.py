@@ -109,6 +109,7 @@ def test_the_first_run_needs_the_resources_confirmed_then_initializes_applies_an
     assert final["job_id"] == "12345.fake"
     assert final["applied_hash"] == document["workflow_hash"]
     assert service.driver.initialized == 1
+    assert service.driver.lengthened == [3]                            # the model set up for the steps asked
     events = client.get("/api/events?since=0", headers=_headers(service)).json()["events"]
     messages = " ".join(e["message"] for e in events)
     assert "initializing the model" in messages and "running 3 step(s) from step 0" in messages
@@ -118,6 +119,7 @@ def test_the_first_run_needs_the_resources_confirmed_then_initializes_applies_an
     assert again.status_code == 200
     final = _wait(service, {"completed", "error"})
     assert final["step"] == 5 and service.driver.initialized == 1
+    assert service.driver.lengthened == [3]                            # a started model keeps its length
 
 
 def test_a_run_with_structural_errors_is_refused_before_anything_starts(client, service) -> None:
