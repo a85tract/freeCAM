@@ -72,6 +72,17 @@ def read_layout(text: str) -> dict[str, int]:
     return {name: int(value) for name, value in re.findall(r"\b(\w+_(?:ntasks|rootpe))\s*=\s*(-?\d+)", text)}
 
 
+def read_horizon(text: str) -> int | None:
+    """The coupling steps a ``drv_in`` runs before its components stop (``stop_n`` when
+    ``stop_option`` counts steps); None when it counts the run another way."""
+
+    option = re.search(r"""\bstop_option\s*=\s*["'](\w+)["']""", text)
+    count = re.search(r"\bstop_n\s*=\s*(-?\d+)", text)
+    if option is None or count is None or option.group(1).lower() != "nsteps":
+        return None
+    return int(count.group(1))
+
+
 def lay_out(drv_in: str | Path, ranks: int, *, steps: int | None = None) -> dict[str, int]:
     """Rewrite the ``drv_in`` file for ``ranks`` ranks (and a run of ``steps`` steps); the values set."""
 

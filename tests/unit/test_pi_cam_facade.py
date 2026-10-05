@@ -1472,3 +1472,65 @@ def test_a_replayed_boundary_keeps_the_ranks_it_was_captured_on(tmp_path) -> Non
         Driver(case="PI-atm", nsteps=2, repo=paths["repo"], config=paths["config"], scratch=tmp_path / "s",
                reference_case=paths["reference_case"], reference_run=paths["reference_run"],
                boundary=paths["boundary"], session_factory=FakeSession, ntasks=256, exploratory=True)
+
+
+def test_a_run_past_the_surface_components_horizon_is_refused_before_it_starts(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    config = paths["config"]
+    config.write_text(config.read_text() + "boundary_mode: online\n")
+    bootstrap = tmp_path / "bootstrap"
+    bootstrap.mkdir()
+    (bootstrap / "manifest.json").write_text(
+        '{"schema_version":1,"storage":"rank_bootstrap_v1",'
+        '"rank_count":1,"file_pattern":"rank-{rank:04d}.npz"}\n'
+    )
+    np.savez(bootstrap / "rank-0000.npz", x2a_rattr=np.zeros((2, 3)), a2x_rattr=np.zeros((4, 3)))
+
+    class Ending(OnlineBoundaryProvider):
+        steps_horizon = 5           # the CESM components stop after 5 steps, as drv_in's stop_n says
+
+    driver = Driver(
+        case="PI-atm", nsteps=4, repo=paths["repo"], config=config, reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"], boundary=Ending.held(bootstrap),
+        python_executable="/usr/bin/python3", session_factory=FakeSession,
+    )
+    started = len(FakeSession.instances)
+    with pytest.raises(ValueError, match="run 5 steps .* taken 0, so at most 5 more"):
+        driver.run(6)
+    assert len(FakeSession.instances) == started                         # refused before a model was asked for
+    driver.run(4)
+    with pytest.raises(ValueError, match="run 5 steps .* taken 4, so at most 1 more"):
+        driver.run(2)
+    assert FakeSession.instances[-1]._steps == 4                       # nothing ran
+    driver.run(1)
+    with pytest.raises(ValueError, match="can run no more"):
+        driver.advance(1)
+
+
+def test_a_step_past_the_horizon_is_refused_on_every_rank_before_it_runs() -> None:
+    from types import SimpleNamespace
+
+    from freecam.pi_cam.driver import PICAMDriver
+    from freecam.pi_cam.errors import PICAMStateError
+
+    rank = SimpleNamespace(boundary=SimpleNamespace(steps_horizon=1488), _native_step=1488)
+    with pytest.raises(PICAMStateError, match="run 1488 steps .* step 1489 cannot be coupled"):
+        PICAMDriver.step(rank)
+
+
+def test_a_new_model_reads_the_horizon_from_the_seed_run_before_it_starts(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    config = paths["config"]
+    config.write_text(config.read_text() + "boundary_mode: online\n")
+    seed = tmp_path / "seed-run"
+    seed.mkdir()
+    (seed / "drv_in").write_text('&seq_timemgr_inparm\n  stop_option = "nsteps"\n  stop_n = 1488\n/\n')
+    driver = Driver(
+        case="PI-atm", nsteps=2000, repo=paths["repo"], config=config, reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"], python_executable="/usr/bin/python3", session_factory=FakeSession,
+    )
+    driver._online_seed_run = seed
+    started = len(FakeSession.instances)
+    with pytest.raises(ValueError, match="run 1488 steps .* taken 0, so at most 1488 more"):
+        driver.run()
+    assert len(FakeSession.instances) == started                         # no model asked for

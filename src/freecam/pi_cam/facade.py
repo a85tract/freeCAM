@@ -2100,7 +2100,22 @@ class Driver:
             raise ValueError("steps must be positive")
         session = self._live_session()
         self.processes.sync()
+        self._check_horizon(session.status, int(steps))
         return session.advance(steps=int(steps))
+
+    def _check_horizon(self, status: Mapping[str, Any], steps: int) -> None:
+        """Refuse a run past the steps the CESM surface components were set up for: they stop
+        there, having written their restart files, and a step after it cannot be coupled."""
+
+        horizon = self._steps_horizon()
+        if horizon is None:
+            return
+        taken = int(status.get("native_step", status.get("step", 0)))
+        if taken + int(steps) > int(horizon):
+            left = max(horizon - taken, 0)
+            raise ValueError(
+                f"this model's surface components run {horizon} steps and stop there; it has taken {taken}, "
+                + (f"so at most {left} more can run" if left else "so it can run no more: Close model and start a new one"))
 
     def execute(
         self,
@@ -2128,12 +2143,16 @@ class Driver:
     ) -> RunResult:
         if isinstance(steps, bool) or int(steps) < 1:
             raise ValueError("steps must be a positive integer")
+        if self._session is None:
+            # before the PBS job is asked for: a model not yet started has taken no step
+            self._check_horizon({"native_step": 0}, int(steps))
         if not self._execution_lock.acquire(blocking=False):
             raise RuntimeError("this model already has a run in progress")
         try:
             session = self._live_session()
             self.processes.sync()
             starting_status = dict(session.status)
+            self._check_horizon(starting_status, int(steps))
             start_step = int(starting_status.get("step", 0))
             first = int(starting_status["actions"])
             stepwise = (
@@ -2433,6 +2452,17 @@ class Driver:
             / "production-components"
             / "libpycesm_external_atm.so"
         ).resolve()
+
+    def _steps_horizon(self) -> int | None:
+        """How many steps the CESM surface components run: their provider's, or, before the model
+        starts, the seed run's drv_in that the provider copies; None for a boundary without an end."""
+
+        if self.boundary is not None or self.config.boundary_mode != "online":
+            return getattr(self.boundary, "steps_horizon", None)
+        from .layout import read_horizon
+
+        drv_in = self._resolve_online_seed_run() / "drv_in"
+        return read_horizon(drv_in.read_text()) if drv_in.is_file() else None
 
     def _resolve_online_seed_run(self) -> Path:
         from .. import site

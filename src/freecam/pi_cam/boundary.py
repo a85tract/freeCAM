@@ -701,6 +701,18 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
             ranks=ranks,
         )
 
+    @property
+    def steps_horizon(self) -> int | None:
+        """The steps the CESM components run before they stop, having written their restart files
+        (the copied drv_in's stop_n, one coupling step a CAM step); None when it counts otherwise."""
+
+        if not hasattr(self, "_steps_horizon"):
+            from .layout import read_horizon
+
+            drv_in = Path(self.run_dir) / "drv_in"
+            self._steps_horizon = read_horizon(drv_in.read_text()) if drv_in.is_file() else None
+        return self._steps_horizon
+
     @contextmanager
     def _provider_directory(self):
         previous = Path.cwd()

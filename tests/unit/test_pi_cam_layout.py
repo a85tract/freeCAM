@@ -80,3 +80,18 @@ def test_a_derived_configuration_changes_only_what_it_is_asked(tmp_path: Path) -
     (tmp_path / "bare.yaml").write_text("case_name: x\n")
     with pytest.raises(LayoutError, match="mpi_size"):
         derive_config(tmp_path / "bare.yaml", tmp_path / "again.yaml", mpi_size=128)
+
+
+def test_the_steps_the_surface_components_run_are_read_from_drv_in(tmp_path: Path) -> None:
+    from freecam.pi_cam.layout import read_horizon
+
+    month = 'stop_option = "nsteps"\n  stop_n = 1488\n  restart_n = 1488\n'
+    assert read_horizon(month) == 1488
+    assert read_horizon("stop_option = 'ndays'\n stop_n = 31\n") is None        # counted another way
+    assert read_horizon("stop_n = 1488\n") is None
+    run = tmp_path / "provider-run"
+    run.mkdir()
+    (run / "drv_in").write_text("&seq_timemgr_inparm\n  " + month + "/\n")
+    provider = CESMOnlineBoundaryProvider.__new__(CESMOnlineBoundaryProvider)
+    provider.run_dir = run
+    assert provider.steps_horizon == 1488

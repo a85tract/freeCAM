@@ -2368,6 +2368,13 @@ class PICAMDriver:
         self.state_recorder = recorder
 
     def step(self) -> tuple[PICAMActionTrace, ...]:
+        horizon = getattr(self.boundary, "steps_horizon", None)
+        if horizon is not None and self._native_step >= horizon:
+            # the CESM surface components were set up for this many steps and stopped there, after
+            # writing their restart files: refuse the step on every rank before any of it runs
+            raise PICAMStateError(
+                f"the CESM surface components run {horizon} steps and this model has taken them; "
+                f"step {self._native_step + 1} cannot be coupled")
         timeline = self.timeline
         recorder = getattr(self, "state_recorder", None)
         if timeline is None and recorder is None:
