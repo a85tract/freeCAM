@@ -1787,7 +1787,7 @@ class NativeStage:
         A slot whose model changed is rebound; a slot emptied is unbound.
         """
 
-        from freecam.pi_cam.hooks import bind_hook_model, bind_hook_plugin, load_hooks, unbind_hook_model
+        from freecam.pi_cam.hooks import bind_hook_model, bind_hook_plugin, load_hooks, set_hook_graph, unbind_hook_model
 
         bound: dict[str, str] = getattr(self, "_native_bound", {})
         wanted = self._hook_bindings()
@@ -1819,6 +1819,8 @@ class NativeStage:
                 else:
                     bind_hook_model(native.library, hook.id, model.path, shadow=model.shadow,
                                     device=model.device, device_index=model.resolved_device_index())
+                    if getattr(model, "graph", False):
+                        set_hook_graph(native.library, hook.id, True)
                 bound[name] = keys[name]
         self._native_bound = bound
 

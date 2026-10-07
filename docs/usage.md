@@ -563,7 +563,22 @@ deep.kernels["cldfrc_fice"] = my_ice_fraction        # a function over the kerne
 deep.kernels["cldfrc_fice"] = compile_kernel("cldfrc_fice", my_numba_kernel)   # compiled, called by Fortran at the hook
 deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt")                          # TorchScript, run by the image through FTorch
 deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt", device="cuda")           # the same, on this rank's GPU (a CUDA-linked image)
+shallow.kernels["compute_uwshcu_inv"] = fc.NativeModel("v4.pt", device="cuda", graph=True)   # batched forward replayed as a CUDA graph
 ```
+
+On a GPU each forward of a TorchScript model is hundreds of small kernels, each
+prepared by TorchScript's interpreter and launched by the CPU one at a time;
+with `graph=True` (`--model-graph`, job knob `PYCAM_MODEL_GRAPH=1`) the image
+captures the forward of a rank's batch (`--batch-chunks`) as a CUDA graph at its
+first batched step and replays it with one launch after.  The capture runs a
+few ordinary forwards first, then replays the graph once against an ordinary
+forward on the same inputs and keeps it only if the two answers agree bit for
+bit; a forward that cannot be captured (one that waits on the GPU for a value),
+or a mismatch, leaves the ordinary forward answering, and the run record's
+`hooks.<kernel>.graph` counts the ranks that replay and those refused, with the
+reason.  The inputs are copied into the graph's own device arrays before each
+replay and the answer copied back after, as without it.  A hook answered chunk
+by chunk has no fixed batch to capture and keeps the ordinary forward.
 
 A function in a slot runs where the stage can run it.  Written over the
 kernel's arrays, one positional argument per input then per output of the

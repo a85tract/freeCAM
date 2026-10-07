@@ -34,7 +34,9 @@
 #      node that PBS starts for :mps=1 in the select (PYCAM_GPU_MPS_MODE=site);
 #   N  M with every chunk of a rank answered by one forward a step (--batch-chunks
 #      PYCAM_BATCH_STAGE): the kernel's inputs gathered for every chunk before the stage runs;
-#   H  G, batched as N is.
+#   H  G, batched as N is.  With PYCAM_MODEL_GRAPH=1 the GPU legs replay the model's batched
+#      forward as a CUDA graph (--model-graph): H replays it; G, answering chunk by chunk, has
+#      no batch to capture and keeps the ordinary forward.
 #
 # M and G are not bit-for-bit by construction: their drift from the oracle month and their
 # health (the log's repair counts) are recorded instead.  One record for the allocation:
@@ -178,6 +180,9 @@ run_freecam() {
   case "${leg}" in
     M|N) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cpu) ;;
     G|H) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cuda)
+       if [ "${PYCAM_MODEL_GRAPH:-0}" = 1 ]; then
+         flags+=(--model-graph)
+       fi
        # the job shell's CUDA_VISIBLE_DEVICES names the head node's GPUs and must not reach the
        # other nodes; every rank sees its own GPU only, through its GPU's server of the job's own
        # or through the site's server of the node (validation/jobs/gpu_rank_env.sh)

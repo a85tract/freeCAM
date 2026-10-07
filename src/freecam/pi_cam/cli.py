@@ -225,7 +225,7 @@ def _parse_kernel_models(values: list[str] | None) -> dict[str, Path]:
     return models
 
 
-def _load_kernel_model(path: Path, *, shadow: bool = False, device: str = "cpu"):
+def _load_kernel_model(path: Path, *, shadow: bool = False, device: str = "cpu", graph: bool = False):
     """What stands in a kernel's slot: a TorchScript archive the image runs itself at the
     kernel's hook (no Python in the step; on ``device``), or a cloudpickled callable
     answering the kernel's frame at a pause; anything else is refused."""
@@ -235,7 +235,7 @@ def _load_kernel_model(path: Path, *, shadow: bool = False, device: str = "cpu")
     if not path.is_file():
         raise SystemExit(f"--kernel-model: {path} is not a file")
     if NativeModel.is_torchscript(path):
-        return NativeModel(path, shadow=shadow, device=device)
+        return NativeModel(path, shadow=shadow, device=device, graph=graph)
     if shadow:
         raise SystemExit(f"--shadow-kernel-model: {path} is not a TorchScript archive; only a model the image "
                          f"runs itself can shadow the original")
@@ -383,7 +383,7 @@ def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | No
 
 
 def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | None = None,
-                           device: str = "cpu") -> dict[str, dict[str, Any]] | None:
+                           device: str = "cpu", graph: bool = False) -> dict[str, dict[str, Any]] | None:
     """Which artifact stood in which slot: file name and content hash, and the path when
     it lies inside this checkout (records name no site directory); shadow models say so,
     and a TorchScript model names the device the image ran it on."""
@@ -403,6 +403,8 @@ def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | No
                                    "binding": "torchscript" if torchscript else "cloudpickle"}
             if torchscript:
                 row["device"] = device
+                if graph:
+                    row["graph"] = True
             if is_shadow:
                 row["shadow"] = True
             resolved = path.resolve()
@@ -440,6 +442,14 @@ def _hook_summary(records) -> dict[str, object] | None:
                 batch["forward_seconds_max"] = max(batch.get("forward_seconds_max", 0.0), seconds)
                 batch["check_max_abs_diff"] = max(batch.get("check_max_abs_diff", 0.0),
                                                   float(counts["batch"]["check_max_abs_diff"]))
+            if "graph" in counts:           # the batched forward replayed as a CUDA graph
+                graph = entry.setdefault("graph", {"ranks": {}, "replays": 0, "capture_seconds_max": 0.0})
+                mode = str(counts["graph"]["mode"])
+                graph["ranks"][mode] = graph["ranks"].get(mode, 0) + 1
+                graph["replays"] += int(counts["graph"].get("replays", 0))
+                graph["capture_seconds_max"] = max(graph["capture_seconds_max"], float(counts["graph"]["capture_seconds"]))
+                if "status" in counts["graph"] and "refused" not in graph:
+                    graph["refused"] = {key: counts["graph"][key] for key in ("status", "message") if key in counts["graph"]}
     return totals or None
 
 
@@ -756,6 +766,15 @@ def main(argv: list[str] | None = None) -> int:
             "where the image runs the TorchScript models of --kernel-model and --shadow-kernel-model: the host, "
             "or this rank's share of the node's GPUs (the node-local rank over CUDA_VISIBLE_DEVICES); the image "
             "must have been linked with a CUDA FTorch (default cpu)"
+        ),
+    )
+    parser.add_argument(
+        "--model-graph",
+        action="store_true",
+        help=(
+            "with --model-device cuda: replay each TorchScript model's batched forward as a CUDA graph, "
+            "captured over the rank's batch at its first forward and checked there, bit for bit, against an "
+            "ordinary forward; refused (the ordinary forward answering) when it cannot be captured or does not match"
         ),
     )
     parser.add_argument(
@@ -1188,8 +1207,12 @@ def main(argv: list[str] | None = None) -> int:
         twice = sorted(set(kernel_model_paths) & set(shadow_model_paths))
         if twice:
             raise SystemExit(f"--shadow-kernel-model: {twice} are also given to --kernel-model; a model answers or shadows")
-        kernel_models = {name: _load_kernel_model(path, device=args.model_device) for name, path in kernel_model_paths.items()}
-        kernel_models.update({name: _load_kernel_model(path, shadow=True, device=args.model_device) for name, path in shadow_model_paths.items()})
+        if args.model_graph and args.model_device != "cuda":
+            raise SystemExit("--model-graph replays the models on a GPU: it needs --model-device cuda")
+        kernel_models = {name: _load_kernel_model(path, device=args.model_device, graph=args.model_graph)
+                         for name, path in kernel_model_paths.items()}
+        kernel_models.update({name: _load_kernel_model(path, shadow=True, device=args.model_device, graph=args.model_graph)
+                              for name, path in shadow_model_paths.items()})
         kernel_models.update({name: _load_kernel_plugin(name, spec) for name, spec in kernel_plugin_specs.items()})
         kernel_models.update({name: _load_kernel_plugin(name, spec, shadow=True) for name, spec in shadow_plugin_specs.items()})
         if args.radiation_python:
@@ -1703,7 +1726,7 @@ def main(argv: list[str] | None = None) -> int:
             "stage_execution": _stage_executions(cam),
             "frame_capture": _frame_capture_summary(records, args, native_evidence),
             "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths,
-                                                         args.model_device) or {}),
+                                                         args.model_device, args.model_graph) or {}),
                                **_kernel_plugins_summary(kernel_plugin_specs, shadow_plugin_specs)} or None),
             "radiation_process": _radiation_process_summary(records),
             "cloud_process": _cloud_process_summary(records),

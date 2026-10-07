@@ -77,6 +77,8 @@ echo "${cxx_runtime}" > "${prefix}/cxx_runtime_dir"
 # the libtorch this FTorch was built against, for the image's own link and rpath
 echo "${torch_lib}" > "${prefix}/torch_lib_dir"
 echo "${gpu_device}" > "${prefix}/gpu_device"
+# the CUDA graph runner beside it (a stub for a CPU FTorch), which the image links too
+TORCH_GRAPH_CXX="${cxx}" "${repo}/tools/build_torch_graph.sh" "${prefix}"
 ls "${prefix}"/lib*/libftorch.so "${prefix}/include/ftorch/ftorch.mod"
 echo "Fortran: $(ifort --version | head -1); C++: $("${cxx}" --version | head -1); C++ runtime: ${cxx_runtime}"
 echo "FTorch installed under ${prefix}"

@@ -25,7 +25,8 @@ class NativeModel:
     #: the segment runner must never see this in a slot: it is not a frame callable
     takes_frame = False
 
-    def __init__(self, path: str | Path, *, shadow: bool = False, device: str = "cpu", device_index: int | None = None) -> None:
+    def __init__(self, path: str | Path, *, shadow: bool = False, device: str = "cpu", device_index: int | None = None,
+                 graph: bool = False) -> None:
         #: run the model on every call but let the original answer: bit-for-bit, cost measured
         self.shadow = bool(shadow)
         #: where the image runs the model: ``cpu``, or ``cuda`` on ``device_index`` (None: this
@@ -34,6 +35,11 @@ class NativeModel:
             raise PhysicsError(f"a native model runs on 'cpu' or 'cuda', not {device!r}")
         self.device = str(device)
         self.device_index = None if device_index is None else int(device_index)
+        #: replay the forward as a CUDA graph: captured over the rank's batch at its first batched
+        #: forward, checked there against an ordinary forward, then one launch a step
+        if graph and self.device != "cuda":
+            raise PhysicsError("a CUDA graph replays a model on a GPU: graph=True needs device='cuda'")
+        self.graph = bool(graph)
         self.path = Path(path).resolve()
         if not self.path.is_file():
             raise PhysicsError(f"native model {self.path} is not a file")
@@ -71,17 +77,20 @@ class NativeModel:
         """What identifies this binding to the stage: the file, the device and the mode."""
 
         where = self.device if self.device == "cpu" else f"cuda:{self.resolved_device_index()}"
-        return f"{self.sha256}:{where}{':shadow' if self.shadow else ''}"
+        return f"{self.sha256}:{where}{':shadow' if self.shadow else ''}{':graph' if self.graph else ''}"
 
     def describe(self) -> dict[str, Any]:
         record = {"file": self.path.name, "sha256": self.sha256, "binding": "torchscript", "shadow": self.shadow, "device": self.device}
         if self.device != "cpu":
             record["device_index"] = self.resolved_device_index()
+        if self.graph:
+            record["graph"] = True
         return record
 
     def __repr__(self) -> str:
         device = f", device={self.device!r}" if self.device != "cpu" else ""
-        return f"NativeModel({str(self.path)!r}{device}{', shadow=True' if self.shadow else ''})"
+        return (f"NativeModel({str(self.path)!r}{device}{', shadow=True' if self.shadow else ''}"
+                f"{', graph=True' if self.graph else ''})")
 
 
 def local_gpu_index() -> int:

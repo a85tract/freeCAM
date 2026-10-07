@@ -144,6 +144,10 @@ if [ -n "${PYCAM_MODEL_DEVICE:-}" ]; then
   # node-local rank share; the image must be linked with a CUDA FTorch and run on GPU nodes
   # (select=4:ncpus=64:mpiprocs=128:ompthreads=1:ngpus=4:gpu_type=a100:mem=400GB)
   stage_flags+=(--model-device "${PYCAM_MODEL_DEVICE}")
+  # PYCAM_MODEL_GRAPH=1: replay each model's batched forward as a CUDA graph (--model-graph)
+  if [ "${PYCAM_MODEL_GRAPH:-0}" = 1 ]; then
+    stage_flags+=(--model-graph)
+  fi
   if [ "${PYCAM_MODEL_DEVICE}" = cuda ]; then
     # every rank takes its node-local GPU by index (one CUDA context a rank; 32 ranks fit a
     # 40 GB A100 with lazy module loading and a small cuBLAS workspace); the job shell's
