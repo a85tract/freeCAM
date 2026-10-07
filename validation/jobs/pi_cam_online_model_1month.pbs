@@ -36,7 +36,8 @@
 #      PYCAM_BATCH_STAGE): the kernel's inputs gathered for every chunk before the stage runs;
 #   H  G, batched as N is;
 #   R  H with its batched forward replayed as a CUDA graph (--model-graph; a CUDA FTorch image
-#      built with tools/build_torch_graph.sh).
+#      built with tools/build_torch_graph.sh); with H in the same job, compared with H's output
+#      bit for bit.
 #
 # M and G are not bit-for-bit by construction: their drift from the oracle month and their
 # health (the log's repair counts) are recorded instead.  One record for the allocation:
@@ -256,6 +257,13 @@ for (( i = 0; i < ${#legs}; i++ )); do
 done
 
 cd "${repo}"
+if [[ "${legs}" == *H* ]] && [[ "${legs}" == *R* ]]; then
+  # the graph replays a forward the hook checked once at its capture; the month's output shows it
+  # changed no answer after
+  "${python}" tools/verify_pi_cam.py --reference "${root}/H-freecam/cam-run" \
+    --candidate "${root}/R-freecam/cam-run" --output "${root}/R-freecam/bfb_vs_H.json" \
+    || echo "R is not bit-for-bit with H (recorded)"
+fi
 # qstat -f folds long values over lines; its JSON form does not
 resources=$(qstat -f -F json "${PBS_JOBID}" 2>/dev/null | "${python}" -c '
 import json, sys

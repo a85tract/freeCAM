@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "what": "One allocation's online PI-atm run (50 steps, 512 ranks), legs back to back: the original Fortran, freeCAM with nothing replaced, and freeCAM with a model in the kernel's slot. Every component is live in every leg (online coupling, not the offline replay). Times are the coupling loop; the model legs are not bit-for-bit by construction, their drift and health are recorded instead.",
+  "boundary": "online",
+  "steps": 50,
+  "ranks": 512,
+  "pbs_job_id": "7747936.desched1",
+  "git_commit": "609d36f8cd90977a84d88a71501248bb37574e35",
+  "hardware": "select=4:ncpus=64:mpiprocs=128:ompthreads=1:ngpus=4:gpu_type=a100:mem=400GB:mps=1 place=scatter:exclhost",
+  "gpu_mps": "site",
+  "root": "freeCAM/PI-cam/online-model-1month-gpu-site-HR-graph-7747936.desched1",
+  "order": "HR",
+  "kernel": "compute_uwshcu_inv",
+  "legs": {
+    "H": {
+      "what": "G with every chunk of a rank answered by one forward a step (--batch-chunks)",
+      "position": 1,
+      "completed": true,
+      "steps": 50,
+      "coupling_loop_seconds": 68.367005603,
+      "init_seconds": 24.192596533,
+      "final_seconds": 0.38234704400002784,
+      "lifecycle_seconds": 92.98670479900002,
+      "sypd": 3.6066424189702047,
+      "boundary_mode": "online",
+      "boundary_provider": "CESMOnlineBoundaryProvider",
+      "native_manifest": "build/pi_cam_promoted_p42g/native_cam_manifest.json",
+      "native_library_sha256": "a9bd1797c67f7e47114f72b406a07bd5d2ce7e764e815af1e0ab48fce0f162b7",
+      "python_stages": [
+        "shallow_convection"
+      ],
+      "cloud_macro_micro_python": true,
+      "stage_execution_modes": {
+        "cloud_macro_microphysics_python": "native-whole",
+        "shallow_convection_python": "native-model"
+      },
+      "kernel_models": {
+        "compute_uwshcu_inv": {
+          "binding": "torchscript",
+          "device": "cuda",
+          "file": "uwshcu_trigger_gated_r5_v4.pt",
+          "sha256": "fd64c5a9dbb9b14e590b7883a6fabc142ee8af9f37b78e4dcf2dca2da6011a5b"
+        }
+      },
+      "model": {
+        "calls": 53248,
+        "modeled": 51200,
+        "original": 2048,
+        "ranks": 512,
+        "warm_up_seconds_per_rank": 12.479969269531251,
+        "model_seconds_per_rank": 3.0136232285156237,
+        "batch": {
+          "forwards": 25600,
+          "chunks_per_forward": 2.0,
+          "columns_per_forward": 27.00390625,
+          "ms_per_forward": 58.50439691406246,
+          "forward_seconds_per_rank": 2.9252198457031233,
+          "forward_seconds_slowest_rank": 3.396114,
+          "take_seconds_per_rank": 0.08840338281250018,
+          "untaken_chunks": 0
+        }
+      },
+      "mps": {
+        "server": "site",
+        "nodes": 4,
+        "gpus": 16,
+        "exclusive_process_gpus": 16,
+        "refused_ranks": 0
+      },
+      "bfb": null,
+      "bfb_files": null,
+      "steady_steps": {
+        "rank": 0,
+        "steps": 50,
+        "slowest_step_seconds": 45.816247,
+        "seconds_per_step_without_slowest": 0.4586655714285714,
+        "stage_seconds_per_step_without_slowest": {
+          "shallow_convection": 0.04381508163265313
+        }
+      },
+      "peak_rank_rss_bytes": 2021904384,
+      "total_rss_bytes": 827451478016,
+      "health": {
+        "big_error": 0,
+        "isotopic_mass_error": 0,
+        "qneg3_macro": 0,
+        "qneg3_total": 0,
+        "tracebacks": 0
+      },
+      "drift": {
+        "fields_compared": 10,
+        "fields_identical": 10,
+        "fields_with_non_finite_values": [],
+        "relative_rms": {
+          "median": 0.0,
+          "p90": 0.0,
+          "max": 0.0
+        }
+      }
+    },
+    "R": {
+      "what": "H with the batched forward captured as a CUDA graph at the first batch and replayed after (--model-graph)",
+      "position": 2,
+      "completed": true,
+      "steps": 50,
+      "coupling_loop_seconds": 55.300258095000004,
+      "init_seconds": 14.574916298999995,
+      "final_seconds": 0.361677813999961,
+      "lifecycle_seconds": 70.28217484800001,
+      "sypd": 4.458846142131255,
+      "boundary_mode": "online",
+      "boundary_provider": "CESMOnlineBoundaryProvider",
+      "native_manifest": "build/pi_cam_promoted_p42g/native_cam_manifest.json",
+      "native_library_sha256": "a9bd1797c67f7e47114f72b406a07bd5d2ce7e764e815af1e0ab48fce0f162b7",
+      "python_stages": [
+        "shallow_convection"
+      ],
+      "cloud_macro_micro_python": true,
+      "stage_execution_modes": {
+        "cloud_macro_microphysics_python": "native-whole",
+        "shallow_convection_python": "native-model"
+      },
+      "kernel_models": {
+        "compute_uwshcu_inv": {
+          "binding": "torchscript",
+          "device": "cuda",
+          "file": "uwshcu_trigger_gated_r5_v4.pt",
+          "graph": true,
+          "sha256": "fd64c5a9dbb9b14e590b7883a6fabc142ee8af9f37b78e4dcf2dca2da6011a5b"
+        }
+      },
+      "model": {
+        "calls": 53248,
+        "modeled": 51200,
+        "original": 2048,
+        "ranks": 512,
+        "warm_up_seconds_per_rank": 1.908746361328126,
+        "model_seconds_per_rank": 1.557434861328125,
+        "batch": {
+          "forwards": 25600,
+          "chunks_per_forward": 2.0,
+          "columns_per_forward": 27.00390625,
+          "ms_per_forward": 28.6748961328125,
+          "forward_seconds_per_rank": 1.433744806640625,
+          "forward_seconds_slowest_rank": 2.475102,
+          "take_seconds_per_rank": 0.12369005468750004,
+          "untaken_chunks": 0
+        },
+        "graph": {
+          "capture_seconds_max": 1.7108,
+          "ranks": {
+            "replaying": 512
+          },
+          "replays": 25600
+        }
+      },
+      "mps": {
+        "server": "site",
+        "nodes": 4,
+        "gpus": 16,
+        "exclusive_process_gpus": 16,
+        "refused_ranks": 0
+      },
+      "bfb": null,
+      "bfb_files": null,
+      "bfb_vs_H": {
+        "bfb": true,
+        "files": 4
+      },
+      "steady_steps": {
+        "rank": 0,
+        "steps": 50,
+        "slowest_step_seconds": 34.296601,
+        "seconds_per_step_without_slowest": 0.42705289795918355,
+        "stage_seconds_per_step_without_slowest": {
+          "shallow_convection": 0.01366210204081635
+        }
+      },
+      "peak_rank_rss_bytes": 2023923712,
+      "total_rss_bytes": 832738402304,
+      "health": {
+        "big_error": 0,
+        "isotopic_mass_error": 0,
+        "qneg3_macro": 0,
+        "qneg3_total": 0,
+        "tracebacks": 0
+      },
+      "drift": {
+        "fields_compared": 10,
+        "fields_identical": 10,
+        "fields_with_non_finite_values": [],
+        "relative_rms": {
+          "median": 0.0,
+          "p90": 0.0,
+          "max": 0.0
+        }
+      }
+    }
+  },
+  "ratios": {
+    "R/H": 0.8088734852031224
+  },
+  "steady_ratios": {
+    "R/H": 0.9310768554724389
+  }
+}
