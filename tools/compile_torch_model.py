@@ -12,9 +12,11 @@ graph (``NativeModel(..., graph=True, compiled=...)``).
 TorchScript cannot be exported directly when its code has loops whose trip counts it cannot
 see, so the model's eager form is given: ``function`` in ``eager.py`` takes the loaded
 TorchScript module and returns an ``nn.Module`` with the same forward, built from its weights.
-That form is checked against the TorchScript forward before anything is compiled, and the
-package against the TorchScript forward after; both are recorded in ``<model.pt2>.json`` with
-the archive's sha256, which the image's binding checks.  The batch dimension is dynamic (a
+That form is checked bit for bit against the TorchScript forward on the CPU before anything is
+compiled (the same program, op for op; on a GPU the TorchScript executor's own graph passes
+already move the answer by rounding), and the package against the TorchScript forward on the
+device after; both are recorded in ``<model.pt2>.json`` with the archive's sha256, which the
+image's binding checks.  The batch dimension is dynamic (a
 rank's batch is its live columns); the package takes C-contiguous inputs.
 
 The fused kernels evaluate the same expressions in another order and with other library
@@ -139,8 +141,9 @@ def main(argv: list[str] | None = None) -> int:
     names = model_inputs(arguments.kernel)
     torch.backends.cuda.matmul.allow_tf32 = False                 # as libtorch runs in the image
     torch.backends.cudnn.allow_tf32 = False
+    build = load_function(arguments.eager)
     script = torch.jit.load(str(arguments.model), map_location=device).eval()
-    eager = load_function(arguments.eager)(script).to(device).eval()
+    eager = build(script).to(device).eval()
     record: dict[str, Any] = {
         "schema_version": 1, "what": __doc__.strip().splitlines()[0], "kernel": arguments.kernel,
         "model": arguments.model.name, "model_sha256": sha256(arguments.model), "eager": Path(arguments.eager).name,
@@ -149,13 +152,18 @@ def main(argv: list[str] | None = None) -> int:
         "inputs": names, "rows": {"min": 2, "max": arguments.max_rows}, "layout": "C-contiguous",
     }
 
-    sample = anchors(arguments.anchors, names, arguments.rows, device)
+    cpu = torch.device("cpu")
+    script_cpu = torch.jit.load(str(arguments.model), map_location=cpu).eval()
+    sample_cpu = anchors(arguments.anchors, names, arguments.rows, cpu)
     with torch.no_grad():
-        reference = script(*sample)
-        record["eager_vs_torchscript"] = compare(reference, eager(*sample))
+        record["eager_vs_torchscript"] = compare(script_cpu(*sample_cpu), build(script_cpu).eval()(*sample_cpu))
     if not record["eager_vs_torchscript"]["bit_for_bit"]:
         print(json.dumps(record["eager_vs_torchscript"]), file=sys.stderr)
-        raise SystemExit("the eager form does not answer as the TorchScript forward does: nothing compiled")
+        raise SystemExit("the eager form does not answer as the TorchScript forward does on the CPU: nothing compiled")
+    sample = anchors(arguments.anchors, names, arguments.rows, device)
+    if device.type != "cpu":
+        with torch.no_grad():
+            record["eager_vs_torchscript_on_device"] = compare(script(*sample), eager(*sample))
 
     rows = torch.export.Dim("rows", min=2, max=arguments.max_rows)
     dynamic = tuple(None if i == 0 else {0: rows} for i in range(len(names)))
