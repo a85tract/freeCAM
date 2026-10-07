@@ -107,6 +107,7 @@ def compare(reference: torch.Tensor, candidate: torch.Tensor) -> dict[str, Any]:
     return {"bit_for_bit": bool(torch.equal(a.nan_to_num(7.0), b.nan_to_num(7.0))
                                 and torch.equal(torch.isnan(a), torch.isnan(b))),
             "scaled_gap": float(scaled.max()), "scaled_gap_median": float(scaled.median()),
+            "columns": int(scaled.numel()), "columns_over_1e-3": int((scaled > 1e-3).sum()),
             "max_abs_diff": float(gap.max()),
             "values_differing": int((gap > 0).sum()), "values": int(a.numel()),
             "non_finite_mismatch": int((torch.isfinite(a) != torch.isfinite(b)).sum())}
@@ -164,6 +165,9 @@ def main(argv: list[str] | None = None) -> int:
     if device.type != "cpu":
         with torch.no_grad():
             record["eager_vs_torchscript_on_device"] = compare(script(*sample), eager(*sample))
+            # the yardstick for the package: the same TorchScript model moved from the CPU to the
+            # device (a gated or rounded output flips under any such change)
+            record["torchscript_device_vs_cpu"] = compare(script_cpu(*sample_cpu), script(*sample))
 
     rows = torch.export.Dim("rows", min=2, max=arguments.max_rows)
     dynamic = tuple(None if i == 0 else {0: rows} for i in range(len(names)))

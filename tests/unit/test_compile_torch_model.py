@@ -21,10 +21,11 @@ def test_the_gap_is_measured_over_each_output_columns_own_range() -> None:
     reference = torch.tensor([[1.0, 100.0, 0.0], [-2.0, 50.0, 0.0]], dtype=torch.float64)
     same = compare(reference, reference.clone())
     assert same["bit_for_bit"] and same["scaled_gap"] == 0.0 and same["values_differing"] == 0
-    # 1e-3 off in a column ranging to 2, 1 off in a column ranging to 100: the larger share is 1e-2
-    candidate = reference + torch.tensor([[0.0, 1.0, 0.0], [0.002, 0.0, 0.0]], dtype=torch.float64)
+    # 5e-4 off in a column ranging to 2, 1 off in a column ranging to 100: the larger share is 1e-2
+    candidate = reference + torch.tensor([[0.0, 1.0, 0.0], [0.001, 0.0, 0.0]], dtype=torch.float64)
     gap = compare(reference, candidate)
     assert not gap["bit_for_bit"] and gap["scaled_gap"] == pytest.approx(1e-2) and gap["max_abs_diff"] == 1.0
+    assert gap["columns"] == 3 and gap["columns_over_1e-3"] == 1
     # a column the reference leaves at zero counts its gap as it is
     assert compare(reference, reference + torch.tensor([[0.0, 0.0, 3e-9], [0.0, 0.0, 0.0]],
                                                        dtype=torch.float64))["scaled_gap"] == pytest.approx(3e-9)
