@@ -823,12 +823,15 @@ def _batch_procedures(hook: Hook, spec: FunctionSpec, index: int) -> str:
     out.append(f"        g_out_shape = shape(bo_{k}, kind=c_int64_t)")
     out.append(f"        if (graph_mode({index}) == 1_c_int) then")
     out.append("          call system_clock(g0)")
-    out.append(f"          graph_runners({index}) = pycam_torch_graph_open(models({index})%p, int(model_device_index({index}), c_int), &")
-    out.append(f"               {nin}_c_int, g_in, g_nd, g_shape, c_loc(bo_{k}), 2_c_int, g_out_shape, 3_c_int, g_status)")
+    out.append(f"          graph_runners({index}) = pycam_torch_graph_open_v2(models({index})%p, graph_package({index}), &")
+    out.append(f"               int(model_device_index({index}), c_int), {nin}_c_int, g_in, g_nd, g_shape, c_loc(bo_{k}), 2_c_int, &")
+    out.append("               g_out_shape, 3_c_int, g_status)")
     out.append("          call system_clock(g1)")
     out.append(f"          graph_ticks({index}) = graph_ticks({index}) + (g1 - g0)")
     out.append(f"          graph_status({index}) = g_status")
     out.append(f"          graph_mode({index}) = merge(2_c_int, 3_c_int, g_status == 0_c_int)")
+    out.append(f"          if (g_status == 0_c_int) call pycam_torch_graph_compiled_gaps(graph_runners({index}), graph_gap(1, {index}), &")
+    out.append(f"               graph_gap(2, {index}))")
     out.append("        end if")
     out.append(f"        if (graph_mode({index}) == 2_c_int) then")
     out.append(f"          g_status = pycam_torch_graph_run(graph_runners({index}), {nin}_c_int, g_in, g_nd, g_shape, c_loc(bo_{k}), &")
@@ -1077,7 +1080,8 @@ module pycam_hooks
             pycam_hooks_original_v1, pycam_hooks_reset_v1, pycam_hooks_count_v1, pycam_hooks_name_v1, &
             pycam_hooks_bind_model_v1, pycam_hooks_bind_model_v2, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1, &
             pycam_hooks_model_seconds_v1, pycam_hooks_bind_plugin_v1, pycam_hooks_set_graph_v1, &
-            pycam_hooks_graph_state_v1, pycam_hooks_graph_message_v1{batch_public}
+            pycam_hooks_set_graph_v2, pycam_hooks_graph_state_v1, pycam_hooks_graph_message_v1, &
+            pycam_hooks_graph_compiled_v1{batch_public}
 
   integer, parameter :: nhooks = {len(table.hooks)}
   integer(c_int), parameter :: ev_needs_kernel = 1_c_int
@@ -1131,18 +1135,29 @@ module pycam_hooks
   type(c_ptr), save :: graph_runners(nhooks) = c_null_ptr
   ! the wall time of the capture (its warm-up forwards and its check included), and the replays
   integer(c_int64_t), save :: graph_ticks(nhooks) = 0_c_int64_t, graph_replays(nhooks) = 0_c_int64_t
+  ! the AOTInductor package captured instead of the model's own forward (a C string the caller
+  ! keeps; null: the model's), and its answer's gap from the model's at the capture, the median
+  ! output column's and the largest (-1: none)
+  type(c_ptr), save :: graph_package(nhooks) = c_null_ptr
+  real(c_double), save :: graph_gap(2, nhooks) = -1.0_c_double
   interface
-    function pycam_torch_graph_open(module, device_index, nin, host_in, ndim, shapes, host_out, out_ndim, &
-                                    out_shape, warmup, status) bind(C, name='pycam_torch_graph_open') result(runner)
+    function pycam_torch_graph_open_v2(module, package, device_index, nin, host_in, ndim, shapes, host_out, &
+                                       out_ndim, out_shape, warmup, status) bind(C, name='pycam_torch_graph_open_v2') &
+                                       result(runner)
       import :: c_ptr, c_int, c_int64_t
-      type(c_ptr), value :: module, host_out
+      type(c_ptr), value :: module, package, host_out
       integer(c_int), value :: device_index, nin, out_ndim, warmup
       type(c_ptr), intent(in) :: host_in(*)
       integer(c_int), intent(in) :: ndim(*)
       integer(c_int64_t), intent(in) :: shapes(*), out_shape(*)
       integer(c_int), intent(out) :: status
       type(c_ptr) :: runner
-    end function pycam_torch_graph_open
+    end function pycam_torch_graph_open_v2
+    subroutine pycam_torch_graph_compiled_gaps(runner, median, largest) bind(C, name='pycam_torch_graph_compiled_gaps')
+      import :: c_ptr, c_double
+      type(c_ptr), value :: runner
+      real(c_double), intent(out) :: median, largest
+    end subroutine pycam_torch_graph_compiled_gaps
     integer(c_int) function pycam_torch_graph_run(runner, nin, host_in, ndim, shapes, host_out, out_ndim, out_shape) &
          bind(C, name='pycam_torch_graph_run')
       import :: c_ptr, c_int, c_int64_t
@@ -1295,10 +1310,20 @@ contains
   end function pycam_hooks_unbind_model_v1
 
   integer(c_int) function pycam_hooks_set_graph_v1(hook, on) bind(C, name='pycam_hooks_set_graph_v1') result(status)
-    ! replay the bound model's batched forward as a CUDA graph (on /= 0), captured at the next
-    ! batch, or answer it with the ordinary forward again (on = 0): 0; 1 no such hook; 2 a hook
-    ! without a model block; 9 no model bound on a CUDA device; 10 a hook that does not batch
+    ! pycam_hooks_set_graph_v2 with the model's own forward
     integer(c_int), value, intent(in) :: hook, on
+    status = pycam_hooks_set_graph_v2(hook, on, c_null_ptr)
+  end function pycam_hooks_set_graph_v1
+
+  integer(c_int) function pycam_hooks_set_graph_v2(hook, on, package) bind(C, name='pycam_hooks_set_graph_v2') &
+       result(status)
+    ! replay the bound model's batched forward as a CUDA graph (on /= 0), captured at the next
+    ! batch -- the model's own forward, or the AOTInductor package at package (a null-terminated
+    ! path the caller keeps while the graph is on) -- or answer it with the ordinary forward again
+    ! (on = 0): 0; 1 no such hook; 2 a hook without a model block; 9 no model bound on a CUDA
+    ! device; 10 a hook that does not batch
+    integer(c_int), value, intent(in) :: hook, on
+    type(c_ptr), value, intent(in) :: package
     status = 1_c_int
     if (hook < 1 .or. hook > nhooks) return
     if (.not. has_model(hook)) then
@@ -1313,8 +1338,9 @@ contains
     end if
 {graph_batches}
     graph_mode(hook) = 1_c_int
+    graph_package(hook) = package
     status = 0_c_int
-  end function pycam_hooks_set_graph_v1
+  end function pycam_hooks_set_graph_v2
 
   integer(c_int) function pycam_hooks_graph_state_v1(hook, mode, graph_status_out, replays, capture_seconds) &
        bind(C, name='pycam_hooks_graph_state_v1') result(status)
@@ -1333,6 +1359,21 @@ contains
     status = 0_c_int
   end function pycam_hooks_graph_state_v1
 
+  integer(c_int) function pycam_hooks_graph_compiled_v1(hook, compiled, median, largest) &
+       bind(C, name='pycam_hooks_graph_compiled_v1') result(status)
+    ! whether the hook's graph captures a compiled package (1) or the model's own forward (0), and
+    ! the package's gap from the model's answer at the capture over each output column's range,
+    ! the median column's and the largest (-1 before the capture, or without a package)
+    integer(c_int), value, intent(in) :: hook
+    integer(c_int), intent(out) :: compiled
+    real(c_double), intent(out) :: median, largest
+    status = 1_c_int
+    if (hook < 1 .or. hook > nhooks) return
+    compiled = merge(1_c_int, 0_c_int, c_associated(graph_package(hook)))
+    median = graph_gap(1, hook); largest = graph_gap(2, hook)
+    status = 0_c_int
+  end function pycam_hooks_graph_compiled_v1
+
   integer(c_int) function pycam_hooks_graph_message_v1(buffer, length) bind(C, name='pycam_hooks_graph_message_v1') &
        result(full)
     ! the graph runner's last failure, in buffer (length bytes, null-terminated); its full length
@@ -1348,6 +1389,7 @@ contains
     graph_runners(hook) = c_null_ptr
     graph_mode(hook) = 0_c_int; graph_status(hook) = 0_c_int
     graph_ticks(hook) = 0_c_int64_t; graph_replays(hook) = 0_c_int64_t
+    graph_package(hook) = c_null_ptr; graph_gap(:, hook) = -1.0_c_double
   end subroutine reset_graph
 
   integer(c_int) function pycam_hooks_bind_plugin_v1(hook, plugin, shadow_flag) &

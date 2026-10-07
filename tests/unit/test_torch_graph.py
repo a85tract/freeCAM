@@ -1,5 +1,9 @@
 """A bound model's batched forward replayed as a CUDA graph: the request, the binding, the record.
 
+The graph captures the model's own forward, or an AOTInductor package compiled from it
+(``compiled=``): the package is checked here against its record and its model, the image's
+entries for it against what the generated hook module does with them.
+
 The graph itself is captured and replayed in native/pi_cam/support/pycam_torch_graph.cpp on a
 GPU; what is tested here is everything around it that runs without one: the generated hook
 module's path, the Python requests and refusals, and the run record.
@@ -8,7 +12,10 @@ module's path, the Python requests and refusals, and the run record.
 from __future__ import annotations
 
 import ctypes
+import hashlib
+import json
 import sys
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -51,6 +58,41 @@ class _GraphLibrary(_Library):
         self.pycam_hooks_set_graph_v1 = _Entry(set_graph)
         self.pycam_hooks_graph_state_v1 = _Entry(state)
         self.pycam_hooks_graph_message_v1 = _Entry(message)
+
+
+class _CompiledLibrary(_GraphLibrary):
+    """An image that also takes a compiled package for the graph, and says how far it answered from the model."""
+
+    def __init__(self, gap: tuple[float, float] = (1.0e-5, 3.0e-5), **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.packages: list[tuple[int, int, str]] = []
+        self.package_set = False
+
+        def set_graph_v2(hook, on, package):
+            self.packages.append((int(hook), int(on), ctypes.string_at(package).decode()))
+            self.package_set = True
+            return 0
+
+        def compiled(hook, flag, median, largest):
+            flag._obj.value, median._obj.value, largest._obj.value = int(self.package_set), *gap
+            return 0
+
+        self.pycam_hooks_set_graph_v2 = _Entry(set_graph_v2)
+        self.pycam_hooks_graph_compiled_v1 = _Entry(compiled)
+
+
+def compiled_package(tmp_path: Path, model: Path, *, kernel: str = "compute_uwshcu_inv", device: str = "cuda:0",
+                     model_sha256: str | None = None) -> Path:
+    """An AOTInductor package's shape (a zip) and the record tools/compile_torch_model.py writes beside it."""
+
+    package = tmp_path / "model.pt2"
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr("model/data/aotinductor/model/model.wrapper.so", b"\x7fELF")
+    Path(f"{package}.json").write_text(json.dumps({
+        "kernel": kernel, "model": model.name, "device": device,
+        "model_sha256": model_sha256 or hashlib.sha256(model.read_bytes()).hexdigest(),
+        "package_sha256": hashlib.sha256(package.read_bytes()).hexdigest()}))
+    return package
 
 
 def test_a_graph_replays_a_model_on_a_gpu_and_is_part_of_its_binding(tmp_path: Path) -> None:
@@ -126,8 +168,11 @@ def test_the_generated_batch_forward_captures_once_replays_after_and_falls_back(
     index = table.hook("compute_uwshcu_inv").id
     forward = text[text.index("subroutine pycam_hooks_batch_forward_compute_uwshcu_inv"):
                    text.index("end subroutine pycam_hooks_batch_forward_compute_uwshcu_inv")]
-    # captured over the batch's own arrays (twenty inputs, the packed output), at the first batch
-    assert f"graph_runners({index}) = pycam_torch_graph_open(models({index})%p" in forward
+    # captured over the batch's own arrays (twenty inputs, the packed output), at the first batch,
+    # with the hook's compiled package when one was given
+    assert f"graph_runners({index}) = pycam_torch_graph_open_v2(models({index})%p, graph_package({index})" in forward
+    assert (f"if (g_status == 0_c_int) call pycam_torch_graph_compiled_gaps(graph_runners({index}), graph_gap(1, {index})"
+            in forward)
     assert "g_in(2) = c_loc(bi_compute_uwshcu_inv_ps0_inv)" in forward and "c_loc(bo_compute_uwshcu_inv)" in forward
     assert f"graph_mode({index}) = merge(2_c_int, 3_c_int, g_status == 0_c_int)" in forward
     # replayed after; a refused graph leaves the ordinary forward answering
@@ -139,6 +184,68 @@ def test_the_generated_batch_forward_captures_once_replays_after_and_falls_back(
         body = text[text.index(f"function {entry}"):text.index(f"end function {entry}")]
         assert "call reset_graph(hook)" in body, entry
     assert "public" in text and "pycam_hooks_set_graph_v1" in text.split("contains")[0]
+    # the first entry is the second without a package; a reset forgets the package and its gap
+    v1 = text[text.index("function pycam_hooks_set_graph_v1"):text.index("end function pycam_hooks_set_graph_v1")]
+    assert "status = pycam_hooks_set_graph_v2(hook, on, c_null_ptr)" in v1
+    reset = text[text.index("subroutine reset_graph"):text.index("end subroutine reset_graph")]
+    assert "graph_package(hook) = c_null_ptr; graph_gap(:, hook) = -1.0_c_double" in reset
+    assert "pycam_hooks_set_graph_v2" in text.split("contains")[0] and "pycam_hooks_graph_compiled_v1" in text.split("contains")[0]
+
+
+def test_a_compiled_forward_is_the_package_its_record_names_made_from_this_model(tmp_path: Path) -> None:
+    archive = torchscript_archive(tmp_path / "m.pt")
+    package = compiled_package(tmp_path, archive)
+    with pytest.raises(PhysicsError, match="needs graph=True"):
+        NativeModel(archive, device="cuda", compiled=package)
+    model = NativeModel(archive, device="cuda", device_index=0, graph=True, compiled=package)
+    assert model.compiled_kernel == "compute_uwshcu_inv"
+    assert model.key.endswith(f":graph:compiled:{model.compiled_sha256}")
+    assert model.describe()["compiled"] == {"file": "model.pt2", "sha256": model.compiled_sha256}
+    assert "compiled=" in repr(model)
+    # another model's package, a package changed since its record, a CPU package, no record: refused
+    with pytest.raises(PhysicsError, match="made from another model"):
+        NativeModel(archive, device="cuda", graph=True, compiled=compiled_package(tmp_path, archive, model_sha256="0" * 64))
+    package = compiled_package(tmp_path, archive)
+    with zipfile.ZipFile(package, "a") as handle:
+        handle.writestr("extra", b"changed")
+    with pytest.raises(PhysicsError, match="not the package its record describes"):
+        NativeModel(archive, device="cuda", graph=True, compiled=package)
+    with pytest.raises(PhysicsError, match="compiled for 'cpu'"):
+        NativeModel(archive, device="cuda", graph=True, compiled=compiled_package(tmp_path, archive, device="cpu"))
+    Path(f"{compiled_package(tmp_path, archive)}.json").unlink()
+    with pytest.raises(PhysicsError, match="record model.pt2.json"):
+        NativeModel(archive, device="cuda", graph=True, compiled=tmp_path / "model.pt2")
+
+
+def test_the_image_is_handed_the_package_and_says_how_far_it_answered(tmp_path: Path, monkeypatch) -> None:
+    from freecam.physics.cloud_macro_microphysics import CloudMacroMicrophysics
+    from freecam.physics.pausable import ShallowConvection
+    import freecam.pi_cam.hooks as hooks_module
+
+    monkeypatch.setattr(hooks_module, "_cuda_device_report", lambda: (4, "four devices"))
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(__version__="2.14.0+cu126", version=SimpleNamespace(cuda="12.6")))
+    archive = torchscript_archive(tmp_path / "v4.pt")
+    package = compiled_package(tmp_path, archive)
+    stage = ShallowConvection()
+    stage.kernels["compute_uwshcu_inv"] = NativeModel(archive, device="cuda", device_index=0, graph=True, compiled=package)
+    library = _CompiledLibrary()
+    native = SimpleNamespace(library=library, run_action=lambda name, phase=None: None, segment_runner=lambda s: None)
+    stage.tend(None, SimpleNamespace(native=native, step=1))
+    index = load_hooks().hook("compute_uwshcu_inv").id
+    assert library.packages == [(index, 1, str(package))] and library.graphs == []       # through the second entry
+    record = read_hook_graph(library, index)
+    assert record["forward"] == "compiled" and record["compiled_gap"] == {"median": 1.0e-5, "max": 3.0e-5}
+    # a package compiled for another kernel is refused at the binding
+    other = CloudMacroMicrophysics()
+    other.kernels["instratus_condensate"] = NativeModel(archive, device="cuda", device_index=0, graph=True,
+                                                        compiled=package)
+    with pytest.raises(PhysicsError, match="compiled for 'compute_uwshcu_inv', not 'instratus_condensate'"):
+        other.tend(None, SimpleNamespace(native=SimpleNamespace(library=_CompiledLibrary(), run_action=lambda n, phase=None: None,
+                                                                segment_runner=lambda s: None), step=1))
+    # an image before compiled forwards refuses a package, and still takes the model's own graph
+    with pytest.raises(PICAMConfigurationError, match="predates compiled forwards"):
+        set_hook_graph(_GraphLibrary(), index, True, package=str(package))
+    set_hook_graph(_GraphLibrary(), index, True)
 
 
 def test_the_command_line_asks_for_a_graph_only_on_a_gpu(tmp_path: Path) -> None:
@@ -150,3 +257,8 @@ def test_the_command_line_asks_for_a_graph_only_on_a_gpu(tmp_path: Path) -> None
         cli._load_kernel_model(archive, device="cpu", graph=True)
     summary = cli._kernel_models_summary({"compute_uwshcu_inv": archive}, device="cuda", graph=True)
     assert summary["compute_uwshcu_inv"]["graph"] is True and summary["compute_uwshcu_inv"]["device"] == "cuda"
+    package = compiled_package(tmp_path, archive)
+    assert cli._load_kernel_model(archive, device="cuda", graph=True, compiled=package).compiled == package.resolve()
+    summary = cli._kernel_models_summary({"compute_uwshcu_inv": archive}, device="cuda", graph=True,
+                                         compiled={"compute_uwshcu_inv": package})
+    assert summary["compute_uwshcu_inv"]["compiled"]["file"] == "model.pt2"

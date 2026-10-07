@@ -488,19 +488,42 @@ def bind_hook_plugin(library: Any, hook_id: int, address: int, *, shadow: bool =
 GRAPH_MODES = {0: "off", 1: "wanted", 2: "replaying", 3: "refused"}
 GRAPH_STATUS = {0: "captured", 1: "the image's libtorch has no CUDA", 2: "the runner was handed incomplete arrays",
                 4: "the forward could not be captured", 5: "the replay does not answer as the ordinary forward does",
-                6: "the batch was laid out anew", 7: "a replay failed"}
+                6: "the batch was laid out anew", 7: "a replay failed",
+                8: "the compiled forward does not answer as the model does"}
 SET_GRAPH_STATUS = {1: "no such hook", 2: "the hook takes no model (hooks.yaml has no model block for it)",
                     9: "no TorchScript model is bound there on a CUDA device", 10: "the hook does not answer in batches"}
 
 
-def set_hook_graph(library: Any, hook_id: int, on: bool) -> None:
+#: the package paths handed to the image, as C strings it reads at the capture: kept for the life
+#: of the process, a hook's replaced when it is asked again
+_GRAPH_PACKAGES: dict[tuple[int, int], Any] = {}
+
+
+def set_hook_graph(library: Any, hook_id: int, on: bool, *, package: str | None = None) -> None:
     """Replay the model bound at ``hook_id`` as a CUDA graph (``on``), captured over the rank's
     batch at its next batched forward and checked there against an ordinary forward, or answer
-    with the ordinary forward again.  A model must be bound there on a CUDA device first; a
-    rebinding turns the graph off."""
+    with the ordinary forward again.  With ``package`` (an AOTInductor package made from the same
+    model, tools/compile_torch_model.py), the graph captures the package's fused forward instead,
+    after checking it against the model's on the same batch.  A model must be bound there on a
+    CUDA device first; a rebinding turns the graph off."""
 
     import ctypes
 
+    if package is not None and on:
+        entry = getattr(library, "pycam_hooks_set_graph_v2", None)
+        if entry is None:
+            raise PICAMConfigurationError(f"cannot replay hook {hook_id}'s compiled forward as a CUDA graph: the "
+                                          f"image has no pycam_hooks_set_graph_v2 (it predates compiled forwards); "
+                                          f"rebuild it")
+        path = ctypes.create_string_buffer(str(package).encode())
+        _GRAPH_PACKAGES[(id(library), int(hook_id))] = path
+        entry.restype = ctypes.c_int32
+        entry.argtypes = [ctypes.c_int32, ctypes.c_int32, ctypes.c_void_p]
+        status = int(entry(int(hook_id), 1, ctypes.addressof(path)))
+        if status != 0:
+            raise PICAMConfigurationError(f"cannot replay hook {hook_id}'s compiled forward as a CUDA graph: "
+                                          f"{SET_GRAPH_STATUS.get(status, f'status {status}')}")
+        return
     entry = getattr(library, "pycam_hooks_set_graph_v1", None)
     if entry is None:
         if on:
@@ -534,6 +557,19 @@ def read_hook_graph(library: Any, hook_id: int) -> dict[str, Any] | None:
         return None
     record: dict[str, Any] = {"mode": GRAPH_MODES.get(mode.value, mode.value), "replays": int(replays.value),
                               "capture_seconds": float(seconds.value)}
+    compiled_entry = getattr(library, "pycam_hooks_graph_compiled_v1", None)
+    if compiled_entry is not None:
+        compiled_entry.restype = ctypes.c_int32
+        compiled_entry.argtypes = [ctypes.c_int32, ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_double),
+                                   ctypes.POINTER(ctypes.c_double)]
+        compiled, median, largest = ctypes.c_int32(0), ctypes.c_double(-1.0), ctypes.c_double(-1.0)
+        if (compiled_entry(int(hook_id), ctypes.byref(compiled), ctypes.byref(median), ctypes.byref(largest)) == 0
+                and compiled.value):
+            # the package's answer against the model's at the capture, over each output column's
+            # range: the median column's (refused beyond 1e-3) and the largest
+            record["forward"] = "compiled"
+            if median.value >= 0.0:
+                record["compiled_gap"] = {"median": float(median.value), "max": float(largest.value)}
     if mode.value == 3:
         record["status"] = GRAPH_STATUS.get(status.value, f"status {status.value}")
         message = getattr(library, "pycam_hooks_graph_message_v1", None)

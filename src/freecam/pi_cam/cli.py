@@ -211,21 +211,22 @@ def _frame_capture_summary(records, args, native_evidence) -> dict[str, object] 
     return provenance
 
 
-def _parse_kernel_models(values: list[str] | None) -> dict[str, Path]:
-    """``NAME=PATH`` pairs from --kernel-model, one model per kernel."""
+def _parse_kernel_models(values: list[str] | None, flag: str = "--kernel-model") -> dict[str, Path]:
+    """``NAME=PATH`` pairs from --kernel-model (or ``flag``), one file per kernel."""
 
     models: dict[str, Path] = {}
     for item in values or ():
         name, sep, path = item.partition("=")
         if not sep or not name.strip() or not path.strip():
-            raise SystemExit(f"--kernel-model takes NAME=PATH, got {item!r}")
+            raise SystemExit(f"{flag} takes NAME=PATH, got {item!r}")
         if name.strip() in models:
-            raise SystemExit(f"--kernel-model names {name.strip()!r} twice")
+            raise SystemExit(f"{flag} names {name.strip()!r} twice")
         models[name.strip()] = Path(path.strip()).expanduser()
     return models
 
 
-def _load_kernel_model(path: Path, *, shadow: bool = False, device: str = "cpu", graph: bool = False):
+def _load_kernel_model(path: Path, *, shadow: bool = False, device: str = "cpu", graph: bool = False,
+                       compiled: Path | None = None):
     """What stands in a kernel's slot: a TorchScript archive the image runs itself at the
     kernel's hook (no Python in the step; on ``device``), or a cloudpickled callable
     answering the kernel's frame at a pause; anything else is refused."""
@@ -235,7 +236,7 @@ def _load_kernel_model(path: Path, *, shadow: bool = False, device: str = "cpu",
     if not path.is_file():
         raise SystemExit(f"--kernel-model: {path} is not a file")
     if NativeModel.is_torchscript(path):
-        return NativeModel(path, shadow=shadow, device=device, graph=graph)
+        return NativeModel(path, shadow=shadow, device=device, graph=graph, compiled=compiled)
     if shadow:
         raise SystemExit(f"--shadow-kernel-model: {path} is not a TorchScript archive; only a model the image "
                          f"runs itself can shadow the original")
@@ -383,7 +384,8 @@ def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | No
 
 
 def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | None = None,
-                           device: str = "cpu", graph: bool = False) -> dict[str, dict[str, Any]] | None:
+                           device: str = "cpu", graph: bool = False,
+                           compiled: dict[str, Path] | None = None) -> dict[str, dict[str, Any]] | None:
     """Which artifact stood in which slot: file name and content hash, and the path when
     it lies inside this checkout (records name no site directory); shadow models say so,
     and a TorchScript model names the device the image ran it on."""
@@ -405,6 +407,10 @@ def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | No
                 row["device"] = device
                 if graph:
                     row["graph"] = True
+                package = (compiled or {}).get(name)
+                if package is not None:
+                    row["compiled"] = {"file": package.name,
+                                       "sha256": hashlib.sha256(package.read_bytes()).hexdigest()}
             if is_shadow:
                 row["shadow"] = True
             resolved = path.resolve()
@@ -775,6 +781,18 @@ def main(argv: list[str] | None = None) -> int:
             "with --model-device cuda: replay each TorchScript model's batched forward as a CUDA graph, "
             "captured over the rank's batch at its first forward and checked there, bit for bit, against an "
             "ordinary forward; refused (the ordinary forward answering) when it cannot be captured or does not match"
+        ),
+    )
+    parser.add_argument(
+        "--model-compiled",
+        action="append",
+        default=None,
+        metavar="NAME=PATH",
+        help=(
+            "with --model-graph: the graph of kernel NAME's model captures the AOTInductor package PATH "
+            "(tools/compile_torch_model.py, made from that very model) instead of the model's own forward: its "
+            "element-wise work fused into a few kernels; checked at the capture against the model's forward on the "
+            "rank's batch and refused beyond 1e-3 of an output's range.  Not bit-for-bit with the model's forward"
         ),
     )
     parser.add_argument(
@@ -1209,8 +1227,20 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"--shadow-kernel-model: {twice} are also given to --kernel-model; a model answers or shadows")
         if args.model_graph and args.model_device != "cuda":
             raise SystemExit("--model-graph replays the models on a GPU: it needs --model-device cuda")
-        kernel_models = {name: _load_kernel_model(path, device=args.model_device, graph=args.model_graph)
-                         for name, path in kernel_model_paths.items()}
+        compiled_paths = _parse_kernel_models(args.model_compiled, "--model-compiled")
+        if compiled_paths and not args.model_graph:
+            raise SystemExit("--model-compiled is captured by the CUDA graph runner: it needs --model-graph")
+        if sorted(set(compiled_paths) - set(kernel_model_paths)):
+            raise SystemExit(f"--model-compiled: {sorted(set(compiled_paths) - set(kernel_model_paths))} have no "
+                             f"--kernel-model; a package stands beside the model it was made from")
+        from freecam.physics.errors import PhysicsError
+
+        try:
+            kernel_models = {name: _load_kernel_model(path, device=args.model_device, graph=args.model_graph,
+                                                      compiled=compiled_paths.get(name))
+                             for name, path in kernel_model_paths.items()}
+        except PhysicsError as error:
+            raise SystemExit(f"--model-compiled: {error}") from None
         kernel_models.update({name: _load_kernel_model(path, shadow=True, device=args.model_device, graph=args.model_graph)
                               for name, path in shadow_model_paths.items()})
         kernel_models.update({name: _load_kernel_plugin(name, spec) for name, spec in kernel_plugin_specs.items()})
@@ -1726,7 +1756,9 @@ def main(argv: list[str] | None = None) -> int:
             "stage_execution": _stage_executions(cam),
             "frame_capture": _frame_capture_summary(records, args, native_evidence),
             "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths,
-                                                         args.model_device, args.model_graph) or {}),
+                                                         args.model_device, args.model_graph,
+                                                         _parse_kernel_models(args.model_compiled,
+                                                                              "--model-compiled")) or {}),
                                **_kernel_plugins_summary(kernel_plugin_specs, shadow_plugin_specs)} or None),
             "radiation_process": _radiation_process_summary(records),
             "cloud_process": _cloud_process_summary(records),

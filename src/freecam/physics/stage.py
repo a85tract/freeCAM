@@ -1820,7 +1820,12 @@ class NativeStage:
                     bind_hook_model(native.library, hook.id, model.path, shadow=model.shadow,
                                     device=model.device, device_index=model.resolved_device_index())
                     if getattr(model, "graph", False):
-                        set_hook_graph(native.library, hook.id, True)
+                        compiled = getattr(model, "compiled", None)
+                        if compiled is not None and model.compiled_kernel != name:
+                            raise PhysicsError(f"{model.compiled.name} was compiled for {model.compiled_kernel!r}, "
+                                               f"not {name!r}")
+                        set_hook_graph(native.library, hook.id, True,
+                                       package=None if compiled is None else str(compiled))
                 bound[name] = keys[name]
         self._native_bound = bound
 
