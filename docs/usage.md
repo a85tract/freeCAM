@@ -568,9 +568,10 @@ shallow.kernels["compute_uwshcu_inv"] = fc.NativeModel("v4.pt", device="cuda", g
 
 On a GPU each forward of a TorchScript model is hundreds of small kernels, each
 prepared by TorchScript's interpreter and launched by the CPU one at a time;
-with `graph=True` (`--model-graph`, job knob `PYCAM_MODEL_GRAPH=1`) the image
-captures the forward of a rank's batch (`--batch-chunks`) as a CUDA graph at its
-first batched step and replays it with one launch after.  The capture runs a
+with `graph=True` (`--model-graph`; the online jobs' leg R, the pausable jobs'
+`PYCAM_MODEL_GRAPH=1`) the image captures the forward of a rank's batch
+(`--batch-chunks`) as a CUDA graph at its first batched step and replays it
+with one launch after.  The capture runs a
 few ordinary forwards first, then replays the graph once against an ordinary
 forward on the same inputs and keeps it only if the two answers agree bit for
 bit; a forward that cannot be captured (one that waits on the GPU for a value),

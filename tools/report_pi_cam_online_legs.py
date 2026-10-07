@@ -42,6 +42,8 @@ LEGS = {
     "N": "M with every chunk of a rank answered by one forward a step (--batch-chunks): the kernel's inputs "
          "gathered for every chunk before the stage runs, each call taking its chunk's rows",
     "H": "G with every chunk of a rank answered by one forward a step (--batch-chunks)",
+    "R": "H with the batched forward captured as a CUDA graph at the first batch and replayed after "
+         "(--model-graph)",
 }
 _MPS_LINE = re.compile(r"GPU (?P<gpu>\d+) servers \[(?P<servers>[^\]]*)\] client disconnects (?P<clients>\d+) "
                        r"log faults (?P<faults>\d+)")
@@ -93,6 +95,9 @@ def model_cost(hooks: dict[str, Any] | None, kernel: str) -> dict[str, Any]:
         }
         if total is not None and ranks:
             cost["model_seconds_per_rank"] = (total + batch["forward_seconds"]) / ranks
+    if row.get("graph"):
+        # the ranks that replay the forward as a CUDA graph, and those refused with the reason
+        cost["graph"] = row["graph"]
     return cost
 
 
@@ -177,7 +182,8 @@ def freecam_leg(directory: Path, kernel: str) -> dict[str, Any]:
 
 def ratios(legs: dict[str, dict[str, Any]]) -> dict[str, float]:
     loops = {name: leg.get("coupling_loop_seconds") for name, leg in legs.items() if leg.get("completed")}
-    pairs = [(x, "A") for x in "CMGNH"] + [("M", "C"), ("G", "C"), ("G", "M"), ("N", "M"), ("H", "G"), ("H", "N")]
+    pairs = [(x, "A") for x in "CMGNHR"] + [("M", "C"), ("G", "C"), ("G", "M"), ("N", "M"), ("H", "G"), ("H", "N"),
+                                             ("R", "H")]
     return {f"{x}/{y}": loops[x] / loops[y] for x, y in pairs if loops.get(x) and loops.get(y)}
 
 
@@ -189,7 +195,7 @@ def main() -> int:
     parser.add_argument("--a-executable", type=Path)
     parser.add_argument("--hardware", default="", help="the nodes and layout the legs shared")
     parser.add_argument("--gpu-mps", choices=("own", "site"), default="own",
-                        help="whose MPS server G's ranks reached: the job's own, one a GPU, or the site's")
+                        help="whose MPS server the GPU legs' ranks reached: the job's own, one a GPU, or the site's")
     parser.add_argument("--root-label", default="", help="the root as the record names it (no site directory)")
     parser.add_argument("--pbs-job-id")
     parser.add_argument("--git-commit")
@@ -225,7 +231,7 @@ def main() -> int:
         "pbs_job_id": arguments.pbs_job_id,
         "git_commit": arguments.git_commit,
         "hardware": arguments.hardware,
-        "gpu_mps": arguments.gpu_mps if set("GH") & set(arguments.legs) else None,
+        "gpu_mps": arguments.gpu_mps if set("GHR") & set(arguments.legs) else None,
         "root": arguments.root_label or None,
         "order": arguments.legs,
         "kernel": arguments.kernel,

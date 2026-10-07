@@ -91,3 +91,19 @@ def test_the_site_servers_evidence_is_read_from_its_own_lines(tmp_path: Path) ->
     path.write_text("".join(f"deg00{n}: site MPS exclusive GPUs 4 of 4\n" for n in range(4)) + "refused ranks 0\n")
     assert rl.mps_evidence(path) == {"server": "site", "nodes": 4, "gpus": 16, "exclusive_process_gpus": 16,
                                      "refused_ranks": 0}
+
+
+def test_the_graph_leg_carries_which_ranks_replayed_and_its_ratio_to_the_batched_leg(tmp_path: Path) -> None:
+    import report_pi_cam_online_legs as rl
+
+    root = tmp_path / "root"
+    _freecam(root, "H", 300.0, device="cuda")
+    _freecam(root, "R", 240.0, device="cuda")
+    summary_path = root / "R-freecam" / "summary.json"
+    summary = json.loads(summary_path.read_text())
+    graph = {"ranks": {"replaying": 512}, "replays": 512 * 49, "capture_seconds_max": 3.0}
+    summary["hooks"]["compute_uwshcu_inv"]["graph"] = graph
+    summary_path.write_text(json.dumps(summary))
+    legs = {name: rl.freecam_leg(root / f"{name}-freecam", "compute_uwshcu_inv") for name in "HR"}
+    assert legs["R"]["model"]["graph"] == graph and "graph" not in legs["H"]["model"]
+    assert rl.ratios(legs) == {"R/H": 0.8}
