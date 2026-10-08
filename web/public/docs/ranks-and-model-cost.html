@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<title>Ranks and Model Cost</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  --page: #f6f6f3; --surface: #fcfcfb; --ink: #121212; --ink-2: #4f4e4a; --muted: #85837d;
+  --grid: #e3e2db; --axis: #c3c2b7; --ring: rgba(18,18,18,0.10);
+  --fortran: #2a78d6; --model: #eb6834; --whole: #1baf7a; --tip: #ffffff;
+  --seg1: #2a78d6; --seg2: #eb6834; --seg3: #1baf7a; --seg4: #eda100;
+  --sans: "IBM Plex Sans", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0f0f0e; --surface: #1a1a19; --ink: #f4f4f1; --ink-2: #c3c2b7; --muted: #8d8b84;
+    --grid: #2c2c2a; --axis: #3d3d3a; --ring: rgba(255,255,255,0.10);
+    --fortran: #3987e5; --model: #d95926; --whole: #199e70; --tip: #242423;
+    --seg1: #3987e5; --seg2: #d95926; --seg3: #199e70; --seg4: #c98500;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0f0f0e; --surface: #1a1a19; --ink: #f4f4f1; --ink-2: #c3c2b7; --muted: #8d8b84;
+  --grid: #2c2c2a; --axis: #3d3d3a; --ring: rgba(255,255,255,0.10);
+  --fortran: #3987e5; --model: #d95926; --whole: #199e70; --tip: #242423;
+    --seg1: #3987e5; --seg2: #d95926; --seg3: #199e70; --seg4: #c98500;
+}
+body { background: var(--page); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.6; }
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 56px; display: grid; gap: 28px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase; }
+h1 { font-size: 26px; line-height: 1.25; margin: 0; font-weight: 600; text-wrap: balance; }
+.lede { margin: 0; color: var(--ink-2); max-width: 68ch; }
+.lede strong { color: var(--ink); font-weight: 600; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+figure { margin: 0; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 18px 18px 12px; display: grid; gap: 6px; position: relative; }
+figure.wide { grid-column: 1 / -1; }
+figcaption h2 { font-size: 15px; margin: 0; font-weight: 600; }
+figcaption p { margin: 0; color: var(--ink-2); font-size: 13px; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+svg { width: 100%; height: auto; display: block; overflow: visible; }
+svg text { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+svg .label { fill: var(--ink-2); font-size: 11.5px; }
+.tip { position: absolute; pointer-events: none; background: var(--tip); color: var(--ink); border: 1px solid var(--ring);
+  border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.45; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 150px; }
+.tip b { font-weight: 600; }
+.tip .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+section { display: grid; gap: 10px; }
+section h2 { font-size: 17px; margin: 0; font-weight: 600; }
+.tablebox { overflow-x: auto; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 760px; }
+th, td { padding: 8px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--grid); }
+th { font-weight: 500; color: var(--ink-2); font-size: 12px; vertical-align: bottom; }
+th:first-child, td:first-child { text-align: left; }
+td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: 0; }
+table.words td:first-child, table.words td:last-child { font-family: var(--sans); }
+table.words td:last-child { text-align: left; white-space: normal; }
+.notes { display: grid; gap: 10px; color: var(--ink-2); max-width: 72ch; }
+.notes p { margin: 0; }
+.notes b { color: var(--ink); font-weight: 600; }
+.back { justify-self: start; font-size: 13px; color: var(--muted); text-decoration: none; }
+.back:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<a class="back" href="index.html">← freeCAM docs</a>
+<header>
+  <div class="eyebrow">ne16 · PI-atm · online coupled · one month (1488 steps) · 4 A100 nodes</div>
+  <h1>The fewer the ranks, the closer the model comes to the Fortran</h1>
+  <p class="lede" id="lede"></p>
+</header>
+
+<div class="grid2">
+  <figure class="wide" id="fig-total">
+    <figcaption><h2>Total time for one month</h2>
+      <p>Seconds; H includes its one-time start-up</p></figcaption>
+    <div class="legend"><span><i style="background:var(--fortran)"></i>Original Fortran (CESM, A)</span><span><i style="background:var(--model)"></i>Batched model (H)</span></div>
+    <svg viewBox="0 0 900 320" role="img" aria-label="Total time for one month by rank count"></svg>
+  </figure>
+  <figure class="wide" id="fig-whole">
+    <figcaption><h2>Total time for one month: how much slower the model is</h2>
+      <p>H relative to A; negative means the model is faster</p></figcaption>
+    <svg viewBox="0 0 900 300" role="img" aria-label="Gap in one-month total time by rank count"></svg>
+  </figure>
+  <figure class="wide" id="fig-start">
+    <figcaption><h2>One-time start-up cost</h2><p>Seconds H takes beyond C, all in step 1</p></figcaption>
+    <svg viewBox="0 0 900 300" role="img" aria-label="Start-up cost"></svg>
+  </figure>
+</div>
+
+<section>
+  <h2>Data: one month</h2>
+  <div class="tablebox"><table id="table"></table></div>
+</section>
+
+<section>
+  <h2>Half a year: 512 ranks</h2>
+  <p class="lede">Half a year at 512 ranks (8688 steps, job 7689590): the model is still 16% slower, about 40 ms more per step, so a longer run never catches up.</p>
+  <div class="tablebox"><table>
+    <thead><tr><th>Length</th><th>Original A (s)</th><th>Model H (s)</th><th>H/A</th><th>H start-up (s)</th><th>Original step (ms)</th><th>Model step after start-up (ms)</th><th>Forward (ms)</th></tr></thead>
+    <tbody>
+      <tr><td>One month (7648576)</td><td>496.2</td><td>573.2</td><td>1.16</td><td>45.4</td><td>333.5</td><td>355.2</td><td>47.8</td></tr>
+      <tr><td>Half year (7689590)</td><td>2673.4</td><td>3095.7</td><td>1.16</td><td>47.1</td><td>307.7</td><td>351.2</td><td>52.3</td></tr>
+    </tbody>
+  </table></div>
+  <div class="notes"><p>To beat the original, the one forward per step has to drop from about 52 ms to about 12 ms (the per-step time of the Fortran it replaces).</p></div>
+</section>
+
+<section>
+  <h2>What the extra ~40 ms per step is made of</h2>
+  <p class="lede">The 512-rank half-year run, per rank and per step. The first three rows add up to the 52.3 ms of one forward.</p>
+  <div class="tablebox"><table class="words">
+    <thead><tr><th>Component</th><th>Per step (ms)</th><th style="text-align:left">Source</th></tr></thead>
+    <tbody>
+      <tr><td>Model forward: cost with one rank alone</td><td>+8.2</td><td>CPU launching 793 small GPU kernels 4.0, TorchScript preparation 3.7, copies and waits 0.5 (standalone test)</td></tr>
+      <tr><td>Model forward: extra from 32 ranks sharing one GPU</td><td>+33.6</td><td>41.8 − 8.2 (standalone test)</td></tr>
+      <tr><td>Model forward: extra in production over the standalone test</td><td>+10.5</td><td>52.3 − 41.8, not broken down</td></tr>
+      <tr><td>Fetching results and checking inputs, per chunk</td><td>+2.4</td><td></td></tr>
+      <tr><td>Gathering inputs, the rest of the shallow-convection Fortran</td><td>+4.3</td><td></td></tr>
+      <tr><td>Original shallow convection, no longer computed</td><td>−20.4</td><td>Per-step time of the whole shallow convection in C, one-month run</td></tr>
+      <tr><td>Other (differences outside shallow convection, measurement noise)</td><td>+4.9</td><td>Remainder</td></tr>
+      <tr><td><b>Total: model over original, per step</b></td><td><b>+43.5</b></td><td>351.2 − 307.7 (half-year run)</td></tr>
+    </tbody>
+  </table></div>
+  <figure class="wide">
+    <figcaption><h2>Time of one forward</h2><p>ms, 27 columns</p></figcaption>
+    <svg viewBox="0 0 900 300" role="img" aria-label="Time of one forward by the number of ranks on the same GPU">
+    <line x1="60" x2="880" y1="250.0" y2="250.0" stroke="var(--grid)" stroke-width="1"/>
+    <text x="52" y="254.0" text-anchor="end">0 ms</text>
+    <line x1="60" x2="880" y1="204.0" y2="204.0" stroke="var(--grid)" stroke-width="1"/>
+    <text x="52" y="208.0" text-anchor="end">10 ms</text>
+    <line x1="60" x2="880" y1="158.0" y2="158.0" stroke="var(--grid)" stroke-width="1"/>
+    <text x="52" y="162.0" text-anchor="end">20 ms</text>
+    <line x1="60" x2="880" y1="112.0" y2="112.0" stroke="var(--grid)" stroke-width="1"/>
+    <text x="52" y="116.0" text-anchor="end">30 ms</text>
+    <line x1="60" x2="880" y1="66.0" y2="66.0" stroke="var(--grid)" stroke-width="1"/>
+    <text x="52" y="70.0" text-anchor="end">40 ms</text>
+    <line x1="60" x2="880" y1="20.0" y2="20.0" stroke="var(--grid)" stroke-width="1"/>
+    <text x="52" y="24.0" text-anchor="end">50 ms</text>
+    <path d="M105.3,250 V216.3 Q105.3,212.3 109.3,212.3 H147.3 Q151.3,212.3 151.3,216.3 V250 Z" fill="var(--model)"/>
+    <text x="128.3" y="204.3" text-anchor="middle" class="label">8.2</text>
+    <text x="128.3" y="268" text-anchor="middle">1</text>
+    <path d="M242.0,250 V215.8 Q242.0,211.8 246.0,211.8 H284.0 Q288.0,211.8 288.0,215.8 V250 Z" fill="var(--model)"/>
+    <text x="265.0" y="203.8" text-anchor="middle" class="label">8.3</text>
+    <text x="265.0" y="268" text-anchor="middle">2</text>
+    <path d="M378.7,250 V214.4 Q378.7,210.4 382.7,210.4 H420.7 Q424.7,210.4 424.7,214.4 V250 Z" fill="var(--model)"/>
+    <text x="401.7" y="202.4" text-anchor="middle" class="label">8.6</text>
+    <text x="401.7" y="268" text-anchor="middle">4</text>
+    <path d="M515.3,250 V214.4 Q515.3,210.4 519.3,210.4 H557.3 Q561.3,210.4 561.3,214.4 V250 Z" fill="var(--model)"/>
+    <text x="538.3" y="202.4" text-anchor="middle" class="label">8.6</text>
+    <text x="538.3" y="268" text-anchor="middle">8</text>
+    <path d="M652.0,250 V196.0 Q652.0,192.0 656.0,192.0 H694.0 Q698.0,192.0 698.0,196.0 V250 Z" fill="var(--model)"/>
+    <text x="675.0" y="184.0" text-anchor="middle" class="label">12.6</text>
+    <text x="675.0" y="268" text-anchor="middle">16</text>
+    <path d="M788.7,250 V61.7 Q788.7,57.7 792.7,57.7 H830.7 Q834.7,57.7 834.7,61.7 V250 Z" fill="var(--model)"/>
+    <text x="811.7" y="49.7" text-anchor="middle" class="label">41.8</text>
+    <text x="811.7" y="268" text-anchor="middle">32</text>
+    <line x1="60" x2="880" y1="250" y2="250" stroke="var(--axis)" stroke-width="1"/>
+    <text x="470" y="292" text-anchor="middle" class="label">Ranks calling the model at once on one A100 (32 in production)</text>
+    </svg>
+  </figure>
+  <div class="notes"><p>The cost is the number of kernels: 793 small kernels per forward, about 25,000 for 32 ranks; the GPU computes for only 3 ms.</p></div>
+</section>
+
+<section>
+  <h2>What the one-time ~47 s start-up is made of</h2>
+  <p class="lede">Step 1's start-up redone on its own (job 7692487): the largest part is creating the CUDA context, 38 s when 32 ranks share each GPU.</p>
+  <figure class="wide">
+    <figcaption><h2>Start-up time by part</h2><p>Median per rank, seconds</p></figcaption>
+    <div class="legend"><span><i style="background:var(--seg1);height:10px;width:10px"></i>Create CUDA context, connect to MPS</span><span><i style="background:var(--seg2);height:10px;width:10px"></i>Load model, weights onto GPU</span><span><i style="background:var(--seg3);height:10px;width:10px"></i>Warm-up forward (16 all-zero columns)</span><span><i style="background:var(--seg4);height:10px;width:10px"></i>First 27-column forward</span></div>
+    <svg viewBox="0 0 900 210" role="img" aria-label="Seconds per part of the one-time start-up">
+<line x1="250.0" x2="250.0" y1="14" y2="174" stroke="var(--grid)" stroke-width="1"/>
+<text x="250.0" y="192" text-anchor="middle">0 s</text>
+<line x1="351.7" x2="351.7" y1="14" y2="174" stroke="var(--grid)" stroke-width="1"/>
+<text x="351.7" y="192" text-anchor="middle">10 s</text>
+<line x1="453.3" x2="453.3" y1="14" y2="174" stroke="var(--grid)" stroke-width="1"/>
+<text x="453.3" y="192" text-anchor="middle">20 s</text>
+<line x1="555.0" x2="555.0" y1="14" y2="174" stroke="var(--grid)" stroke-width="1"/>
+<text x="555.0" y="192" text-anchor="middle">30 s</text>
+<line x1="656.7" x2="656.7" y1="14" y2="174" stroke="var(--grid)" stroke-width="1"/>
+<text x="656.7" y="192" text-anchor="middle">40 s</text>
+<line x1="758.3" x2="758.3" y1="14" y2="174" stroke="var(--grid)" stroke-width="1"/>
+<text x="758.3" y="192" text-anchor="middle">50 s</text>
+<line x1="860.0" x2="860.0" y1="14" y2="174" stroke="var(--grid)" stroke-width="1"/>
+<text x="860.0" y="192" text-anchor="middle">60 s</text>
+<text x="238" y="40.0" text-anchor="end" class="label">1 rank alone</text>
+<rect x="250.0" y="20" width="2.7" height="32" fill="var(--seg1)" stroke="var(--surface)" stroke-width="2"><title>Create CUDA context, connect to MPS: 0.27 s</title></rect>
+<rect x="252.7" y="20" width="1.1" height="32" fill="var(--seg2)" stroke="var(--surface)" stroke-width="2"><title>Load model, weights onto GPU: 0.11 s</title></rect>
+<rect x="253.9" y="20" width="6.3" height="32" fill="var(--seg3)" stroke="var(--surface)" stroke-width="2"><title>Warm-up forward (16 all-zero columns): 0.62 s</title></rect>
+<rect x="260.2" y="20" width="1.6" height="32" fill="var(--seg4)" stroke="var(--surface)" stroke-width="2"><title>First 27-column forward: 0.16 s</title></rect>
+<text x="269.8" y="40.0" class="label">1.2 s</text>
+<text x="238" y="98.0" text-anchor="end" class="label">8 per GPU (the 128-rank run)</text>
+<rect x="250.0" y="78" width="66.9" height="32" fill="var(--seg1)" stroke="var(--surface)" stroke-width="2"><title>Create CUDA context, connect to MPS: 6.58 s</title></rect>
+<rect x="316.9" y="78" width="1.2" height="32" fill="var(--seg2)" stroke="var(--surface)" stroke-width="2"><title>Load model, weights onto GPU: 0.12 s</title></rect>
+<rect x="318.1" y="78" width="7.0" height="32" fill="var(--seg3)" stroke="var(--surface)" stroke-width="2"><title>Warm-up forward (16 all-zero columns): 0.69 s</title></rect>
+<rect x="325.1" y="78" width="1.7" height="32" fill="var(--seg4)" stroke="var(--surface)" stroke-width="2"><title>First 27-column forward: 0.17 s</title></rect>
+<text x="334.9" y="98.0" class="label">7.6 s</text>
+<text x="238" y="156.0" text-anchor="end" class="label">32 per GPU (512-rank production)</text>
+<rect x="250.0" y="136" width="387.0" height="32" fill="var(--seg1)" stroke="var(--surface)" stroke-width="2"><title>Create CUDA context, connect to MPS: 38.07 s</title></rect>
+<rect x="637.0" y="136" width="25.9" height="32" fill="var(--seg2)" stroke="var(--surface)" stroke-width="2"><title>Load model, weights onto GPU: 2.55 s</title></rect>
+<rect x="663.0" y="136" width="129.6" height="32" fill="var(--seg3)" stroke="var(--surface)" stroke-width="2"><title>Warm-up forward (16 all-zero columns): 12.75 s</title></rect>
+<rect x="792.6" y="136" width="6.0" height="32" fill="var(--seg4)" stroke="var(--surface)" stroke-width="2"><title>First 27-column forward: 0.59 s</title></rect>
+<text x="806.6" y="156.0" class="label">54.0 s</text>
+</svg>
+  </figure>
+  <div class="tablebox"><table>
+    <thead><tr><th>Per rank (s, median)</th><th>CUDA context</th><th>Load model</th><th>Warm-up</th><th>First 27-col forward</th><th>Total</th><th>Later forwards (ms)</th></tr></thead>
+    <tbody>
+      <tr><td>1 rank alone</td><td>0.27</td><td>0.11</td><td>0.62</td><td>0.16</td><td>1.2</td><td>8.2</td></tr>
+      <tr><td>8 per GPU, 32 total</td><td>6.58</td><td>0.12</td><td>0.69</td><td>0.17</td><td>7.6</td><td>8.6</td></tr>
+      <tr><td>32 per GPU, 128 total (production)</td><td>38.07</td><td>2.55</td><td>12.75</td><td>0.59</td><td>54.0</td><td>36.6</td></tr>
+    </tbody>
+  </table></div>
+  
+</section>
+
+<section class="notes" id="notes"></section>
+</div>
+
+<script>
+const ROWS = [{"ranks": 128, "columns_per_rank": 108.0, "pbs_job_id": "7648572.desched1", "A_seconds": 816.63855, "C_seconds": 802.2786791380004, "H_seconds": 807.710872569, "ms_per_forward": 20.409768292170703, "columns_per_forward": 108.015625, "chunks_per_forward": 7.0, "C_startup_seconds": 3.285873729008017, "C_steady_seconds": 800.1009004628868, "C_steady_ms_per_step": 568.2705784565769, "steady_steps": 1484, "H_startup_seconds": 17.99580951410462, "H_steady_seconds": 790.7918543741398, "H_steady_ms_per_step": 564.7917960013729, "H_over_A": 0.9890677737035559, "C_over_A": 0.9824158792626191, "H_over_C_steady": 0.9883651598400135, "H_minus_C_startup_seconds": 14.709935785096604, "H_minus_C_steady_ms_per_step": -6.272942108320069, "C_ms": 539.1515501771474, "H_ms": 532.8786080688274, "gap_pct": -1.1634840159986504, "whole_pct": -1.093222629644408, "startup_share_pct": 1.8211882846531802}, {"ranks": 192, "columns_per_rank": 72.0, "pbs_job_id": "7648573.desched1", "A_seconds": 598.970459, "C_seconds": 587.26306677, "H_seconds": 610.6846979359998, "ms_per_forward": 21.20020586217518, "columns_per_forward": 72.01041666666667, "chunks_per_forward": 5.0, "C_startup_seconds": 2.8131962041079532, "C_steady_seconds": 585.7070753113658, "C_steady_ms_per_step": 408.05845565046184, "steady_steps": 1484, "H_startup_seconds": 18.87163493753178, "H_steady_seconds": 593.0306663914816, "H_steady_ms_per_step": 418.4058215469122, "H_over_A": 1.0195572899464143, "C_over_A": 0.9804541408443651, "H_over_C_steady": 1.012503846015899, "H_minus_C_startup_seconds": 16.058438733423827, "H_minus_C_steady_ms_per_step": 4.935034420563258, "C_ms": 394.68131759525994, "H_ms": 399.6163520158232, "gap_pct": 1.2503846015899045, "whole_pct": 1.9557289946414258, "startup_share_pct": 2.629579353748072}, {"ranks": 256, "columns_per_rank": 54.0, "pbs_job_id": "7648574.desched1", "A_seconds": 431.128296, "C_seconds": 421.69626917000005, "H_seconds": 460.189534983, "ms_per_forward": 24.148138952767972, "columns_per_forward": 54.0078125, "chunks_per_forward": 4.0, "C_startup_seconds": 2.375648003537208, "C_steady_seconds": 420.5459746506531, "C_steady_ms_per_step": 294.4950759410858, "steady_steps": 1484, "H_startup_seconds": 25.477550921961665, "H_steady_seconds": 435.8877454777248, "H_steady_ms_per_step": 307.00220400467515, "H_over_A": 1.0674074034402976, "C_over_A": 0.9781224593293688, "H_over_C_steady": 1.0364806031963951, "H_minus_C_startup_seconds": 23.101902918424457, "H_minus_C_steady_ms_per_step": 10.338120503417615, "C_ms": 283.38677537106, "H_ms": 293.7248958744776, "gap_pct": 3.6480603196395123, "whole_pct": 6.740740344029761, "startup_share_pct": 5.0200843700797915}, {"ranks": 300, "columns_per_rank": 46.1, "pbs_job_id": "7649044.desched1", "A_seconds": 692.411682, "C_seconds": 666.552386397, "H_seconds": 721.3227209329998, "ms_per_forward": 20.22800729390682, "columns_per_forward": 46.086666666666666, "chunks_per_forward": 3.25, "C_startup_seconds": 3.7773319019179326, "C_steady_seconds": 664.7795975794725, "C_steady_ms_per_step": 440.90220336511265, "steady_steps": 1484, "H_startup_seconds": 37.95941203349503, "H_steady_seconds": 685.5180330259609, "H_steady_ms_per_step": 453.5351088270545, "H_over_A": 1.0417541177951988, "C_over_A": 0.9626532938781353, "H_over_C_steady": 1.0311959565576307, "H_minus_C_startup_seconds": 34.182080131577095, "H_minus_C_steady_ms_per_step": 13.97468695855016, "C_ms": 447.96468839587095, "H_ms": 461.9393753544211, "gap_pct": 3.1195956557630744, "whole_pct": 4.1754117795198775, "startup_share_pct": 4.738805411170752}, {"ranks": 384, "columns_per_rank": 36.0, "pbs_job_id": "7648575.desched1", "A_seconds": 596.865906, "C_seconds": 586.6739624530001, "H_seconds": 646.826446553, "ms_per_forward": 21.916613265498984, "columns_per_forward": 36.005208333333336, "chunks_per_forward": 3.0, "C_startup_seconds": 3.5055401530116796, "C_steady_seconds": 585.2390063225757, "C_steady_ms_per_step": 400.3983340226114, "steady_steps": 1484, "H_startup_seconds": 35.70278167189099, "H_steady_seconds": 613.0186713980511, "H_steady_ms_per_step": 417.1823395881802, "H_over_A": 1.083704798767648, "C_over_A": 0.9829242323199477, "H_over_C_steady": 1.0474672138653787, "H_minus_C_startup_seconds": 32.19724151887931, "H_minus_C_steady_ms_per_step": 18.719450859484738, "C_ms": 394.3659072254554, "H_ms": 413.0853580849401, "gap_pct": 4.746721386537867, "whole_pct": 8.370479876764803, "startup_share_pct": 4.977724966327751}, {"ranks": 400, "columns_per_rank": 34.6, "pbs_job_id": "7649045.desched1", "A_seconds": 590.101868, "C_seconds": 585.136974904, "H_seconds": 642.9778268509999, "ms_per_forward": 22.614337997311814, "columns_per_forward": 34.565, "chunks_per_forward": 2.75, "C_startup_seconds": 3.3512338219443336, "C_steady_seconds": 583.5818500387832, "C_steady_ms_per_step": 390.020813094452, "steady_steps": 1484, "H_startup_seconds": 44.44723539418192, "H_steady_seconds": 600.2966875707207, "H_steady_ms_per_step": 402.74534188210964, "H_over_A": 1.0896047982871322, "C_over_A": 0.9915863796316605, "H_over_C_steady": 1.0286418049684491, "H_minus_C_startup_seconds": 41.09600157223758, "H_minus_C_steady_ms_per_step": 11.263367609122318, "C_ms": 393.24922509351967, "H_ms": 404.51259270264194, "gap_pct": 2.8641804968449147, "whole_pct": 8.960479828713218, "startup_share_pct": 6.391511473032637}, {"ranks": 512, "columns_per_rank": 27.0, "pbs_job_id": "7648576.desched1", "A_seconds": 496.21051, "C_seconds": 526.8619967830001, "H_seconds": 573.240608904, "ms_per_forward": 47.791092041015645, "columns_per_forward": 27.00390625, "chunks_per_forward": 2.0, "C_startup_seconds": 3.026467674266314, "C_steady_seconds": 527.5229803696857, "C_steady_ms_per_step": 299.99406400020234, "steady_steps": 1484, "H_startup_seconds": 48.49672210321296, "H_steady_seconds": 527.0985719946038, "H_steady_ms_per_step": 336.71649800089654, "H_over_A": 1.155236733909566, "C_over_A": 1.0617711357685675, "H_over_C_steady": 0.9991954694091537, "H_minus_C_startup_seconds": 45.470254428946646, "H_minus_C_steady_ms_per_step": -0.28598947107940637, "C_ms": 355.4737064485753, "H_ms": 355.1877169774958, "gap_pct": -0.08045305908462863, "whole_pct": 15.523673390956594, "startup_share_pct": 7.932141185161831}];
+const $ = (s, el = document) => el.querySelector(s);
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+const fmt = (v, d = 1) => Number(v).toFixed(d);
+const signed = (v, d = 1) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Number(v)).toFixed(d);
+
+const X_TICKS = ROWS.map(r => r.ranks);
+function frame(svg, w, h, yMax, yTicks, yFmt, m = {l: 52, r: 18, t: 18, b: 44}, yMin = 0) {
+  const x = v => m.l + (v - 96) / (544 - 96) * (w - m.l - m.r);
+  const y = v => h - m.b - (v - yMin) / (yMax - yMin) * (h - m.t - m.b);
+  for (const t of yTicks) {
+    el("line", {x1: m.l, x2: w - m.r, y1: y(t), y2: y(t), stroke: "var(--grid)", "stroke-width": 1}, svg);
+    el("text", {x: m.l - 8, y: y(t) + 4, "text-anchor": "end"}, svg).textContent = yFmt(t);
+  }
+  el("line", {x1: m.l, x2: w - m.r, y1: y(0), y2: y(0), stroke: "var(--axis)", "stroke-width": 1}, svg);
+  for (const t of X_TICKS) el("text", {x: x(t), y: h - m.b + 18, "text-anchor": "middle"}, svg).textContent = t;
+  el("text", {x: (m.l + w - m.r) / 2, y: h - 6, "text-anchor": "middle", class: "label"}, svg).textContent = "MPI ranks (columns per rank in the table)";
+  return {x, y};
+}
+function tooltip(fig) { let t = $(".tip", fig); if (!t) { t = document.createElement("div"); t.className = "tip"; t.hidden = true; fig.appendChild(t); } return t; }
+function hover(fig, svg, x, w, h, html) {
+  const tip = tooltip(fig);
+  ROWS.forEach(r => {
+    const hit = el("rect", {x: x(r.ranks) - 14, y: 0, width: 28, height: h, fill: "transparent", tabindex: 0}, svg);
+    const show = () => {
+      tip.innerHTML = html(r); tip.hidden = false;
+      const box = svg.getBoundingClientRect(), fb = fig.getBoundingClientRect();
+      const px = box.left - fb.left + x(r.ranks) / w * box.width;
+      tip.style.left = Math.min(Math.max(8, px + 12), fb.width - tip.offsetWidth - 8) + "px";
+      tip.style.top = (box.top - fb.top + 12) + "px";
+    };
+    hit.addEventListener("mouseenter", show); hit.addEventListener("focus", show);
+    hit.addEventListener("mouseleave", () => tip.hidden = true); hit.addEventListener("blur", () => tip.hidden = true);
+  });
+}
+function line(svg, pts, color, labels, below = false) {
+  el("polyline", {points: pts.map(p => p.join(",")).join(" "), fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round"}, svg);
+  pts.forEach((p, i) => {
+    el("circle", {cx: p[0], cy: p[1], r: 5, fill: color, stroke: "var(--surface)", "stroke-width": 2}, svg);
+    if (labels && labels[i] != null) el("text", {x: p[0], y: below ? p[1] + 20 : p[1] - 12, "text-anchor": "middle", class: "label"}, svg).textContent = labels[i];
+  });
+}
+
+// 0. the absolute five-day totals, the original and the model
+(function () {
+  const fig = $("#fig-total"), svg = $("svg", fig), w = 900, h = 320;
+  const peak = Math.max(...ROWS.map(r => Math.max(r.A_seconds, r.H_seconds)));
+  const tick = peak > 400 ? 100 : 40;
+  const top = Math.ceil(peak / tick) * tick + tick / 2;
+  const ticks = []; for (let t = 0; t <= top; t += tick) ticks.push(t);
+  const {x, y} = frame(svg, w, h, top, ticks, t => t + " s");
+  line(svg, ROWS.map(r => [x(r.ranks), y(r.A_seconds)]), "var(--fortran)", ROWS.map(r => fmt(r.A_seconds, 0)), true);
+  line(svg, ROWS.map(r => [x(r.ranks), y(r.H_seconds)]), "var(--model)", ROWS.map(r => fmt(r.H_seconds, 0)));
+  hover(fig, svg, x, w, h, r => `<b>${r.ranks} ranks</b> (about ${fmt(r.columns_per_rank, 0)} columns per rank)<br>Original <span class="num">${fmt(r.A_seconds)} s</span><br>Model <span class="num">${fmt(r.H_seconds)} s</span><br>Model minus original <span class="num">${fmt(r.H_seconds - r.A_seconds)} s</span>, start-up ${fmt(r.H_minus_C_startup_seconds)} s of it`);
+})();
+
+// 1-2. one percentage series a chart: the whole five days, and the steps after the start-up
+function percentChart(id, w, key, labelDigits, tip) {
+  const fig = $(id), svg = $("svg", fig), h = 300;
+  const values = ROWS.map(r => r[key]);
+  const peak = Math.max(...values.map(Math.abs));
+  const step = peak > 30 ? 10 : peak > 10 ? 5 : 2;
+  const top = Math.max(step * 3, Math.ceil(Math.max(...values) / step) * step);
+  const low = Math.min(0, Math.floor(Math.min(...values) / step) * step);
+  const ticks = []; for (let t = low; t <= top; t += step) ticks.push(t);
+  const m = w > 600 ? undefined : {l: 44, r: 12, t: 18, b: 44};
+  const {x, y} = frame(svg, w, h, top, ticks, t => (t > 0 ? "+" : "") + t + "%", m, low);
+  const left = m ? m.l : 52, right = m ? m.r : 18;
+  el("line", {x1: left, x2: w - right, y1: y(0), y2: y(0), stroke: "var(--ink-2)", "stroke-width": 1, "stroke-dasharray": "3 3"}, svg);
+  el("text", {x: w - right - 2, y: y(0) - 6, "text-anchor": "end", class: "label"}, svg).textContent = "even";
+  line(svg, ROWS.map(r => [x(r.ranks), y(r[key])]), "var(--model)", ROWS.map(r => signed(r[key], labelDigits) + "%"));
+  hover(fig, svg, x, w, h, tip);
+}
+percentChart("#fig-whole", 900, "whole_pct", 0, r => `<b>${r.ranks} ranks</b> (about ${fmt(r.columns_per_rank, 0)} columns per rank)<br>One month: original <span class="num">${fmt(r.A_seconds)} s</span>, model <span class="num">${fmt(r.H_seconds)} s</span><br>Model <span class="num">${signed(r.whole_pct)}%</span>, including ${fmt(r.H_minus_C_startup_seconds)} s of extra start-up`);
+
+
+// 3. the one-time start-up, bars
+(function () {
+  const fig = $("#fig-start"), svg = $("svg", fig), w = 900, h = 300;
+  const top = Math.ceil(Math.max(...ROWS.map(r => r.H_minus_C_startup_seconds)) / 10) * 10 + 10;
+  const ticks = []; for (let t = 0; t <= top; t += 10) ticks.push(t);
+  const {x, y} = frame(svg, w, h, top, ticks, t => t + " s");
+  ROWS.forEach(r => {
+    const v = Math.max(0, r.H_minus_C_startup_seconds), bw = 22, x0 = x(r.ranks) - bw / 2, y0 = y(v), y1 = y(0);
+    const rad = Math.min(4, (y1 - y0) / 2);
+    el("path", {d: `M${x0},${y1} V${y0 + rad} Q${x0},${y0} ${x0 + rad},${y0} H${x0 + bw - rad} Q${x0 + bw},${y0} ${x0 + bw},${y0 + rad} V${y1} Z`, fill: "var(--model)"}, svg);
+    el("text", {x: x(r.ranks), y: y0 - 8, "text-anchor": "middle", class: "label"}, svg).textContent = fmt(v, 0);
+  });
+  hover(fig, svg, x, w, h, r => `<b>${r.ranks} ranks</b><br>Extra start-up <span class="num">${fmt(r.H_minus_C_startup_seconds)} s</span> (one-time)`);
+})();
+
+// the tables
+function table(id, rows) {
+  const head = ["Ranks", "Cols/rank", "Original A (s)", "C, no swap (s)", "Model H (s)", "H/A", "C/A", "Extra start-up (s)", "Start-up/H", "Forward (ms)", "Cols/forward"];
+  $(id).innerHTML = "<thead><tr>" + head.map(h => `<th>${h}</th>`).join("") + "</tr></thead><tbody>" +
+    rows.map(r => `<tr><td>${r.ranks}</td><td>${fmt(r.columns_per_rank)}</td><td>${fmt(r.A_seconds)}</td><td>${fmt(r.C_seconds)}</td><td>${fmt(r.H_seconds)}</td><td>${fmt(r.H_over_A, 2)}</td><td>${fmt(r.C_over_A, 2)}</td><td>${fmt(r.H_minus_C_startup_seconds)}</td><td>${fmt(r.startup_share_pct)}%</td><td>${fmt(r.ms_per_forward)}</td><td>${fmt(r.columns_per_forward, 0)}</td></tr>`).join("") + "</tbody>";
+}
+table("#table", ROWS);
+
+// the headline and the notes
+(function () {
+  const by = n => ROWS.find(r => r.ranks === n);
+  const lo = ROWS[0], hi = ROWS[ROWS.length - 1], mid = by(256);
+  const say = r => (r.whole_pct >= 0.5 ? fmt(r.whole_pct, 0) + "% slower" : r.whole_pct <= -0.5 ? fmt(-r.whole_pct, 0) + "% faster" : "even");
+  const spread = ROWS.map(r => r.C_over_A);
+  $("#lede").innerHTML = `Over one month, the model (H) against the original (A): <strong>${say(hi)}</strong> at ${hi.ranks} ranks, <strong>${say(mid)}</strong> at ${mid.ranks} ranks, <strong>${say(lo)}</strong> at ${lo.ranks} ranks. With fewer ranks each GPU is less crowded, so each forward is faster. The passes within one job already vary by about ±5% among themselves.`;
+  $("#notes").innerHTML = "<p>A: the original CESM. C: freeCAM with nothing replaced (computing the same Fortran as A). H: freeCAM with the transformer model (GPU, batched). The three passes run one after another in the same job, on the same 4 A100 nodes. Rank counts other than 512 are timing experiments, and their results are not bit-for-bit with the 512-rank run; at a given rank count, freeCAM is bit-for-bit with the original.</p>";
+})();
+</script>
+
+</body></html>

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Month Timing by Process</title>
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* layout: one reading column; summary chart, then tables from coarse to fine, then every raw timer */
+:root {
+  --page: #f6f6f3; --surface: #fcfcfb; --ink: #121212; --ink-2: #4f4e4a; --muted: #85837d;
+  --grid: #e3e2db; --axis: #c3c2b7; --ring: rgba(18,18,18,0.10); --tip: #ffffff; --hl: rgba(42,120,214,0.08);
+  --up: #b4402f; --down: #1f7a4d;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7;
+  --sans: "IBM Plex Sans", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0f0f0e; --surface: #1a1a19; --ink: #f4f4f1; --ink-2: #c3c2b7; --muted: #8d8b84;
+    --grid: #2c2c2a; --axis: #3d3d3a; --ring: rgba(255,255,255,0.10); --tip: #242423; --hl: rgba(57,135,229,0.14);
+    --up: #e8806f; --down: #5cc493;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0f0f0e; --surface: #1a1a19; --ink: #f4f4f1; --ink-2: #c3c2b7; --muted: #8d8b84;
+  --grid: #2c2c2a; --axis: #3d3d3a; --ring: rgba(255,255,255,0.10); --tip: #242423; --hl: rgba(57,135,229,0.14);
+  --up: #e8806f; --down: #5cc493;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9;
+}
+body { background: var(--page); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.6; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 64px; display: grid; gap: 30px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase; }
+h1 { font-size: 26px; line-height: 1.25; margin: 0; font-weight: 600; text-wrap: balance; }
+.lede { margin: 0; color: var(--ink-2); max-width: 72ch; }
+.lede b { color: var(--ink); font-weight: 600; }
+.legs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 680px) { .legs { grid-template-columns: 1fr; } }
+.leg { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 12px 14px; display: grid; gap: 2px; min-width: 0; }
+.leg .k { font-size: 12.5px; color: var(--ink-2); }
+.leg .v { font-family: var(--mono); font-size: 22px; font-variant-numeric: tabular-nums; }
+.leg .v small { font-size: 13px; color: var(--muted); margin-left: 6px; }
+.leg .n { font-size: 12.5px; color: var(--muted); }
+section { display: grid; gap: 10px; min-width: 0; }
+section > h2 { font-size: 18px; margin: 0; font-weight: 600; }
+section > p, .note { margin: 0; color: var(--ink-2); max-width: 76ch; font-size: 14px; }
+figure { margin: 0; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 16px 16px 10px; display: grid; gap: 8px; position: relative; min-width: 0; }
+.legend { display: flex; gap: 6px 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+svg { width: 100%; height: auto; display: block; }
+svg text { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+svg .lab { fill: var(--ink-2); font-family: var(--sans); font-size: 13px; }
+svg .seglab { fill: #fff; font-size: 10.5px; pointer-events: none; }
+svg rect.seg { stroke: var(--surface); stroke-width: 2; cursor: default; }
+svg rect.seg:hover { opacity: 0.85; }
+.tip { position: absolute; pointer-events: none; background: var(--tip); color: var(--ink); border: 1px solid var(--ring);
+  border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.45; box-shadow: 0 4px 16px rgba(0,0,0,0.14); min-width: 160px; z-index: 5; }
+.tip b { font-weight: 600; } .tip .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.tablebox { overflow-x: auto; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; }
+.tablebox.tall { max-height: 640px; overflow-y: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 7px 11px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--grid); }
+th { font-weight: 500; color: var(--ink-2); font-size: 12px; vertical-align: bottom; background: var(--surface); position: sticky; top: 0; z-index: 1; }
+th.l, td.l { text-align: left; }
+td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td.t { font-family: var(--sans); }
+td.code { color: var(--muted); font-size: 12px; }
+tr.group td { font-family: var(--sans); font-weight: 600; color: var(--ink); background: var(--hl); }
+tr.group td .code { font-family: var(--mono); font-weight: 400; color: var(--muted); margin-left: 8px; font-size: 12px; }
+tr.sum td { font-weight: 600; border-top: 1px solid var(--axis); }
+tr:last-child td { border-bottom: 0; }
+.up { color: var(--up); } .down { color: var(--down); } .dim { color: var(--muted); }
+.controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 13px; color: var(--ink-2); }
+.controls label { display: inline-flex; gap: 6px; align-items: center; }
+select, input[type="search"] { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 4px 8px; }
+input[type="search"] { min-width: 0; width: 220px; max-width: 100%; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.tabs button { font: inherit; font-size: 13px; color: var(--ink-2); background: transparent; border: 1px solid var(--ring); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--ink); background: var(--surface); border-color: var(--axis); font-weight: 500; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--s1); outline-offset: 1px; }
+.notes { display: grid; gap: 8px; color: var(--ink-2); max-width: 78ch; font-size: 14px; }
+.notes p { margin: 0; } .notes b { color: var(--ink); font-weight: 600; }
+code { font-family: var(--mono); font-size: 12.5px; }
+tr.small td { color: var(--muted); }
+.wrap { max-width: 900px; }
+.back { font-size: 13px; color: var(--muted); text-decoration: none; justify-self: start; }
+.back:hover { color: var(--ink-2); text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<a class="back" href="index.html">← freeCAM docs</a>
+<header>
+  <div class="eyebrow">ne16 · PI-atm · one online month (1488 steps) · 512 ranks · 4 A100 nodes · job 7648576</div>
+  <h1>Time per process over one month</h1>
+  <p class="lede" id="lede"></p>
+</header>
+<div class="tablebox"><table id="actions"></table></div>
+</div>
+
+<script type="application/json" id="data">{"loop":{"A":496.21051,"C":526.8619967830001,"H":573.240608904},"step":{"C":526.628071,"H":572.984938},"C":[{"op":"boundary_import","zh":"Read from coupler (incl. surface components, coupler)","phase":"coupling","mean":63.92716},{"op":"prepare","zh":"Physics step setup","phase":"cam_run2","mean":0.084069},{"op":"chem_emissions","zh":"Surface emissions and water vapor flux check","phase":"cam_run2","mean":0.446534},{"op":"leaf_tracers_timestep_tend","zh":"Test tracers (none in this configuration)","phase":"cam_run2","mean":0.093234},{"op":"leaf_aoa_tracers_timestep_tend","zh":"Age-of-air tracers (none in this configuration)","phase":"cam_run2","mean":0.068701},{"op":"leaf_chem_timestep_tend","zh":"Chemistry (trop_mam3) and aerosol microphysics","phase":"cam_run2","mean":11.80049},{"op":"vertical_diffusion_tend","zh":"Turbulent vertical diffusion (UW)","phase":"cam_run2","mean":6.878417},{"op":"rayleigh_friction_tend","zh":"Rayleigh friction (off in this configuration)","phase":"cam_run2","mean":0.281546},{"op":"leaf_aero_model_drydep","zh":"Aerosol dry deposition","phase":"cam_run2","mean":5.447576},{"op":"leaf_carma_timestep_tend","zh":"CARMA (none in this configuration)","phase":"cam_run2","mean":0.128193},{"op":"charge_fix","zh":"Charge neutralization (none in this configuration)","phase":"cam_run2","mean":0.092091},{"op":"gw_tend","zh":"Orographic gravity wave drag","phase":"cam_run2","mean":1.692486},{"op":"qbo_relax","zh":"QBO relaxation (stub)","phase":"cam_run2","mean":0.133114},{"op":"iondrag_calc","zh":"Ion drag (stub)","phase":"cam_run2","mean":0.097603},{"op":"physics_dme_adjust","zh":"Post-coupling physics wrap-up","phase":"cam_run2","mean":0.190593},{"op":"leaf_carma_accumulate_stats","zh":"CARMA statistics (none in this configuration)","phase":"cam_run2","mean":0.07736},{"op":"leaf_pbuf_deallocate","zh":"Physics buffer deallocation","phase":"cam_run2","mean":0.10856},{"op":"leaf_pbuf_update_tim_idx","zh":"Physics buffer time-level advance","phase":"cam_run2","mean":0.072378},{"op":"leaf_diag_deallocate","zh":"Diagnostics deallocation","phase":"cam_run2","mean":0.071429},{"op":"stepon_run2","zh":"Physics → dynamics mapping","phase":"cam_run2","mean":16.853379},{"op":"stepon_run3","zh":"SE dynamical core","phase":"cam_run3","mean":176.514221},{"op":"wshist","zh":"History file output","phase":"cam_run4","mean":13.661866},{"op":"python_fields","zh":"Python fields written to history","phase":"cam_run4","mean":0.069483},{"op":"restart","zh":"Restart files","phase":"cam_run4","mean":3.606985},{"op":"leaf_cam_run4_wrapup","zh":"Output wrap-up","phase":"cam_run4","mean":0.138653},{"op":"leaf_cam_run4_step_cost","zh":"Step cost accounting","phase":"cam_run4","mean":0.084112},{"op":"leaf_cam_run4_flush","zh":"Output flush","phase":"cam_run4","mean":0.090935},{"op":"advance_timestep","zh":"Clock advance","phase":"clock","mean":0.152968},{"op":"stepon_run1","zh":"Dynamics → physics mapping","phase":"cam_run1","mean":10.382937},{"op":"prepare_cam_run1","zh":"Physics step setup (energy sums, prescribed fields)","phase":"cam_run1","mean":13.563364},{"op":"bc_init","zh":"Pre-coupling physics start","phase":"cam_run1","mean":1.514607},{"op":"check_energy_fix","zh":"Global energy fixer","phase":"cam_run1","mean":0.37182},{"op":"dadadj","zh":"Dry adiabatic adjustment","phase":"cam_run1","mean":0.510686},{"op":"convect_deep_tend","zh":"Deep convection (ZM)","phase":"cam_run1","mean":12.627553},{"op":"shallow_convection_python","zh":"Shallow convection (UW)","phase":"cam_run1","mean":30.353836},{"op":"sslt_rebin_adv","zh":"Sea-salt rebinning (none in this configuration)","phase":"cam_run1","mean":0.314214},{"op":"cloud_macro_microphysics_python","zh":"Cloud macro/microphysics (Park + MG1)","phase":"cam_run1","mean":56.454442},{"op":"leaf_modal_aero_prepare","zh":"Aerosol size and water uptake (skipped here)","phase":"cam_run1","mean":0.240293},{"op":"leaf_aero_model_wetdep","zh":"Aerosol wet deposition","phase":"cam_run1","mean":9.242134},{"op":"leaf_carma_wetdep_tend","zh":"CARMA wet deposition (none in this configuration)","phase":"cam_run1","mean":0.151198},{"op":"leaf_convect_deep_tend_2","zh":"Convective tracer transport","phase":"cam_run1","mean":1.025685},{"op":"leaf_diag_phys_writeout","zh":"State and convection diagnostics","phase":"cam_run1","mean":0.683974},{"op":"leaf_cloud_diagnostics_calc","zh":"Cloud diagnostics","phase":"cam_run1","mean":0.308414},{"op":"radiation_tend","zh":"Radiation (RRTMG)","phase":"cam_run1","mean":34.355647},{"op":"leaf_tropopause_output","zh":"Tropopause diagnostics","phase":"cam_run1","mean":0.565142},{"op":"leaf_cam_export","zh":"Fields for the surface","phase":"cam_run1","mean":0.140103},{"op":"leaf_diag_export","zh":"Diagnostics of exported fields","phase":"cam_run1","mean":0.071738},{"op":"boundary_export","zh":"Write to coupler (incl. surface components, coupler)","phase":"coupling","mean":49.393638}],"H":[{"op":"boundary_import","mean":47.747808},{"op":"prepare","mean":0.08527},{"op":"chem_emissions","mean":0.449279},{"op":"leaf_tracers_timestep_tend","mean":0.093986},{"op":"leaf_aoa_tracers_timestep_tend","mean":0.069721},{"op":"leaf_chem_timestep_tend","mean":12.154266},{"op":"vertical_diffusion_tend","mean":6.888818},{"op":"rayleigh_friction_tend","mean":0.280832},{"op":"leaf_aero_model_drydep","mean":5.441736},{"op":"leaf_carma_timestep_tend","mean":0.131106},{"op":"charge_fix","mean":0.09401},{"op":"gw_tend","mean":1.707541},{"op":"qbo_relax","mean":0.13504},{"op":"iondrag_calc","mean":0.099311},{"op":"physics_dme_adjust","mean":0.194079},{"op":"leaf_carma_accumulate_stats","mean":0.07865},{"op":"leaf_pbuf_deallocate","mean":0.108623},{"op":"leaf_pbuf_update_tim_idx","mean":0.072178},{"op":"leaf_diag_deallocate","mean":0.071856},{"op":"stepon_run2","mean":16.391434},{"op":"stepon_run3","mean":163.042532},{"op":"wshist","mean":12.551756},{"op":"python_fields","mean":0.069131},{"op":"restart","mean":2.975268},{"op":"leaf_cam_run4_wrapup","mean":0.140967},{"op":"leaf_cam_run4_step_cost","mean":0.083979},{"op":"leaf_cam_run4_flush","mean":0.090925},{"op":"advance_timestep","mean":0.154004},{"op":"stepon_run1","mean":8.966241},{"op":"prepare_cam_run1","mean":8.522915},{"op":"bc_init","mean":1.505077},{"op":"check_energy_fix","mean":0.367549},{"op":"dadadj","mean":0.506792},{"op":"convect_deep_tend","mean":12.611936},{"op":"shallow_convection_python","mean":125.692581},{"op":"sslt_rebin_adv","mean":0.2253},{"op":"cloud_macro_microphysics_python","mean":57.603617},{"op":"leaf_modal_aero_prepare","mean":0.232944},{"op":"leaf_aero_model_wetdep","mean":9.351031},{"op":"leaf_carma_wetdep_tend","mean":0.156221},{"op":"leaf_convect_deep_tend_2","mean":1.080981},{"op":"leaf_diag_phys_writeout","mean":0.720738},{"op":"leaf_cloud_diagnostics_calc","mean":0.322433},{"op":"radiation_tend","mean":34.476242},{"op":"leaf_tropopause_output","mean":0.569697},{"op":"leaf_cam_export","mean":0.142965},{"op":"leaf_diag_export","mean":0.073944},{"op":"boundary_export","mean":36.961307}]}</script>
+<script>
+(function () {
+  const D = JSON.parse(document.getElementById("data").textContent);
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const f = (x) => (Math.abs(x) >= 10 ? x.toFixed(1) : x.toFixed(2));
+  const sgn = (x) => (x > 0.005 ? "+" : x < -0.005 ? "−" : "±") + f(Math.abs(x));
+  const cls = (x) => (x > 0.3 ? "up" : x < -0.3 ? "down" : "dim");
+  const L = D.loop;
+  $("lede").textContent = `Mean seconds per rank. C is freeCAM with nothing replaced, bit-for-bit with the original Fortran; H has shallow convection replaced by a GPU model. Totals: original Fortran ${L.A.toFixed(1)} s, C ${L.C.toFixed(1)} s, H ${L.H.toFixed(1)} s.`;
+  const PH = { cam_run2: "Physics after surface coupling", cam_run3: "Dynamics", cam_run4: "Output", clock: "Clock", cam_run1: "Physics before surface coupling", coupling: "Exchange with the coupler (includes the surface components and waiting)" };
+  const H = Object.fromEntries(D.H.map((a) => [a.op, a]));
+  let out = `<thead><tr><th class="l">Process</th><th class="l">CAM routine</th><th>C (s)</th><th>H (s)</th><th>H − C</th><th>% of C</th></tr></thead><tbody>`;
+  let last = null, sc = 0, sh = 0;
+  D.C.forEach((a) => {
+    if (a.phase !== last) { last = a.phase; out += `<tr class="group"><td class="l" colspan="6">${PH[a.phase]}</td></tr>`; }
+    const h = H[a.op]; sc += a.mean; sh += h.mean;
+    const small = a.mean < 0.5 && h.mean < 0.5 ? ' class="small"' : "";
+    out += `<tr${small}><td class="l t">${esc(a.zh)}</td><td class="l code">${esc(a.op)}</td><td>${f(a.mean)}</td><td>${f(h.mean)}</td><td class="${cls(h.mean - a.mean)}">${sgn(h.mean - a.mean)}</td><td>${(100 * a.mean / D.step.C).toFixed(1)}%</td></tr>`;
+  });
+  out += `<tr class="sum"><td class="l t">Other (between actions)</td><td class="l code"></td><td>${f(D.step.C - sc)}</td><td>${f(D.step.H - sh)}</td><td class="dim">${sgn((D.step.H - sh) - (D.step.C - sc))}</td><td></td></tr>`;
+  out += `<tr class="sum"><td class="l t">Total</td><td class="l code">FREECAM:STEP</td><td>${f(D.step.C)}</td><td>${f(D.step.H)}</td><td class="up">${sgn(D.step.H - D.step.C)}</td><td>100%</td></tr></tbody>`;
+  $("actions").innerHTML = out;
+})();
+</script>
+</body>
+</html>
