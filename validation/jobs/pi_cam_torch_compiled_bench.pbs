@@ -32,7 +32,9 @@
 #                       calls, the kernels one by one inside a graph, each timed call's NVTX range);
 #                       the record gets, call by call, their kernels' run time, the GPU's idle time
 #                       between them and the CPU's time launching them (tools/bench_torch_graph.py
-#                       profile-summary).  The other processes run untraced beside them
+#                       profile-summary).  The other processes run untraced beside them.  "all":
+#                       every process is traced, so all carry the tracer's cost alike, and four
+#                       spread over the phase are read
 #   PYCAM_RUN_TAG       names the record (default v4)
 
 set -euo pipefail
@@ -111,11 +113,17 @@ phase() {   # mode nprocs rows [tf32]
   local traced=()
   for i in $(seq 1 "${n}"); do
     local wrap=() pflags=()
-    if [ -n "${PYCAM_PROFILE:-}" ] && (( (i - 1) % 8 == 0 )); then
+    local read_it=0
+    if [ "${PYCAM_PROFILE:-}" = all ]; then
+      (( (i - 1) % ((n + 3) / 4) == 0 )) && read_it=1
+    elif [ -n "${PYCAM_PROFILE:-}" ] && (( (i - 1) % 8 == 0 )); then
+      read_it=1
+    fi
+    if [ "${PYCAM_PROFILE:-}" = all ] || (( read_it )); then
       wrap=("${nsys}" profile --trace=cuda,nvtx --cuda-graph-trace=node --capture-range=cudaProfilerApi
             --capture-range-end=stop --sample=none --cpuctxsw=none --force-overwrite=true -o "${root}/${label}.${i}")
       pflags=(--profile)
-      traced+=("${root}/${label}.${i}")
+      (( read_it )) && traced+=("${root}/${label}.${i}")
     fi
     timeout 900 taskset -c "${cores16}" ${wrap[@]+"${wrap[@]}"} "${python}" tools/bench_torch_graph.py proc "${mode}" \
       "${PYCAM_MODEL}" "${PYCAM_ANCHORS}" "${bar}" "${n}" "${out}" --package "${root}/model.pt2" \
