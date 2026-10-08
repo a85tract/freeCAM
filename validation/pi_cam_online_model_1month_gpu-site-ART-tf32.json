@@ -1,0 +1,233 @@
+{
+  "schema_version": 1,
+  "what": "One allocation's online PI-atm month (1488 steps, 512 ranks), legs back to back: the original Fortran, freeCAM with nothing replaced, and freeCAM with a model in the kernel's slot. Every component is live in every leg (online coupling, not the offline replay). Times are the coupling loop; the model legs are not bit-for-bit by construction, their drift and health are recorded instead.",
+  "boundary": "online",
+  "steps": 1488,
+  "ranks": 512,
+  "pbs_job_id": "7755194.desched1",
+  "git_commit": "c1c9b385b8b41b0ac98a408ad11744c86e3e06e2",
+  "hardware": "select=4:ncpus=64:mpiprocs=128:ompthreads=1:ngpus=4:gpu_type=a100:mem=400GB:mps=1 place=scatter:exclhost",
+  "gpu_mps": "site",
+  "root": "freeCAM/PI-cam/online-model-1month-gpu-site-ART-tf32-7755194.desched1",
+  "order": "ART",
+  "kernel": "compute_uwshcu_inv",
+  "legs": {
+    "A": {
+      "what": "the original Fortran model (the pyCESM case executable), every component live",
+      "position": 1,
+      "completed": true,
+      "coupling_loop_seconds": 469.356445,
+      "init_seconds": 18.500969,
+      "final_seconds": 0.01353,
+      "lifecycle_seconds": 487.870944,
+      "executable_sha256": "accd9860c1a29b32415d1fecd86d5728c8cd5c4204ad41e9d93e2db6b0077d7e",
+      "timing_source": "GPTL CPL:RUN_LOOP in timing/cesm_timing.000"
+    },
+    "R": {
+      "what": "H with the batched forward captured as a CUDA graph at the first batch and replayed after (--model-graph)",
+      "position": 2,
+      "completed": true,
+      "steps": 1488,
+      "coupling_loop_seconds": 521.713683981,
+      "init_seconds": 15.710414799000006,
+      "final_seconds": 0.41287386700003026,
+      "lifecycle_seconds": 537.883558893,
+      "sypd": 14.065343534382093,
+      "boundary_mode": "online",
+      "boundary_provider": "CESMOnlineBoundaryProvider",
+      "native_manifest": "build/pi_cam_promoted_p44g/native_cam_manifest.json",
+      "native_library_sha256": "ade5f4382f9411a2ba811f1e78b90b236f95609df6ccc63716dfc93e3037dc80",
+      "python_stages": [
+        "shallow_convection"
+      ],
+      "cloud_macro_micro_python": true,
+      "stage_execution_modes": {
+        "cloud_macro_microphysics_python": "native-whole",
+        "shallow_convection_python": "native-model"
+      },
+      "kernel_models": {
+        "compute_uwshcu_inv": {
+          "binding": "torchscript",
+          "device": "cuda",
+          "file": "uwshcu_trigger_gated_r5_v4.pt",
+          "graph": true,
+          "sha256": "fd64c5a9dbb9b14e590b7883a6fabc142ee8af9f37b78e4dcf2dca2da6011a5b"
+        }
+      },
+      "model": {
+        "calls": 1525760,
+        "modeled": 1523712,
+        "original": 2048,
+        "ranks": 512,
+        "warm_up_seconds_per_rank": 13.935930941406253,
+        "model_seconds_per_rank": 26.554341009765626,
+        "batch": {
+          "forwards": 761856,
+          "chunks_per_forward": 2.0,
+          "columns_per_forward": 27.00390625,
+          "ms_per_forward": 15.349979103662633,
+          "forward_seconds_per_rank": 22.84076890625,
+          "forward_seconds_slowest_rank": 26.627509,
+          "take_seconds_per_rank": 3.713572103515628,
+          "untaken_chunks": 0
+        },
+        "graph": {
+          "capture_seconds_max": 0.890475,
+          "ranks": {
+            "replaying": 512
+          },
+          "replays": 761856
+        }
+      },
+      "mps": {
+        "server": "site",
+        "nodes": 4,
+        "gpus": 16,
+        "exclusive_process_gpus": 16,
+        "refused_ranks": 0
+      },
+      "bfb": null,
+      "bfb_files": null,
+      "steady_steps": {
+        "rank": 0,
+        "steps": 1488,
+        "slowest_step_seconds": 48.117864,
+        "seconds_per_step_without_slowest": 0.31842591459314057,
+        "stage_seconds_per_step_without_slowest": {
+          "shallow_convection": 0.0157593523873571
+        }
+      },
+      "peak_rank_rss_bytes": 2042798080,
+      "total_rss_bytes": 845123477504,
+      "health": {
+        "big_error": 1,
+        "isotopic_mass_error": 0,
+        "qneg3_macro": 0,
+        "qneg3_total": 0,
+        "tracebacks": 0
+      },
+      "drift": {
+        "fields_compared": 2838,
+        "fields_identical": 332,
+        "fields_with_non_finite_values": [],
+        "relative_rms": {
+          "median": 0.4124165053307548,
+          "p90": 1.0435981899738318,
+          "max": 1.5876630879229556
+        }
+      }
+    },
+    "T": {
+      "what": "F with the float32 matrix products as TF32 on the GPU's tensor cores (--model-tf32)",
+      "position": 3,
+      "completed": true,
+      "steps": 1488,
+      "coupling_loop_seconds": 492.93839123199996,
+      "init_seconds": 14.587033593000001,
+      "final_seconds": 0.38538124399997287,
+      "lifecycle_seconds": 507.9595386699999,
+      "sypd": 14.88640836726222,
+      "boundary_mode": "online",
+      "boundary_provider": "CESMOnlineBoundaryProvider",
+      "native_manifest": "build/pi_cam_promoted_p44g/native_cam_manifest.json",
+      "native_library_sha256": "ade5f4382f9411a2ba811f1e78b90b236f95609df6ccc63716dfc93e3037dc80",
+      "python_stages": [
+        "shallow_convection"
+      ],
+      "cloud_macro_micro_python": true,
+      "stage_execution_modes": {
+        "cloud_macro_microphysics_python": "native-whole",
+        "shallow_convection_python": "native-model"
+      },
+      "kernel_models": {
+        "compute_uwshcu_inv": {
+          "binding": "torchscript",
+          "compiled": {
+            "file": "uwshcu_trigger_gated_r5_v4.pt2",
+            "sha256": "9216399cea1cef95ec2b10a0b25afc5e407f8d82f27787e24282191e290c03f4"
+          },
+          "device": "cuda",
+          "file": "uwshcu_trigger_gated_r5_v4.pt",
+          "graph": true,
+          "sha256": "fd64c5a9dbb9b14e590b7883a6fabc142ee8af9f37b78e4dcf2dca2da6011a5b",
+          "tf32": true
+        }
+      },
+      "model": {
+        "calls": 1525760,
+        "modeled": 1523712,
+        "original": 2048,
+        "ranks": 512,
+        "warm_up_seconds_per_rank": 1.9012030957031267,
+        "model_seconds_per_rank": 16.491382357421884,
+        "batch": {
+          "forwards": 761856,
+          "chunks_per_forward": 2.0,
+          "columns_per_forward": 27.00390625,
+          "ms_per_forward": 8.258806505428852,
+          "forward_seconds_per_rank": 12.289104080078133,
+          "forward_seconds_slowest_rank": 14.646648,
+          "take_seconds_per_rank": 4.20227827734375,
+          "untaken_chunks": 0
+        },
+        "graph": {
+          "capture_seconds_max": 2.860909,
+          "compiled_gap": {
+            "max": 15668927845.21767,
+            "median": 2.6839729031821265e-09
+          },
+          "compiled_ranks": 512,
+          "ranks": {
+            "replaying": 512
+          },
+          "replays": 761856
+        }
+      },
+      "mps": {
+        "server": "site",
+        "nodes": 4,
+        "gpus": 16,
+        "exclusive_process_gpus": 16,
+        "refused_ranks": 0
+      },
+      "bfb": null,
+      "bfb_files": null,
+      "steady_steps": {
+        "rank": 0,
+        "steps": 1488,
+        "slowest_step_seconds": 34.242209,
+        "seconds_per_step_without_slowest": 0.30840329253530596,
+        "stage_seconds_per_step_without_slowest": {
+          "shallow_convection": 0.010168143913920645
+        }
+      },
+      "peak_rank_rss_bytes": 2112045056,
+      "total_rss_bytes": 875796783104,
+      "health": {
+        "big_error": 0,
+        "isotopic_mass_error": 0,
+        "qneg3_macro": 0,
+        "qneg3_total": 0,
+        "tracebacks": 0
+      },
+      "drift": {
+        "fields_compared": 2838,
+        "fields_identical": 332,
+        "fields_with_non_finite_values": [],
+        "relative_rms": {
+          "median": 0.4052407179496478,
+          "p90": 1.0398398253148935,
+          "max": 2.131275707735277
+        }
+      }
+    }
+  },
+  "ratios": {
+    "R/A": 1.1115511239672016,
+    "T/A": 1.0502431499198865,
+    "T/R": 0.944844665508049
+  },
+  "steady_ratios": {
+    "T/R": 0.9685244774419798
+  }
+}
