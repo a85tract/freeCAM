@@ -185,9 +185,11 @@ def proc(arguments: argparse.Namespace) -> int:
         call()
         gap = compare(reference, torch.from_numpy(np.ascontiguousarray(out)))
         record["tf32_gap"] = {key: gap[key] for key in ("scaled_gap_median", "scaled_gap", "columns_over_1e-3", "columns")}
-    wait_at(arguments.barrier, arguments.nprocs)
     if arguments.profile:
-        torch.cuda.profiler.start()                            # Nsight Systems records from here
+        # before the barrier: starting the capture takes a second or so, and a traced process that
+        # started it after would time its calls once the untraced ones had finished theirs
+        torch.cuda.profiler.start()
+    wait_at(arguments.barrier, arguments.nprocs)
     times = []
     for k in range(CALLS):
         for a, b in zip(host, all_batches[(k + 9) % len(all_batches)]):
