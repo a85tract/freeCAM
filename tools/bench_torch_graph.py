@@ -196,7 +196,7 @@ def summarize(arguments: argparse.Namespace) -> int:
     rows = [json.loads(line) for line in arguments.out.read_text().splitlines()] if arguments.out.is_file() else []
     timed = [r for r in rows if "ms_per_forward" in r]
     summary: dict[str, object] = {"mode": arguments.mode, "processes": arguments.procs,
-                                  "rows": timed[0]["rows"] if timed else None,
+                                  "rows": timed[0].get("rows") if timed else None,
                                   "tf32": bool(timed and timed[0].get("tf32")), "finished": len(timed),
                                   "refused": [r for r in rows if r.get("status")][:1]}
     if timed:
