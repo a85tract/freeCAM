@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Shallow-Convection Model Month</title>
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;700&family=IBM+Plex+Serif:wght@600;700&display=swap">
+<style>
+:root {
+  --bg: #f7f8f7;
+  --panel: #eef1f0;
+  --ink: #15191b;
+  --ink-2: #4d5559;
+  --ink-3: #737b7f;
+  --rule: #d9dedc;
+  --grid: #e4e8e6;
+  --new: #2a78d6;
+  --mlp: #eb6834;
+  --ref: #6f777b;
+  --hl: #dde9f8;
+  --hl-edge: #2a78d6;
+  --tip-bg: #15191b;
+  --tip-ink: #f3f5f4;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --serif: "IBM Plex Serif", serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #17191b;
+    --panel: #1f2326;
+    --ink: #eef0f0;
+    --ink-2: #b0b7ba;
+    --ink-3: #868e92;
+    --rule: #30363a;
+    --grid: #262b2e;
+    --new: #3987e5;
+    --mlp: #d95926;
+    --ref: #9aa2a6;
+    --hl: #1d3049;
+    --hl-edge: #3987e5;
+    --tip-bg: #eef0f0;
+    --tip-ink: #15191b;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #17191b;
+  --panel: #1f2326;
+  --ink: #eef0f0;
+  --ink-2: #b0b7ba;
+  --ink-3: #868e92;
+  --rule: #30363a;
+  --grid: #262b2e;
+  --new: #3987e5;
+  --mlp: #d95926;
+  --ref: #9aa2a6;
+  --hl: #1d3049;
+  --hl-edge: #3987e5;
+  --tip-bg: #eef0f0;
+  --tip-ink: #15191b;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.75;
+  padding-inline: 20px;
+  padding-block: 40px 64px;
+}
+.page { max-width: 880px; margin: 0 auto; display: grid; gap: 56px; }
+.back { justify-self: start; margin-bottom: -36px; font-size: 13px; color: var(--ink-2); text-decoration: none; }
+.back:hover { text-decoration: underline; }
+h1, h2 { font-family: var(--serif); font-weight: 700; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.25; letter-spacing: 0.01em; }
+h2 { font-size: clamp(21px, 3.4vw, 26px); line-height: 1.35; }
+h3 { font-size: 15px; font-weight: 700; margin: 0; }
+p { margin: 0; max-width: 40em; }
+.num, td, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.eyebrow {
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em;
+  color: var(--ink-3); text-transform: uppercase;
+}
+.stack { display: grid; gap: 14px; }
+.muted { color: var(--ink-2); }
+code.inline { font-family: var(--mono); font-size: 0.9em; background: var(--panel); padding: 1px 5px; border-radius: 4px; }
+
+/* header */
+header { display: grid; gap: 18px; }
+.lead { font-size: 16.5px; color: var(--ink-2); }
+.findings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border-block: 1px solid var(--rule); }
+.finding { padding: 18px 20px 20px 0; display: grid; gap: 6px; align-content: start; }
+.finding + .finding { padding-left: 20px; border-left: 1px solid var(--rule); }
+.finding .label { font-size: 13px; color: var(--ink-3); letter-spacing: 0.04em; }
+.finding .big { font-family: var(--mono); font-size: 22px; line-height: 1.3; font-weight: 500; }
+.finding .big .new { color: var(--new); }
+.finding .big .mlp { color: var(--mlp); }
+.finding p { font-size: 13.5px; color: var(--ink-2); }
+@media (max-width: 720px) {
+  .findings { grid-template-columns: 1fr; }
+  .finding, .finding + .finding { padding: 16px 0; border-left: 0; }
+  .finding + .finding { border-top: 1px solid var(--rule); }
+}
+.setup { display: grid; grid-template-columns: max-content 1fr; gap: 6px 22px; margin: 0; font-size: 14px; }
+.setup dt { color: var(--ink-3); }
+.setup dd { margin: 0; }
+@media (max-width: 520px) { .setup { grid-template-columns: 1fr; gap: 0; } .setup dd { margin-bottom: 8px; } }
+
+/* sections */
+section { display: grid; gap: 20px; }
+section > .head { display: grid; gap: 6px; }
+figure { margin: 0; display: grid; gap: 12px; }
+figcaption { font-size: 13.5px; color: var(--ink-2); max-width: 46em; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13.5px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.key { display: inline-block; width: 11px; height: 11px; border-radius: 3px; flex: none; }
+.key.new { background: var(--new); }
+.key.mlp { background: var(--mlp); }
+.key.ref { height: 0; width: 16px; border-top: 2px dashed var(--ref); border-radius: 0; }
+.key.dot { width: 11px; height: 11px; border-radius: 50%; background: var(--ink-2); }
+.key.ring { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--ink-2); background: transparent; }
+.key.tick { width: 2px; height: 13px; background: var(--ink-2); border-radius: 0; }
+
+/* charts */
+.chart { position: relative; overflow-x: auto; }
+.chart svg { display: block; width: 100%; min-width: 540px; height: auto; font-family: var(--sans); }
+.grid { stroke: var(--grid); stroke-width: 1; }
+.axis { stroke: var(--ink-3); stroke-width: 1; }
+.tick { fill: var(--ink-3); font-size: 12px; font-family: var(--mono); }
+.group, .row-label { fill: var(--ink); font-size: 14px; font-weight: 500; }
+.value { fill: var(--ink); font-size: 13px; font-family: var(--mono); font-weight: 500; }
+.ref { stroke: var(--ref); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.ref-label { fill: var(--ink-2); font-size: 12.5px; }
+.bar.new { fill: var(--new); }
+.bar.mlp { fill: var(--mlp); }
+.range { stroke-width: 2; }
+.range.new, .maxtick.new { stroke: var(--new); }
+.range.mlp, .maxtick.mlp { stroke: var(--mlp); }
+.maxtick { stroke-width: 2.5; }
+.median.new { fill: var(--new); }
+.median.mlp { fill: var(--mlp); }
+.median, .p90 { stroke: var(--bg); stroke-width: 2; }
+.p90 { fill: var(--bg); stroke-width: 2.5; }
+.p90.new { stroke: var(--new); }
+.p90.mlp { stroke: var(--mlp); }
+.hit { fill: transparent; cursor: default; }
+.hit:focus { outline: none; }
+.hit:focus-visible { stroke: var(--ink-3); stroke-dasharray: 3 3; }
+.tip {
+  position: absolute; pointer-events: none; z-index: 2;
+  background: var(--tip-bg); color: var(--tip-ink);
+  font-size: 12.5px; line-height: 1.55; padding: 8px 11px; border-radius: 6px;
+  max-width: 260px; box-shadow: 0 4px 16px rgb(0 0 0 / 0.18);
+}
+.tip b { font-weight: 700; display: block; margin-bottom: 2px; }
+
+/* tables */
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 760px; }
+th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+thead th { font-weight: 500; color: var(--ink-3); font-size: 12.5px; vertical-align: bottom; white-space: normal; }
+thead th.span { text-align: center; color: var(--ink-2); border-bottom: 1px solid var(--rule); padding-bottom: 4px; }
+tbody th { text-align: left; font-weight: 500; }
+tbody th .key { margin-right: 8px; vertical-align: -1px; }
+th:first-child, td:first-child { padding-left: 0; }
+
+/* figure 3: per variable */
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 7px; overflow: hidden; }
+.seg button {
+  all: unset; cursor: pointer; padding: 5px 12px; font-size: 13px; color: var(--ink-2);
+}
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.seg button:focus-visible { outline: 2px solid var(--hl-edge); outline-offset: -2px; }
+.key.round { border-radius: 50%; }
+.key.new-dash, .key.mlp-dash { height: 0; width: 18px; border-radius: 0; border-top: 2px dashed; }
+.key.new-dash { border-color: var(--new); }
+.key.mlp-dash { border-color: var(--mlp); }
+.pv-row .sel { fill: var(--hl); }
+.pv-row:hover .band { fill: var(--panel); }
+.band { fill: transparent; }
+.pv-code { fill: var(--ink); font-size: 13px; font-family: var(--mono); font-weight: 500; }
+.pv-name { fill: var(--ink-2); font-size: 12.5px; }
+.pv-group { fill: var(--ink-3); font-size: 12px; letter-spacing: 0.06em; }
+.link { stroke: var(--ink-3); stroke-width: 1.5; }
+.dot-new { fill: var(--new); stroke: var(--bg); stroke-width: 2; }
+.dot-mlp { fill: var(--mlp); stroke: var(--bg); stroke-width: 2; }
+.ln-new, .ln-mlp { fill: none; stroke-width: 2; }
+.ln-new { stroke: var(--new); }
+.ln-mlp { stroke: var(--mlp); }
+.ln-dash { stroke-dasharray: 6 4; }
+.pt-new { fill: var(--new); stroke: var(--bg); stroke-width: 1.5; }
+.pt-mlp { fill: var(--mlp); stroke: var(--bg); stroke-width: 1.5; }
+.cross { stroke: var(--ink-3); stroke-width: 1; }
+table.pv td.win { font-weight: 700; }
+table.pv tr.group-row th { text-align: left; color: var(--ink-3); font-weight: 500; font-size: 12px; letter-spacing: 0.06em; padding-top: 14px; }
+table.pv tbody th .mono { font-family: var(--mono); font-size: 12.5px; }
+
+/* figure 1 */
+.chain { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.chain li { display: grid; grid-template-columns: 92px 1fr; gap: 16px; position: relative; padding-bottom: 14px; }
+.chain li::before {
+  content: ""; position: absolute; left: 100px; top: 12px; bottom: -2px; width: 2px; background: var(--rule);
+}
+.chain li:last-child::before { display: none; }
+.chain .when { font-family: var(--mono); font-size: 12.5px; color: var(--ink-3); text-align: right; padding-top: 2px; }
+.chain .what { padding-left: 22px; position: relative; }
+.chain .what::before {
+  content: ""; position: absolute; left: -2px; top: 9px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--ink-3);
+}
+.chain li.stop .what::before { background: var(--mlp); border-color: var(--mlp); }
+.chain li.stop .what { font-weight: 700; }
+.note { border-left: 3px solid var(--rule); padding: 2px 0 2px 14px; color: var(--ink-2); font-size: 14px; max-width: 46em; }
+.limits td, .limits th { white-space: normal; text-align: left; vertical-align: top; }
+.limits td:first-child { white-space: nowrap; }
+.limits .mono { font-size: 12.5px; }
+.limits td { font-family: var(--sans); }
+.limits td.mono { font-family: var(--mono); }
+.tag { font-size: 11.5px; color: var(--new); border: 1px solid currentColor; border-radius: 4px; padding: 0 5px; margin-left: 6px; white-space: nowrap; font-family: var(--sans); }
+
+/* figure 4 */
+.code-layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; align-items: start; }
+@media (max-width: 820px) { .code-layout { grid-template-columns: 1fr; } }
+.code { position: relative; background: var(--panel); border-radius: 8px; overflow-x: auto; max-height: 640px; overflow-y: auto; }
+.code pre { margin: 0; padding: 14px 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; }
+.ln { display: block; padding-right: 16px; white-space: pre; border-left: 3px solid transparent; }
+.ln::before {
+  content: attr(data-line); display: inline-block; width: 3.2em; padding-right: 1.1em; text-align: right;
+  color: var(--ink-3); user-select: none;
+}
+.ln.on { background: var(--hl); border-left-color: var(--hl-edge); }
+.c { color: var(--ink-3); }
+.notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }
+.notes button {
+  all: unset; box-sizing: border-box; display: grid; grid-template-columns: 52px 1fr; gap: 10px; width: 100%;
+  padding: 7px 10px; border-radius: 6px; cursor: pointer; color: var(--ink);
+}
+.notes button:hover, .notes button[aria-pressed="true"] { background: var(--hl); }
+.notes button:focus-visible { outline: 2px solid var(--hl-edge); outline-offset: 1px; }
+.notes .lines { font-family: var(--mono); font-size: 12px; color: var(--ink-3); padding-top: 2px; }
+footer { font-size: 13px; color: var(--ink-3); display: grid; gap: 6px; border-top: 1px solid var(--rule); padding-top: 18px; }
+footer p { max-width: none; }
+@media (prefers-reduced-motion: no-preference) { .notes button, .ln { transition: background-color 120ms; } }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <a class="back" href="index.html">← freeCAM docs</a>
+  <header>
+    <div class="eyebrow">PI-atm · ne16 · CAM5 · 512 ranks · online-coupled · 1488 steps</div>
+    <h1>The new shallow-convection model over a full month</h1>
+    <p class="lead">CAM's shallow-convection calculation, <code class="inline">compute_uwshcu_inv</code>, was replaced by a new model and run for a full month, then compared with the original Fortran and with the MLP model now in use, for accuracy and speed. The new model needs a layer of limits on its outputs to get through the month; that layer is shown below as well.</p>
+    <div class="findings">
+      <div class="finding">
+        <span class="label">Accuracy · Figure 3</span>
+        <span class="big"><span class="new">0.41</span> <span class="muted">vs</span> <span class="mlp">0.50–0.54</span></span>
+        <p>Median deviation of all output fields from the original Fortran over the month. Variable by variable, it is closer than the MLP on 18–19 of the 19 main variables.</p>
+      </div>
+      <div class="finding">
+        <span class="label">Speed · Figure 2</span>
+        <span class="big"><span class="new">1.32×</span> <span class="muted">/</span> <span class="new">1.60×</span></span>
+        <p>The new model's run time for the month as a multiple of the original Fortran's (GPU / CPU). The MLP model: 1.10× / 0.98×.</p>
+      </div>
+      <div class="finding">
+        <span class="label">Precondition · Figure 1</span>
+        <span class="big">Step 100</span>
+        <p>Without limits, the run stops here on a NaN. With the output limits, both runs complete the month.</p>
+      </div>
+    </div>
+    <dl class="setup">
+      <dt>Configuration</dt><dd>iCESM1.3.1 PI-atm, ne16, CAM5 physics, SE dynamics, 512 MPI ranks</dd>
+      <dt>Length</dt><dd>1488 steps of 30 minutes, 31 days in all</dd>
+      <dt>Coupling</dt><dd>Online: land, sea ice, ocean and rivers all run live, not an offline replay</dd>
+      <dt>Timing</dt><dd>Time in the coupled main loop. Each job runs the original Fortran first, then the model; every multiple is taken against the original Fortran in the same job</dd>
+      <dt>Hardware</dt><dd>CPU: 4 nodes. GPU: 4 nodes with 4 A100s each (shared through MPS)</dd>
+      <dt>Calls</dt><dd>About 1.52 million shallow-convection calls per run (512 ranks combined)</dd>
+    </dl>
+  </header>
+
+  <section id="fig1" aria-labelledby="fig1-title">
+    <div class="head">
+      <div class="eyebrow">Figure 1 · Limits</div>
+      <h2 id="fig1-title">Dropped in as is, the model cannot finish a run</h2>
+    </div>
+    <p>With the model plugged in directly, the run stops at about step 100. Traced back, it starts from a negative number that is almost zero:</p>
+    <ol class="chain">
+      <li><span class="when">From step 1</span><span class="what">The model's convective cloud fraction <code class="inline">cufrc</code> is about −5×10⁻¹⁰, just below 0. The original Fortran never gives a negative cloud fraction.</span></li>
+      <li><span class="when">Then</span><span class="what"><code class="inline">cloud_fraction.F90</code> uses it directly, and the total cloud fraction CLD turns negative.</span></li>
+      <li><span class="when">Then</span><span class="what">The photochemistry in <code class="inline">mo_photo.F90</code> computes clouds<sup>1.5</sup>; a negative number raised to the power 1.5 gives NaN.</span></li>
+      <li><span class="when">Step 3</span><span class="what">H2O2 becomes NaN over the whole globe. H2O2 is one of the model's inputs, so the model then outputs NaN in every column.</span></li>
+      <li class="stop"><span class="when">Step 100</span><span class="what">When the output file is written, netCDF refuses to write NaN and the run stops.</span></li>
+    </ol>
+    <p class="note">The first attempt replaced every NaN with 0. The run no longer failed, but from step 3 on, shallow convection was in effect switched off: the results looked normal but were wrong. So the limit layer now sets only the padding rows, which carry no data, to 0; a NaN in a real column is left as it is, so that the model stops.</p>
+    <p>The limit layer puts back, around the model's outputs, the bounds the original Fortran already guarantees. The items tagged "original guarantee" matter most:</p>
+    <div class="table-wrap">
+      <table class="limits">
+        <thead><tr><th>Limit</th><th>Outputs affected</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Non-negative quantities stay ≥ 0<span class="tag">original guarantee</span></td><td class="mono">umf, flxprc1, flxsnow1, qrten, qsten, precip, snow, evapc, cufrc, qcu, qlu, qiu, cbmf, qc, rliq</td><td>In a month of samples the original Fortran never makes these 15 negative; they are clipped to ≥ 0</td></tr>
+          <tr><td>Cloud fraction at most 1<span class="tag">original guarantee</span></td><td class="mono">cufrc ≤ 1</td><td>Cloud fraction is a proportion</td></tr>
+          <tr><td>Cloud-top / cloud-base levels rounded<span class="tag">original guarantee</span></td><td class="mono">cnt, cnb → rounded, limited to 1–30</td><td>Level indices are integers; the model has 30 levels</td></tr>
+          <tr><td>No-convection flag</td><td class="mono">cush ≥ −1</td><td>The original Fortran gives −1 when there is no convection</td></tr>
+          <tr><td>Water not taken below zero</td><td class="mono">qvten, qlten, qiten</td><td>Within one step, vapor, liquid water and ice cannot be reduced below 0</td></tr>
+          <tr><td>Snow at most precipitation</td><td class="mono">snow ≤ precip; flxsnow1 ≤ flxprc1 at every level</td><td>Snow is part of precipitation</td></tr>
+          <tr><td>Isotopes derived from water ratios</td><td class="mono">608 water-isotope outputs</td><td>The model's isotope outputs exceed 10¹⁹ and cannot be used. They are derived instead from the limited water tendencies, at each isotope's ratio to water in the column</td></tr>
+          <tr><td>Padding rows output 0</td><td class="mono">Rows beyond each chunk's actual columns</td><td>These rows have no pressure data and the model outputs NaN on them; they are never used</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="fig2" aria-labelledby="fig2-title">
+    <div class="head">
+      <div class="eyebrow">Figure 2 · Speed</div>
+      <h2 id="fig2-title">The new model computes more per call and is slower than the MLP</h2>
+    </div>
+    <figure>
+      <div class="legend" aria-hidden="true">
+        <span><i class="key new"></i>New model</span>
+        <span><i class="key mlp"></i>MLP model</span>
+        <span><i class="key ref"></i>Original Fortran</span>
+      </div>
+      <div class="chart" data-chart>
+<svg viewBox="0 0 640 292" role="img" aria-labelledby="f2t">
+<title id="f2t">Month run time as a multiple of the original Fortran</title>
+<line class="grid" x1="56" x2="624" y1="250.0" y2="250.0"/>
+<text class="tick" x="48" y="254.0" text-anchor="end">0×</text>
+<line class="grid" x1="56" x2="624" y1="186.7" y2="186.7"/>
+<text class="tick" x="48" y="190.7" text-anchor="end">0.5×</text>
+<line class="grid" x1="56" x2="624" y1="123.3" y2="123.3"/>
+<text class="tick" x="48" y="127.3" text-anchor="end">1×</text>
+<line class="grid" x1="56" x2="624" y1="60.0" y2="60.0"/>
+<text class="tick" x="48" y="64.0" text-anchor="end">1.5×</text>
+<path class="bar new" d="M140.0,250.0 V51.8 Q140.0,47.8 144.0,47.8 H202.0 Q206.0,47.8 206.0,51.8 V250.0 Z"/>
+<text class="value" x="173.0" y="38.8" text-anchor="middle">1.60×</text>
+<rect class="hit" x="136.0" y="22.0" width="74.0" height="228.0" data-tip="New model · CPU|Full month 702.6 s, original Fortran in the same job 440.1 s|= 1.60×|Per call: model 92.6 ms, original Fortran 8.2 ms"/>
+<path class="bar new" d="M400.0,250.0 V87.2 Q400.0,83.2 404.0,83.2 H462.0 Q466.0,83.2 466.0,87.2 V250.0 Z"/>
+<text class="value" x="433.0" y="74.2" text-anchor="middle">1.32×</text>
+<rect class="hit" x="396.0" y="22.0" width="74.0" height="228.0" data-tip="New model · GPU|Full month 609.4 s, original Fortran in the same job 462.7 s|= 1.32×|Per call: model 39.7 ms, original Fortran 6.1 ms"/>
+<path class="bar mlp" d="M214.0,250.0 V130.3 Q214.0,126.3 218.0,126.3 H276.0 Q280.0,126.3 280.0,130.3 V250.0 Z"/>
+<text class="value" x="247.0" y="117.3" text-anchor="middle">0.98×</text>
+<rect class="hit" x="210.0" y="22.0" width="74.0" height="228.0" data-tip="MLP model · CPU|Full month 432.0 s, original Fortran in the same job 442.4 s|= 0.98×|Per call: model 4.3 ms, original Fortran 8.2 ms"/>
+<path class="bar mlp" d="M474.0,250.0 V114.8 Q474.0,110.8 478.0,110.8 H536.0 Q540.0,110.8 540.0,114.8 V250.0 Z"/>
+<text class="value" x="507.0" y="101.8" text-anchor="middle">1.10×</text>
+<rect class="hit" x="470.0" y="22.0" width="74.0" height="228.0" data-tip="MLP model · GPU|Full month 513.2 s, original Fortran in the same job 467.1 s|= 1.10×|Per call: model 4.3 ms, original Fortran 6.1 ms"/>
+<line class="ref" x1="56" x2="624" y1="123.3" y2="123.3"/>
+<text class="ref-label" x="340" y="116.3" text-anchor="middle">Original Fortran = 1</text>
+<line class="axis" x1="56" x2="624" y1="250.0" y2="250.0"/>
+<text class="group" x="210.0" y="276.0" text-anchor="middle">CPU</text>
+<text class="group" x="470.0" y="276.0" text-anchor="middle">GPU</text>
+</svg>
+      </div>
+      <figcaption>Month run time divided by that of the original Fortran in the same job. Below the dashed line means faster than the original Fortran. Hover to see the seconds.</figcaption>
+    </figure>
+    <p>The gap comes from the computation in each call. One call computes one chunk of at most 16 columns (pcols = 16), and each rank makes 2 calls per step: over the month's 1488 steps that is 2,976 calls per rank and 1,523,712 across the 512 ranks. A rank's total shallow-convection time is its number of calls times the milliseconds per call. The 512 ranks run at the same time, so the month's run time follows each rank's 2,976 calls; the 1,523,712 calls of all 512 ranks times the milliseconds per call is the computation summed over the ranks, not wall-clock time. The original Fortran takes about 8.2 ms per call (CPU node). The new model takes 92.6 ms per call on CPU, 11 times the original Fortran and 22 times the MLP (4.3 ms); over the month the model alone costs each rank 276 seconds, where the original Fortran's shallow convection needs only about 24 seconds. The GPU brings the new model down to 39.7 ms per call, so it is clearly faster on GPU than on CPU. The MLP takes only half the original Fortran's time per call, so on CPU its month is slightly faster than the original Fortran.</p>
+    <p class="muted">These per-call figures agree with the month run times: on CPU the new model's shallow convection costs about 252 seconds more than the original Fortran, and the month is in fact 262 seconds slower; the MLP costs about 12 seconds less, and the month is 10 seconds faster. On GPU, both models' month times exceed this estimate by about 40–46 seconds, a fixed cost of running on the GPU (startup, warm-up and so on) that does not depend on the computation per call. The original Fortran's per-call times come from 50-step shadow runs (the model and the original Fortran both run on the same call and are timed separately; CPU-node job 7541265, GPU-node job 7546109), averaged over 51,200 calls (512 ranks × 50 steps × 2); the month runs time only the model. In the 2 initialization steps each rank makes another 4 calls, computed by the original Fortran and not included in the counts above.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th rowspan="2"></th><th colspan="3" class="span">Month run time</th><th colspan="2" class="span">Model calls in the month</th><th colspan="3" class="span">Shallow convection per call (ms)</th><th colspan="2" class="span">Shallow convection per rank over the month (s)</th></tr>
+          <tr><th>Original Fortran (s)</th><th>Model run (s)</th><th>Multiple</th><th>Per rank</th><th>512 ranks total</th><th>Original Fortran</th><th>Model</th><th>Model ÷ original</th><th>Original Fortran</th><th>Model</th></tr>
+        </thead>
+        <tbody>
+<tr><th scope="row"><span class="key new"></span>New model · CPU</th><td>440.1</td><td>702.6</td><td>1.60</td><td>2,976</td><td>1,523,712</td><td>8.2</td><td>92.6</td><td>11.34×</td><td>24</td><td>276.1</td></tr>
+<tr><th scope="row"><span class="key new"></span>New model · GPU</th><td>462.7</td><td>609.4</td><td>1.32</td><td>2,976</td><td>1,523,712</td><td>6.1</td><td>39.7</td><td>6.54×</td><td>18</td><td>118.6</td></tr>
+<tr><th scope="row"><span class="key mlp"></span>MLP model · CPU</th><td>442.4</td><td>432.0</td><td>0.98</td><td>2,976</td><td>1,523,712</td><td>8.2</td><td>4.3</td><td>0.52×</td><td>24</td><td>12.7</td></tr>
+<tr><th scope="row"><span class="key mlp"></span>MLP model · GPU</th><td>467.1</td><td>513.2</td><td>1.10</td><td>2,976</td><td>1,523,712</td><td>6.1</td><td>4.3</td><td>0.72×</td><td>18</td><td>24.7</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="fig3" aria-labelledby="fig3-title">
+    <div class="head">
+      <div class="eyebrow">Figure 3 · Accuracy</div>
+      <h2 id="fig3-title">The new model stays closer to the original Fortran</h2>
+    </div>
+    <p>For each variable at each output time: the root-mean-square difference between the model run and the original Fortran, divided by the standard deviation of the original Fortran's field itself. 0 means identical; 1 means the difference is as large as the field's own variability. Output is written every 100 steps (about 2 days), 14 times over the month. When freeCAM replaces nothing, all 19 variables are 0.</p>
+    <figure>
+      <div class="controls" role="group" aria-label="Figure 3 display options">
+        <div class="seg" role="group" aria-label="Statistic">
+          <button type="button" id="pv-stat-median" data-stat="median" aria-pressed="true">Month median</button>
+          <button type="button" id="pv-stat-last" data-stat="last" aria-pressed="false">Month end</button>
+        </div>
+        <div class="seg" role="group" aria-label="Device">
+          <button type="button" id="pv-dev-cpu" data-device="cpu" aria-pressed="true">CPU</button>
+          <button type="button" id="pv-dev-gpu" data-device="gpu" aria-pressed="false">GPU</button>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <span><i class="key new round"></i>New model</span>
+          <span><i class="key mlp round"></i>MLP model</span>
+          <span><i class="key ref"></i>= 1</span>
+        </div>
+      </div>
+      <div class="chart" data-chart id="pv-chart"></div>
+      <figcaption>One variable per row. The longer the line between the two dots, the more the two models differ; the further left a dot, the closer to the original Fortran. Click a row to see below how that variable evolves over the month.</figcaption>
+    </figure>
+    <figure>
+      <div class="legend" aria-hidden="true">
+        <span><i class="key new"></i>New model · CPU</span>
+        <span><i class="key new-dash"></i>New model · GPU</span>
+        <span><i class="key mlp"></i>MLP · CPU</span>
+        <span><i class="key mlp-dash"></i>MLP · GPU</span>
+      </div>
+      <div class="chart" data-chart id="pv-line"></div>
+      <figcaption id="pv-line-caption">T (Temperature): deviation from the original Fortran over the month, one point every 100 steps. The vertical axis scales with the selected variable.</figcaption>
+    </figure>
+    <p>By the month median, the new model is closer to the original Fortran than the MLP on 18 (CPU) and 19 (GPU) of the 19 variables. Deviations grow with time, and by the end of the month the gap narrows: for clouds, precipitation and meridional wind both models are near or above 1, essentially uncorrelated with the original Fortran by then, and the new model is smaller on 17 (CPU) and 12 (GPU) of the variables. The same new model run twice, on CPU and on GPU, also differs by 0.00–0.09 at month end; smaller differences than that are treated as noise.</p>
+    <div class="table-wrap">
+      <table class="pv">
+        <thead>
+          <tr><th rowspan="3"></th><th colspan="4" class="span">CPU</th><th colspan="4" class="span">GPU</th></tr>
+          <tr><th colspan="2" class="span">Month median</th><th colspan="2" class="span">Month end</th><th colspan="2" class="span">Month median</th><th colspan="2" class="span">Month end</th></tr>
+          <tr><th>New model</th><th>MLP</th><th>New model</th><th>MLP</th><th>New model</th><th>MLP</th><th>New model</th><th>MLP</th></tr>
+        </thead>
+        <tbody>
+<tr class="group-row"><th scope="rowgroup" colspan="9">Atmospheric state</th></tr>
+<tr><th scope="row"><span class="mono">T</span> Temperature</th><td class="win">0.05</td><td>0.07</td><td class="win">0.10</td><td>0.12</td><td class="win">0.05</td><td>0.07</td><td class="win">0.10</td><td>0.11</td></tr>
+<tr><th scope="row"><span class="mono">Q</span> Specific humidity</th><td class="win">0.13</td><td>0.15</td><td class="">0.25</td><td>0.24</td><td class="win">0.13</td><td>0.15</td><td class="">0.22</td><td>0.22</td></tr>
+<tr><th scope="row"><span class="mono">U</span> Zonal wind</th><td class="win">0.27</td><td>0.30</td><td class="win">0.48</td><td>0.54</td><td class="win">0.26</td><td>0.28</td><td class="win">0.49</td><td>0.52</td></tr>
+<tr><th scope="row"><span class="mono">V</span> Meridional wind</th><td class="win">0.67</td><td>0.81</td><td class="win">1.13</td><td>1.20</td><td class="win">0.64</td><td>0.71</td><td class="win">1.10</td><td>1.14</td></tr>
+<tr><th scope="row"><span class="mono">PS</span> Surface pressure</th><td class="win">0.07</td><td>0.10</td><td class="win">0.13</td><td>0.14</td><td class="win">0.07</td><td>0.08</td><td class="win">0.14</td><td>0.14</td></tr>
+<tr><th scope="row"><span class="mono">TS</span> Surface temperature</th><td class="win">0.12</td><td>0.19</td><td class="win">0.23</td><td>0.27</td><td class="win">0.13</td><td>0.18</td><td class="">0.23</td><td>0.23</td></tr>
+<tr><th scope="row"><span class="mono">TMQ</span> Column water vapor</th><td class="win">0.24</td><td>0.27</td><td class="">0.47</td><td>0.45</td><td class="win">0.23</td><td>0.26</td><td class="">0.44</td><td>0.42</td></tr>
+<tr class="group-row"><th scope="rowgroup" colspan="9">Precipitation</th></tr>
+<tr><th scope="row"><span class="mono">PRECT</span> Total precipitation</th><td class="">0.84</td><td>0.83</td><td class="win">1.06</td><td>1.11</td><td class="win">0.82</td><td>0.83</td><td class="win">1.05</td><td>1.07</td></tr>
+<tr><th scope="row"><span class="mono">PRECC</span> Convective precipitation</th><td class="win">0.67</td><td>0.70</td><td class="win">0.99</td><td>1.07</td><td class="win">0.68</td><td>0.68</td><td class="win">0.99</td><td>1.01</td></tr>
+<tr><th scope="row"><span class="mono">PRECL</span> Large-scale precipitation</th><td class="win">1.04</td><td>1.08</td><td class="win">1.11</td><td>1.15</td><td class="win">1.03</td><td>1.11</td><td class="win">1.09</td><td>1.11</td></tr>
+<tr class="group-row"><th scope="rowgroup" colspan="9">Clouds</th></tr>
+<tr><th scope="row"><span class="mono">CLDLOW</span> Low cloud cover</th><td class="win">0.69</td><td>0.89</td><td class="win">0.88</td><td>0.96</td><td class="win">0.67</td><td>0.89</td><td class="win">0.82</td><td>0.96</td></tr>
+<tr><th scope="row"><span class="mono">CLDMED</span> Mid cloud cover</th><td class="win">0.83</td><td>0.93</td><td class="win">1.10</td><td>1.14</td><td class="win">0.81</td><td>0.93</td><td class="win">1.06</td><td>1.09</td></tr>
+<tr><th scope="row"><span class="mono">CLDHGH</span> High cloud cover</th><td class="win">0.88</td><td>0.98</td><td class="win">1.24</td><td>1.28</td><td class="win">0.83</td><td>0.91</td><td class="">1.23</td><td>1.19</td></tr>
+<tr><th scope="row"><span class="mono">CLDTOT</span> Total cloud cover</th><td class="win">0.78</td><td>0.92</td><td class="win">1.08</td><td>1.09</td><td class="win">0.74</td><td>0.91</td><td class="win">1.04</td><td>1.05</td></tr>
+<tr><th scope="row"><span class="mono">TGCLDLWP</span> Cloud liquid water path</th><td class="win">0.95</td><td>1.05</td><td class="win">1.15</td><td>1.29</td><td class="win">0.93</td><td>1.09</td><td class="win">1.21</td><td>1.27</td></tr>
+<tr class="group-row"><th scope="rowgroup" colspan="9">Radiation and surface fluxes</th></tr>
+<tr><th scope="row"><span class="mono">FLNT</span> TOA net longwave</th><td class="win">0.59</td><td>0.61</td><td class="win">0.84</td><td>0.87</td><td class="win">0.57</td><td>0.58</td><td class="">0.83</td><td>0.81</td></tr>
+<tr><th scope="row"><span class="mono">FSNT</span> TOA net shortwave</th><td class="win">0.27</td><td>0.29</td><td class="win">0.39</td><td>0.39</td><td class="win">0.27</td><td>0.30</td><td class="win">0.37</td><td>0.39</td></tr>
+<tr><th scope="row"><span class="mono">LHFLX</span> Latent heat flux</th><td class="win">0.45</td><td>0.52</td><td class="win">0.70</td><td>0.70</td><td class="win">0.43</td><td>0.51</td><td class="">0.71</td><td>0.69</td></tr>
+<tr><th scope="row"><span class="mono">SHFLX</span> Sensible heat flux</th><td class="win">0.54</td><td>0.72</td><td class="win">0.77</td><td>0.86</td><td class="win">0.50</td><td>0.60</td><td class="">0.86</td><td>0.83</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">Bold cells are those where the new model is smaller than the MLP.</p>
+
+    <div class="stack">
+      <h3>All 2838 output fields together</h3>
+      <p>The 19 above are the main variables. Counting every time-varying field in the output files, with one deviation value per field, the distribution of those values is shown below.</p>
+    </div>
+    <figure>
+      <div class="legend" aria-hidden="true">
+        <span><i class="key dot"></i>Median</span>
+        <span><i class="key ring"></i>90th percentile</span>
+        <span><i class="key tick"></i>Maximum</span>
+        <span><i class="key ref"></i>= 1</span>
+      </div>
+      <div class="chart" data-chart>
+<svg viewBox="0 0 640 250" role="img" aria-labelledby="f3t">
+<title id="f3t">Deviation of each output field from the original Fortran over the month</title>
+<line class="grid" x1="160.0" x2="160.0" y1="18" y2="218"/>
+<text class="tick" x="160.0" y="238" text-anchor="middle">0</text>
+<line class="grid" x1="225.7" x2="225.7" y1="18" y2="218"/>
+<text class="tick" x="225.7" y="238" text-anchor="middle">0.5</text>
+<line class="grid" x1="291.4" x2="291.4" y1="18" y2="218"/>
+<text class="tick" x="291.4" y="238" text-anchor="middle">1</text>
+<line class="grid" x1="357.1" x2="357.1" y1="18" y2="218"/>
+<text class="tick" x="357.1" y="238" text-anchor="middle">1.5</text>
+<line class="grid" x1="422.9" x2="422.9" y1="18" y2="218"/>
+<text class="tick" x="422.9" y="238" text-anchor="middle">2</text>
+<line class="grid" x1="488.6" x2="488.6" y1="18" y2="218"/>
+<text class="tick" x="488.6" y="238" text-anchor="middle">2.5</text>
+<line class="grid" x1="554.3" x2="554.3" y1="18" y2="218"/>
+<text class="tick" x="554.3" y="238" text-anchor="middle">3</text>
+<line class="grid" x1="620.0" x2="620.0" y1="18" y2="218"/>
+<text class="tick" x="620.0" y="238" text-anchor="middle">3.5</text>
+<line class="ref" x1="291.4" x2="291.4" y1="18" y2="218"/>
+<text class="row-label" x="0" y="49.0">New model · CPU</text>
+<line class="range new" x1="213.5" x2="373.8" y1="44.0" y2="44.0"/>
+<line class="maxtick new" x1="373.8" x2="373.8" y1="36.0" y2="52.0"/>
+<circle class="p90 new" cx="300.0" cy="44.0" r="5.5"/>
+<circle class="median new" cx="213.5" cy="44.0" r="6.5"/>
+<text class="value" x="213.5" y="31.0" text-anchor="middle">0.41</text>
+<rect class="hit" x="152.0" y="24.0" width="476.0" height="40" data-tip="New model · CPU|Median 0.41|90th percentile 1.06|Max 1.63"/>
+<text class="row-label" x="0" y="93.0">New model · GPU</text>
+<line class="range new" x1="214.3" x2="370.4" y1="88.0" y2="88.0"/>
+<line class="maxtick new" x1="370.4" x2="370.4" y1="80.0" y2="96.0"/>
+<circle class="p90 new" cx="296.3" cy="88.0" r="5.5"/>
+<circle class="median new" cx="214.3" cy="88.0" r="6.5"/>
+<text class="value" x="214.3" y="75.0" text-anchor="middle">0.41</text>
+<rect class="hit" x="152.0" y="68.0" width="476.0" height="40" data-tip="New model · GPU|Median 0.41|90th percentile 1.04|Max 1.60"/>
+<text class="row-label" x="0" y="155.0">MLP model · CPU</text>
+<line class="range mlp" x1="230.9" x2="535.4" y1="150.0" y2="150.0"/>
+<line class="maxtick mlp" x1="535.4" x2="535.4" y1="142.0" y2="158.0"/>
+<circle class="p90 mlp" cx="324.2" cy="150.0" r="5.5"/>
+<circle class="median mlp" cx="230.9" cy="150.0" r="6.5"/>
+<text class="value" x="230.9" y="137.0" text-anchor="middle">0.54</text>
+<rect class="hit" x="152.0" y="130.0" width="476.0" height="40" data-tip="MLP model · CPU|Median 0.54|90th percentile 1.25|Max 2.86"/>
+<text class="row-label" x="0" y="199.0">MLP model · GPU</text>
+<line class="range mlp" x1="225.9" x2="599.0" y1="194.0" y2="194.0"/>
+<line class="maxtick mlp" x1="599.0" x2="599.0" y1="186.0" y2="202.0"/>
+<circle class="p90 mlp" cx="318.9" cy="194.0" r="5.5"/>
+<circle class="median mlp" cx="225.9" cy="194.0" r="6.5"/>
+<text class="value" x="225.9" y="181.0" text-anchor="middle">0.50</text>
+<rect class="hit" x="152.0" y="174.0" width="476.0" height="40" data-tip="MLP model · GPU|Median 0.50|90th percentile 1.21|Max 3.34"/>
+</svg>
+      </div>
+      <figcaption>Here each field's deviation is computed over all output times of the month together.</figcaption>
+    </figure>
+    <p>The new model's median of 0.41 is about 20% below the MLP's 0.50–0.54; its maximum, 1.6 against the MLP's 2.9–3.3, differs more clearly. Results on CPU and GPU are almost the same.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Median</th><th>90th percentile</th><th>Maximum</th><th>Water-isotope BIG ERROR warnings</th><th>Fields with NaN/Inf</th><th>Job ID</th></tr></thead>
+        <tbody>
+<tr><th scope="row"><span class="key new"></span>New model · CPU</th><td>0.41</td><td>1.06</td><td>1.63</td><td>1</td><td>0</td><td>7614456</td></tr>
+<tr><th scope="row"><span class="key new"></span>New model · GPU</th><td>0.41</td><td>1.04</td><td>1.60</td><td>0</td><td>0</td><td>7614457</td></tr>
+<tr><th scope="row"><span class="key mlp"></span>MLP model · CPU</th><td>0.54</td><td>1.25</td><td>2.86</td><td>147</td><td>0</td><td>7580687</td></tr>
+<tr><th scope="row"><span class="key mlp"></span>MLP model · GPU</th><td>0.50</td><td>1.21</td><td>3.34</td><td>223</td><td>0</td><td>7591565</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">BIG ERROR is a warning in the model log: the tendencies of the tracer water tagged as H2O should equal those of ordinary water, and the warning is printed when their relative difference exceeds 10⁻¹⁰. Over the month the new model triggered it 1 time (CPU) and 0 times (GPU); the MLP model 147 and 223 times. The new model's isotopes and tracer water are derived proportionally from the limited water tendencies, so they match ordinary water essentially by construction. The 1 warning on CPU came at about step 294, on one rank, with a relative difference of 8.9×10⁻⁸. The difference between 1 and 0 is chance and does not mean the GPU is better: CPU and GPU compute in different orders, so after a few days the weather differs, and the two runs are like two samples of the same month; for the MLP it is the other way round, with more on the GPU. None of the four runs produced NaN or infinity.</p>
+  </section>
+
+  <section id="fig4" aria-labelledby="fig4-title">
+    <div class="head">
+      <div class="eyebrow">Figure 4 · Limit-layer code</div>
+      <h2 id="fig4-title">wrap_v4.py</h2>
+    </div>
+    <p>Written with Claude Code. It wraps the original model <code class="inline">compute_uwshcu_inv_trigger_gated_r5_packed.pt</code>, passes its outputs through the limits of Figure 1, and saves the result as a new TorchScript file, <code class="inline">uwshcu_trigger_gated_r5_v4.pt</code>, which both runs in Figures 2 and 3 use. Click a note on the right to highlight the matching lines of code.</p>
+    <div class="code-layout">
+      <div class="code" tabindex="0" aria-label="wrap_v4.py source code"><pre><code><span class="ln" data-line="1"><span class="c">&quot;&quot;&quot;Version 4 of the wrapper around a packed compute_uwshcu_inv model: physical limits on its outputs.</span></span><span class="ln" data-line="2"><span class="c"></span></span><span class="ln" data-line="3"><span class="c">    wrap_v4.py &lt;model.pt&gt; &lt;out.pt&gt;</span></span><span class="ln" data-line="4"><span class="c"></span></span><span class="ln" data-line="5"><span class="c">The model&#x27;s 582 bulk outputs pass through, then:</span></span><span class="ln" data-line="6"><span class="c">  * outputs the original kernel never makes negative (in the month capture) are floored at 0:</span></span><span class="ln" data-line="7"><span class="c">    umf, flxprc1, flxsnow1, qrten, qsten, precip, snow, evapc, cufrc, qcu, qlu, qiu, cbmf, qc, rliq;</span></span><span class="ln" data-line="8"><span class="c">  * cufrc &lt;= 1; cush &gt;= -1 (the original&#x27;s no-convection value); cnt and cnb rounded into [1, 30];</span></span><span class="ln" data-line="9"><span class="c">  * the water tendencies may not take vapour, liquid or ice below zero within the step;</span></span><span class="ln" data-line="10"><span class="c">  * snow &lt;= precip, and the snow flux &lt;= the precipitation flux at every interface;</span></span><span class="ln" data-line="11"><span class="c">  * the water-isotope slots are derived from those (limited) water tendencies at the column&#x27;s ratios;</span></span><span class="ln" data-line="12"><span class="c">  * padding rows (the hook&#x27;s rows past the chunk&#x27;s columns: no surface pressure) answer 0.</span></span><span class="ln" data-line="13"><span class="c">A NaN in a real column is left in place, so that CAM stops on it rather than running on zeros.&quot;&quot;&quot;</span></span><span class="ln" data-line="14">import sys</span><span class="ln" data-line="15">import torch</span><span class="ln" data-line="16"> </span><span class="ln" data-line="17">SL = {&quot;cush&quot;: (0, 1), &quot;umf&quot;: (1, 32), &quot;slflx&quot;: (32, 63), &quot;qtflx&quot;: (63, 94), &quot;flxprc1&quot;: (94, 125), &quot;flxsnow1&quot;: (125, 156),</span><span class="ln" data-line="18">      &quot;qvten&quot;: (156, 186), &quot;qlten&quot;: (186, 216), &quot;qiten&quot;: (216, 246), &quot;sten&quot;: (246, 276), &quot;uten&quot;: (276, 306), &quot;vten&quot;: (306, 336),</span><span class="ln" data-line="19">      &quot;qrten&quot;: (336, 366), &quot;qsten&quot;: (366, 396), &quot;precip&quot;: (396, 397), &quot;snow&quot;: (397, 398), &quot;evapc&quot;: (398, 428), &quot;cufrc&quot;: (428, 458),</span><span class="ln" data-line="20">      &quot;qcu&quot;: (458, 488), &quot;qlu&quot;: (488, 518), &quot;qiu&quot;: (518, 548), &quot;cbmf&quot;: (548, 549), &quot;qc&quot;: (549, 579), &quot;rliq&quot;: (579, 580),</span><span class="ln" data-line="21">      &quot;cnt&quot;: (580, 581), &quot;cnb&quot;: (581, 582)}</span><span class="ln" data-line="22">NON_NEGATIVE = [&quot;umf&quot;, &quot;flxprc1&quot;, &quot;flxsnow1&quot;, &quot;qrten&quot;, &quot;qsten&quot;, &quot;precip&quot;, &quot;snow&quot;, &quot;evapc&quot;, &quot;cufrc&quot;, &quot;qcu&quot;, &quot;qlu&quot;, &quot;qiu&quot;, &quot;cbmf&quot;, &quot;qc&quot;, &quot;rliq&quot;]</span><span class="ln" data-line="23"> </span><span class="ln" data-line="24"> </span><span class="ln" data-line="25">class Limited(torch.nn.Module):</span><span class="ln" data-line="26">    def __init__(self, inner):</span><span class="ln" data-line="27">        super().__init__()</span><span class="ln" data-line="28">        self.inner = inner</span><span class="ln" data-line="29">        mask = torch.zeros(582, dtype=torch.bool)</span><span class="ln" data-line="30">        for n in NON_NEGATIVE:</span><span class="ln" data-line="31">            a, b = SL[n]; mask[a:b] = True</span><span class="ln" data-line="32">        self.register_buffer(&quot;nonneg&quot;, mask)</span><span class="ln" data-line="33">        self.register_buffer(&quot;iv&quot;, torch.tensor([9, 16, 23, 30])); self.register_buffer(&quot;il&quot;, torch.tensor([10, 17, 24, 31]))</span><span class="ln" data-line="34">        self.register_buffer(&quot;ii&quot;, torch.tensor([11, 18, 25, 32]))</span><span class="ln" data-line="35"> </span><span class="ln" data-line="36">    def forward(self, dt, ps0_inv, zs0_inv, p0_inv, z0_inv, dp0_inv, u0_inv, v0_inv, qv0_inv, ql0_inv, qi0_inv, t0_inv, s0_inv,</span><span class="ln" data-line="37">                tr0_inv, tke_inv, cldfrct_inv, concldfrct_inv, pblh, cush, dpdry0_inv):</span><span class="ln" data-line="38"><span class="c">        # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor) -&gt; Tensor</span></span><span class="ln" data-line="39">        n = t0_inv.shape[0]</span><span class="ln" data-line="40"><span class="c">        # the hook&#x27;s padding rows carry no pressure profile; the model answers NaN on them.  A real</span></span><span class="ln" data-line="41"><span class="c">        # column&#x27;s interface pressures reach the surface&#x27;s (1e5 Pa); index 0 of the _inv arrays is the top</span></span><span class="ln" data-line="42">        real = (torch.amax(ps0_inv, 1) &gt; 1000.0) &amp; torch.all(torch.isfinite(ps0_inv), 1)</span><span class="ln" data-line="43">        full = self.inner(dt, ps0_inv, zs0_inv, p0_inv, z0_inv, dp0_inv, u0_inv, v0_inv, qv0_inv, ql0_inv, qi0_inv, t0_inv, s0_inv,</span><span class="ln" data-line="44">                          tr0_inv, tke_inv, cldfrct_inv, concldfrct_inv, pblh, cush, dpdry0_inv)</span><span class="ln" data-line="45">        y = full[:, 0:582].to(torch.float64)</span><span class="ln" data-line="46">        y = torch.where(self.nonneg.unsqueeze(0), torch.clamp_min(y, 0.0), y)</span><span class="ln" data-line="47">        rdt = 0.999999 / dt.reshape(1, 1)</span><span class="ln" data-line="48">        qv = torch.maximum(y[:, 156:186], -torch.clamp_min(qv0_inv - 1.0e-12, 0.0) * rdt)</span><span class="ln" data-line="49">        ql = torch.maximum(y[:, 186:216], -torch.clamp_min(ql0_inv, 0.0) * rdt)</span><span class="ln" data-line="50">        qi = torch.maximum(y[:, 216:246], -torch.clamp_min(qi0_inv, 0.0) * rdt)</span><span class="ln" data-line="51">        snow = torch.minimum(y[:, 397:398], y[:, 396:397])</span><span class="ln" data-line="52">        flxsnow = torch.minimum(y[:, 125:156], y[:, 94:125])</span><span class="ln" data-line="53">        y = torch.cat([torch.clamp_min(y[:, 0:1], -1.0), y[:, 1:125], flxsnow, qv, ql, qi, y[:, 246:397], snow, y[:, 398:428],</span><span class="ln" data-line="54">                       torch.clamp_max(y[:, 428:458], 1.0), y[:, 458:580], torch.clamp(torch.round(y[:, 580:582]), 1.0, 30.0)], dim=1)</span><span class="ln" data-line="55"><span class="c">        # water isotopes at the column&#x27;s ratios, from the limited water tendencies</span></span><span class="ln" data-line="56">        qv0 = qv0_inv.unsqueeze(2); ql0 = ql0_inv.unsqueeze(2); qi0 = qi0_inv.unsqueeze(2)</span><span class="ln" data-line="57">        trv = torch.index_select(tr0_inv, 2, self.iv); trl = torch.index_select(tr0_inv, 2, self.il); tri = torch.index_select(tr0_inv, 2, self.ii)</span><span class="ln" data-line="58">        rv = torch.clamp(torch.where(qv0 &gt; 1.0e-12, trv / torch.clamp_min(qv0, 1.0e-30), torch.zeros_like(qv0)), 0.0, 4.0)</span><span class="ln" data-line="59">        rl = torch.clamp(torch.where(ql0 &gt; 1.0e-12, trl / torch.clamp_min(ql0, 1.0e-30), rv), 0.0, 4.0)</span><span class="ln" data-line="60">        ri = torch.clamp(torch.where(qi0 &gt; 1.0e-12, tri / torch.clamp_min(qi0, 1.0e-30), rv), 0.0, 4.0)</span><span class="ln" data-line="61">        rdt3 = rdt.unsqueeze(2)</span><span class="ln" data-line="62">        tv = torch.maximum(qv.unsqueeze(2) * rv, -torch.clamp_min(trv, 0.0) * rdt3)</span><span class="ln" data-line="63">        tl = torch.maximum(ql.unsqueeze(2) * rl, -torch.clamp_min(trl, 0.0) * rdt3)</span><span class="ln" data-line="64">        ti = torch.maximum(qi.unsqueeze(2) * ri, -torch.clamp_min(tri, 0.0) * rdt3)</span><span class="ln" data-line="65">        trten = torch.stack([tv, tl, ti], dim=3).reshape(n, 360)</span><span class="ln" data-line="66">        lf = torch.clamp((t0_inv - 248.0) / 20.0, 0.0, 1.0).unsqueeze(2)</span><span class="ln" data-line="67">        qc = y[:, 549:579].unsqueeze(2)</span><span class="ln" data-line="68">        wtqc = torch.stack([qc * lf * rv, qc * (1.0 - lf) * rv], dim=3).reshape(n, 240)</span><span class="ln" data-line="69">        w = (qv0_inv * dp0_inv).unsqueeze(2)</span><span class="ln" data-line="70">        rp = (rv * w).sum(1) / torch.clamp_min(w.sum(1), 1.0e-30)</span><span class="ln" data-line="71">        out = torch.cat([y, trten, wtqc, y[:, 396:397] * rp, y[:, 397:398] * rp], dim=1)</span><span class="ln" data-line="72">        return torch.where(real.unsqueeze(1), out, torch.zeros_like(out))</span><span class="ln" data-line="73"> </span><span class="ln" data-line="74"> </span><span class="ln" data-line="75">inner = torch.jit.load(sys.argv[1], map_location=&quot;cpu&quot;).eval()</span><span class="ln" data-line="76">torch.jit.script(Limited(inner).eval()).save(sys.argv[2])</span><span class="ln" data-line="77">print(&quot;saved&quot;, sys.argv[2])</span></code></pre></div>
+      <ol class="notes">
+        <li><button type="button" data-lines="17-22"><span class="lines">17–22</span><span>Where each of the 582 outputs sits, and the 15 quantities that cannot be negative</span></button></li>
+        <li><button type="button" data-lines="42-42"><span class="lines">42</span><span>Tell real columns from padding rows: real columns have a surface pressure</span></button></li>
+        <li><button type="button" data-lines="46-46"><span class="lines">46</span><span>Clip the non-negative quantities at 0</span></button></li>
+        <li><button type="button" data-lines="47-50"><span class="lines">47–50</span><span>Vapor, liquid water and ice not taken below 0 within a step</span></button></li>
+        <li><button type="button" data-lines="51-52"><span class="lines">51–52</span><span>Snow at most precipitation, and snow flux at most precipitation flux at every level</span></button></li>
+        <li><button type="button" data-lines="53-54"><span class="lines">53–54</span><span>cush ≥ −1, cloud fraction ≤ 1, cloud-top / cloud-base levels rounded into 1–30</span></button></li>
+        <li><button type="button" data-lines="55-70"><span class="lines">55–70</span><span>Isotopes derived from the limited water tendencies, at their ratio to water in the column</span></button></li>
+        <li><button type="button" data-lines="71-72"><span class="lines">71–72</span><span>Assemble the 1190 outputs; padding rows set to 0, NaN in real columns kept</span></button></li>
+        <li><button type="button" data-lines="75-76"><span class="lines">75–76</span><span>Load the original model, wrap it and save it as a new TorchScript file</span></button></li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+    <p>New model: uwshcu_trigger_gated_r5_v4.pt (jobs 7614456 CPU, 7614457 GPU, 2026-09-26/27). MLP model: uwshcu_h256_notr_2cap_sub.pt (jobs 7580687 CPU, 7591565 GPU).</p>
+    <p>In each job the original Fortran runs first, taking 440–467 seconds. Every deviation is computed against the original Fortran's month of output from the same job; 2838 fields are compared in all.</p>
+  </footer>
+</div>
+
+<script type="application/json" id="pv-data">{"groups": [["Atmospheric state", ["T", "Q", "U", "V", "PS", "TS", "TMQ"]], ["Precipitation", ["PRECT", "PRECC", "PRECL"]], ["Clouds", ["CLDLOW", "CLDMED", "CLDHGH", "CLDTOT", "TGCLDLWP"]], ["Radiation and surface fluxes", ["FLNT", "FSNT", "LHFLX", "SHFLX"]]], "names": {"T": "Temperature", "Q": "Specific humidity", "U": "Zonal wind", "V": "Meridional wind", "PS": "Surface pressure", "TS": "Surface temp.", "TMQ": "Column vapor", "PRECT": "Total precip.", "PRECC": "Conv. precip.", "PRECL": "Large-scale prec.", "CLDLOW": "Low cloud cover", "CLDMED": "Mid cloud cover", "CLDHGH": "High cloud cover", "CLDTOT": "Total cloud cover", "TGCLDLWP": "Liquid water path", "FLNT": "TOA net LW", "FSNT": "TOA net SW", "LHFLX": "Latent heat flux", "SHFLX": "Sensible heat flux"}, "days": [2.0833333333333335, 4.166666666666667, 6.25, 8.333333333333334, 10.416666666666666, 12.5, 14.583333333333334, 16.666666666666668, 18.75, 20.833333333333332, 22.916666666666668, 25.0, 27.083333333333332, 29.166666666666668], "runs": {"new-cpu": {"T": {"median": 0.054045073992574216, "last": 0.10098946080518023, "series": [0.0028392962324198592, 0.005899937067266016, 0.009386063497823073, 0.014663669163802637, 0.022892225500626036, 0.03607456166561648, 0.048382422278012344, 0.059707725707136096, 0.07586938276683661, 0.08164756405153321, 0.0869444168241482, 0.09740340873239164, 0.09607203478020229, 0.10098946080518023]}, "Q": {"median": 0.13075988004396935, "last": 0.24637357152918812, "series": [0.015173552798163096, 0.027807785302285375, 0.036610148571235714, 0.049870397912012705, 0.0699138291597757, 0.0988827584544734, 0.12357621056785453, 0.13794354952008417, 0.17223025219777524, 0.18212553027683867, 0.19776059248782718, 0.2238160775520998, 0.23238220269041276, 0.24637357152918812]}, "U": {"median": 0.2685274270567364, "last": 0.48484963718909346, "series": [0.007620378125435382, 0.02382837508964873, 0.04753581026332845, 0.07422570157061362, 0.1074954022309262, 0.18216795988936146, 0.23838290748677135, 0.29867194662670143, 0.34116749644965066, 0.38078972109369674, 0.42931192055983125, 0.4695075569202271, 0.4900068451339063, 0.48484963718909346]}, "V": {"median": 0.667073451761641, "last": 1.131523864379797, "series": [0.01660841353777957, 0.05779015801401867, 0.12136829296738423, 0.19328013518683648, 0.2788002558510662, 0.4366797830995077, 0.5941865250245746, 0.7399603784987074, 0.8805047513689258, 0.9763539216943886, 1.0546100511084275, 1.1290769210624454, 1.0732954361251752, 1.131523864379797]}, "PS": {"median": 0.0749293868121984, "last": 0.13138876552358802, "series": [0.001426132762814111, 0.004839429750736979, 0.009911835817561885, 0.01814916168393356, 0.024578658145117865, 0.04437483703853458, 0.07008855358832719, 0.07977022003606964, 0.08894206891702884, 0.1040505297500361, 0.13521781679207215, 0.12836998466184263, 0.11565590810216622, 0.13138876552358802]}, "TS": {"median": 0.1225265234486777, "last": 0.22998911619005494, "series": [0.012214504396157308, 0.01931615817198545, 0.026874660257788847, 0.03374133748096044, 0.05655722958204126, 0.08054239163765033, 0.1218868060319308, 0.12316624086542462, 0.16643903086160697, 0.16801374427539614, 0.1615167571972041, 0.20006581481230853, 0.19422635300398258, 0.22998911619005494]}, "TMQ": {"median": 0.24067292348910502, "last": 0.4738508167606211, "series": [0.01537189709536043, 0.03680912775486274, 0.05029756359028048, 0.07406864870394499, 0.11592681633154066, 0.1744593157126733, 0.2296704652903457, 0.2516753816878643, 0.31286192710608646, 0.3385084002639191, 0.37139065738048455, 0.4220386211818604, 0.44528954452424635, 0.4738508167606211]}, "PRECT": {"median": 0.8374931602292544, "last": 1.0623864636119342, "series": [0.11455038444409224, 0.18993638462070342, 0.2742160093405917, 0.35185690584306134, 0.502248996039533, 0.6528059712350289, 0.8236502261501466, 0.8513360943083621, 0.8671436840227265, 1.0318356952892047, 1.0660732783028772, 1.0402270490935268, 1.098126810046404, 1.0623864636119342]}, "PRECC": {"median": 0.6716047508377688, "last": 0.9927252630515514, "series": [0.137353323713843, 0.2072585445628398, 0.2673347230476752, 0.32086861129548494, 0.4242727693697198, 0.5346959137973907, 0.6842157250971537, 0.658993776578384, 0.7558902007103472, 0.8356625764266798, 0.8924995662214541, 0.928644938806398, 1.000916039660167, 0.9927252630515514]}, "PRECL": {"median": 1.0435693846404945, "last": 1.1053848959860564, "series": [0.06772397492626125, 0.12814657375748686, 0.28771117963653725, 0.42497344229040046, 0.7175107570063094, 0.8637033495087864, 1.1498652461886418, 1.245672380433798, 0.9817538732949326, 1.2322203140287908, 1.4402537390427046, 1.289941537771013, 1.2680107758821548, 1.1053848959860564]}, "CLDLOW": {"median": 0.6887877163990506, "last": 0.8765369355070172, "series": [0.22107658313664716, 0.30625438706880936, 0.3179002777363377, 0.4003331992193247, 0.4734041385803533, 0.5533252572212769, 0.7060198883582637, 0.6715555444398376, 0.798970313063657, 0.8381727158815984, 0.8747320725375237, 0.8993264075040707, 0.8827253557576155, 0.8765369355070172]}, "CLDMED": {"median": 0.8330221182400916, "last": 1.103480702446926, "series": [0.0693574988765851, 0.13050368284537175, 0.2265497528362894, 0.31523039520991036, 0.43420544386317683, 0.609386956453831, 0.8048884304543388, 0.8611558060258446, 0.9190222633024916, 1.0010073154846626, 0.9730569119109036, 1.069660446946737, 1.0590047666779134, 1.103480702446926]}, "CLDHGH": {"median": 0.8751448238244834, "last": 1.235815094631765, "series": [0.07550274603863867, 0.20798037077699982, 0.3092459451235103, 0.3858298886290095, 0.5025282960885338, 0.6682422913776247, 0.8163229196551199, 0.933966727993847, 1.0014113316004358, 1.0611001199936825, 1.119066925224551, 1.1810433775096862, 1.2272081761449745, 1.235815094631765]}, "CLDTOT": {"median": 0.7791218571687647, "last": 1.0827698638568062, "series": [0.18293797258237124, 0.30218795537165916, 0.33625315446415366, 0.4297567152805878, 0.5035824744045341, 0.6091770451455064, 0.7515319145087845, 0.8067117998287449, 0.917375056770113, 0.9557402757030595, 1.0209397261433537, 1.0075523974829865, 1.0546931374679382, 1.0827698638568062]}, "TGCLDLWP": {"median": 0.9547326926221862, "last": 1.1460908658868953, "series": [0.3490746759318825, 0.40663674257262417, 0.42060016593223176, 0.4830528828646255, 0.6340729778115004, 0.7619384500877266, 0.9250880515027944, 1.0398908773948634, 0.984377333741578, 1.0680453820130589, 1.1339254001066428, 1.0413235945675612, 1.098315856539967, 1.1460908658868953]}, "FLNT": {"median": 0.5935975121398578, "last": 0.8351729515559495, "series": [0.07681121306928156, 0.1705909033864742, 0.24577735072817927, 0.30453028044529773, 0.3796238936072263, 0.45908491997476314, 0.5766275588958344, 0.6105674653838812, 0.6284715213703772, 0.6908913354339754, 0.7422477368865198, 0.8148125008210494, 0.838823213494882, 0.8351729515559495]}, "FSNT": {"median": 0.2736061194987214, "last": 0.386175477309696, "series": [0.10485406721408291, 0.1361091035129466, 0.14984625197689255, 0.16810123286331238, 0.19966906653474484, 0.2173151640541132, 0.26635238796281724, 0.2808598510346255, 0.2837423139173469, 0.3345369641282951, 0.3486509262554929, 0.36306437052513163, 0.3765474917233555, 0.386175477309696]}, "LHFLX": {"median": 0.44816670882180115, "last": 0.6956526969671605, "series": [0.041983805339764, 0.08167271848655014, 0.11406693429512144, 0.16118396953221784, 0.2470327800939796, 0.3163053337085578, 0.4603198196967472, 0.4360135979468551, 0.5997828770646415, 0.6095656590326329, 0.6334730066047259, 0.6620170022352849, 0.6534276193511451, 0.6956526969671605]}, "SHFLX": {"median": 0.5413205617259335, "last": 0.7733716331049609, "series": [0.06107454136735241, 0.10911548026451016, 0.10292940801190549, 0.17734691713693218, 0.2848477378393721, 0.3672269046356473, 0.6689772154934905, 0.5306158587391661, 0.5520252647127009, 0.5617526324690278, 0.645740131379955, 0.7134398455851767, 0.7164167726430631, 0.7733716331049609]}}, "new-gpu": {"T": {"median": 0.05343911806120851, "last": 0.09871052869018053, "series": [0.002806167913683316, 0.005925246171030917, 0.00948687383196391, 0.014830828789734157, 0.023139192135775297, 0.03855606661963337, 0.04858878703111434, 0.05828944909130268, 0.07106683858553549, 0.07026590887169162, 0.07483823980634545, 0.08534642618161685, 0.08788277347588314, 0.09871052869018053]}, "Q": {"median": 0.12664006359618757, "last": 0.22295157190008139, "series": [0.015247377469171937, 0.027730489613544115, 0.03784051145269774, 0.05168536638724065, 0.07346749467205674, 0.10712522184633319, 0.12194380077732371, 0.1313363264150514, 0.1557376436973329, 0.15202911133783986, 0.17943481682498502, 0.1982255729588117, 0.21475655838452756, 0.22295157190008139]}, "U": {"median": 0.25652882212314265, "last": 0.4857369335637102, "series": [0.007437935144139897, 0.023799226052455408, 0.04775682741729759, 0.0768676638013595, 0.10886003289368254, 0.19012041705793983, 0.23231558071678066, 0.28074206352950465, 0.31016474922255677, 0.33339608550775096, 0.37619376975656055, 0.4072746836082331, 0.4518741518536417, 0.4857369335637102]}, "V": {"median": 0.6413736639953429, "last": 1.104848302381351, "series": [0.01603310418507007, 0.05845607247617021, 0.12010901762223442, 0.20219148091704028, 0.28557218259326106, 0.45881969060107836, 0.5804895616448266, 0.7022577663458592, 0.7659836254715081, 0.7867699752931585, 0.8973343226443579, 1.0002113801364725, 1.0288411437843599, 1.104848302381351]}, "PS": {"median": 0.07037647059882003, "last": 0.13980194273245952, "series": [0.0014209256951141285, 0.004795375966081419, 0.010081755905333594, 0.018084052256947963, 0.02522539692508227, 0.044838399736605694, 0.06462924259122275, 0.07612369860641731, 0.08809340420093861, 0.08827179367532435, 0.10360166325933891, 0.11282391955049864, 0.13133319158723478, 0.13980194273245952]}, "TS": {"median": 0.12697680907724937, "last": 0.2288201668520926, "series": [0.012598482548604944, 0.01978704966780173, 0.02629242085740616, 0.03464579050794333, 0.056508307037157327, 0.09356364638610976, 0.1329718907600607, 0.12098172739443804, 0.15582315150418743, 0.15291193272309417, 0.14125774643017688, 0.18718774162820057, 0.1812007792414863, 0.2288201668520926]}, "TMQ": {"median": 0.23042912518268205, "last": 0.43844638964102645, "series": [0.015509019286027126, 0.036629987284207924, 0.05041087117980425, 0.07665937085832321, 0.12463968962994934, 0.18732212941509313, 0.22016522142637304, 0.24069302893899108, 0.2833650586293068, 0.2799950581213912, 0.35618014478197735, 0.38571284988373417, 0.41348698187812216, 0.43844638964102645]}, "PRECT": {"median": 0.8151432860198659, "last": 1.0543662957139088, "series": [0.11420628247009369, 0.18999044409493662, 0.2861888163137034, 0.3912401618408758, 0.5650631247683069, 0.6609571000426618, 0.7974686740311007, 0.832817898008631, 0.8399451661190741, 0.9956503229869876, 1.0860961429174931, 1.1055277359357802, 1.0915509054304933, 1.0543662957139088]}, "PRECC": {"median": 0.6814144768626202, "last": 0.9857252343395312, "series": [0.13780750203206607, 0.2038891743873042, 0.28154298608502304, 0.3582890742595797, 0.4541692401863381, 0.5844918083771995, 0.6986258318822333, 0.6642031218430071, 0.7207438044651863, 0.8546057888221529, 0.9499409538556386, 0.9331233915120412, 0.9943520334876464, 0.9857252343395312]}, "PRECL": {"median": 1.0266927259883172, "last": 1.089222493988949, "series": [0.06693057764839855, 0.1295884814970279, 0.29549058512426724, 0.4633040240627138, 0.7942190277170588, 0.8058862990496614, 1.0686219630040414, 1.153588087448762, 0.9847634889725929, 1.1304884275928746, 1.3423093962528854, 1.4235596513601103, 1.274957086385216, 1.089222493988949]}, "CLDLOW": {"median": 0.6746367940641026, "last": 0.8197592243770541, "series": [0.2192568806052098, 0.31084490674358506, 0.32328911004838273, 0.4128904871275525, 0.4829222372890122, 0.5739165724504647, 0.6966645384716135, 0.6526090496565917, 0.7348605889164623, 0.7634120656756644, 0.8352603772021607, 0.8142651680350285, 0.8247066502839654, 0.8197592243770541]}, "CLDMED": {"median": 0.813129862934666, "last": 1.0562708394067164, "series": [0.06816299249932156, 0.1310583302309781, 0.2323767737323717, 0.33225173051221946, 0.45734846589468264, 0.6431280983955244, 0.7939269728903994, 0.8323327529789327, 0.8895681773055375, 0.9218098077003924, 0.986659225174997, 0.9586497772522482, 1.0221586384868822, 1.0562708394067164]}, "CLDHGH": {"median": 0.8333910776038793, "last": 1.2287641982818, "series": [0.07079951458671842, 0.2024713710752005, 0.3130943086705322, 0.3892603994785018, 0.5232511747658352, 0.702347345305079, 0.7831510850138794, 0.8836310701938792, 0.988395851471434, 1.0403863663194712, 1.1102581644285947, 1.1172426014361252, 1.2462052532674026, 1.2287641982818]}, "CLDTOT": {"median": 0.7407051725374989, "last": 1.0401218238864152, "series": [0.18113580908309881, 0.30229285573457304, 0.34090815466645075, 0.44020027755893637, 0.5263149159984171, 0.6484412713876844, 0.7332663677551235, 0.7481439773198741, 0.8607341933122467, 0.8959089065017279, 0.9858370394885891, 0.9608347191333884, 1.0355489760299854, 1.0401218238864152]}, "TGCLDLWP": {"median": 0.9273315704715839, "last": 1.2103560221850624, "series": [0.35277234235165117, 0.4252127306455915, 0.42500531369863676, 0.4767632271236372, 0.6345168473442422, 0.7896082886133227, 0.8840309078692101, 0.9797429915605983, 0.9975199561259929, 0.9811688918113725, 1.0019176645599546, 0.9706322330739575, 1.285745923525733, 1.2103560221850624]}, "FLNT": {"median": 0.5719733133986865, "last": 0.8304022947729309, "series": [0.07231942521588207, 0.1770457822133344, 0.24353389434321182, 0.3141295478214667, 0.3849830529692276, 0.5051333789385094, 0.5481388765145616, 0.5958077502828114, 0.653463471311153, 0.726710800201362, 0.7898548678124673, 0.7972657810249774, 0.8079966167233475, 0.8304022947729309]}, "FSNT": {"median": 0.2697196507225193, "last": 0.3703926679106128, "series": [0.1046365147566003, 0.13927698467450494, 0.15086103965325545, 0.17234755364702517, 0.20837950236725689, 0.23208518673596357, 0.2635551691326043, 0.2758841323124343, 0.2882283218858954, 0.3254199780825908, 0.3328980799197543, 0.33022544845610974, 0.36511197083749597, 0.3703926679106128]}, "LHFLX": {"median": 0.4310071505443265, "last": 0.7087416134266803, "series": [0.04239163473746358, 0.08168726570329923, 0.11766001340091407, 0.17662886033520359, 0.2480763081786733, 0.3100008279612821, 0.4032617191192587, 0.45875258196939434, 0.5303516498372253, 0.49177469194157947, 0.7029665979260035, 0.6380801346312683, 0.6691715067932634, 0.7087416134266803]}, "SHFLX": {"median": 0.4980077280153438, "last": 0.8607856878067435, "series": [0.06103782632936029, 0.11097316819350553, 0.1054702249599622, 0.18529593087804064, 0.29452824764945407, 0.3583737980379536, 0.5903082549130123, 0.5455621264913612, 0.5230212428947496, 0.47299421313593804, 0.6298424872041796, 0.6575864281775244, 0.7344935383167851, 0.8607856878067435]}}, "mlp-cpu": {"T": {"median": 0.0718098700331433, "last": 0.11503873159860617, "series": [0.008054807224039149, 0.016614781454604405, 0.021310247387766514, 0.025958077968009943, 0.03210296821371332, 0.043709702526880695, 0.05913839760805522, 0.0844813424582314, 0.1041675656696894, 0.11673894876783565, 0.11817967603941779, 0.11591833965356722, 0.11057110148221805, 0.11503873159860617]}, "Q": {"median": 0.15209800101869023, "last": 0.2423543040618241, "series": [0.02448144993499738, 0.047922055356669824, 0.055640441447644046, 0.06877311321766849, 0.09060902467526277, 0.1127471956027708, 0.13895197540921014, 0.1652440266281703, 0.19347130336741244, 0.21770380847078313, 0.22330492015010245, 0.23931578403894918, 0.23934220339094323, 0.2423543040618241]}, "U": {"median": 0.30233047269314106, "last": 0.544033545249292, "series": [0.011867472983828583, 0.034998374159733774, 0.06422893844552016, 0.09702617857934669, 0.13194998555626553, 0.20343652236729973, 0.2731138490418885, 0.33154709634439367, 0.4234606280094734, 0.5099566913977397, 0.5246522191438086, 0.5249530889792595, 0.5217677054173772, 0.544033545249292]}, "V": {"median": 0.8132562990099621, "last": 1.1970302183088064, "series": [0.027289670351680007, 0.08008734703926462, 0.16068775500713484, 0.2621931228440345, 0.3474324261092746, 0.5425095144366876, 0.7060349501704725, 0.9204776478494519, 1.1167911094743554, 1.2576729321474425, 1.2651089582228665, 1.3059169892050064, 1.175642066078521, 1.1970302183088064]}, "PS": {"median": 0.09550093956080337, "last": 0.13656321607262964, "series": [0.002774442889390412, 0.00893686706869649, 0.017133929314282748, 0.021725538783499688, 0.028942901338723744, 0.052579779582109396, 0.07361409117557316, 0.11738778794603358, 0.13183558673030096, 0.1325056671785423, 0.1387991697955329, 0.1387017144024733, 0.13993906818646817, 0.13656321607262964]}, "TS": {"median": 0.19145974917854203, "last": 0.2748005848174857, "series": [0.07425599523673981, 0.1290589904775255, 0.14026231350979396, 0.14521202527796012, 0.14442274982254394, 0.1479239890941047, 0.1698973095521742, 0.2130221888049099, 0.2632625460778782, 0.27512388154351297, 0.26936190075859445, 0.259712381244606, 0.24874943211004227, 0.2748005848174857]}, "TMQ": {"median": 0.26785263062698766, "last": 0.4466677476002313, "series": [0.011695446038150913, 0.03472989500100146, 0.059124506868655086, 0.09164752550297327, 0.13865539940591032, 0.1936936102533784, 0.242517948350331, 0.29318731290364436, 0.3364625387680367, 0.39176272869788115, 0.3951909285347317, 0.43757332029548657, 0.44790945072100463, 0.4466677476002313]}, "PRECT": {"median": 0.82509445942455, "last": 1.112345794827005, "series": [0.1829626178620234, 0.26764528415255884, 0.38399316065165373, 0.46529398586153387, 0.6476447167584501, 0.728631357734709, 0.7082497548160318, 0.9215575611143908, 1.0731675546469406, 1.0425799036632817, 1.0758395484529253, 1.0468777818196118, 1.0517292418868134, 1.112345794827005]}, "PRECC": {"median": 0.6963108653674436, "last": 1.0727300476948192, "series": [0.14853300032693045, 0.2336255780961398, 0.31175918782149914, 0.36246074665252265, 0.547345085359039, 0.5945181063908869, 0.6150432805658997, 0.7775784501689874, 0.9181001817718536, 0.8892201694288856, 0.9059177135875107, 0.9845451334187375, 0.9720853113273988, 1.0727300476948192]}, "PRECL": {"median": 1.0768022341986394, "last": 1.1515571969672167, "series": [0.1997725968422243, 0.2761641623568722, 0.5045641939945631, 0.7469591158644149, 0.9051349590528412, 0.9519627485713051, 1.0020472714300623, 1.2422942574527427, 1.2915910489126012, 1.2806733430890096, 1.5172292578341235, 1.1620763065164161, 1.2336895195720163, 1.1515571969672167]}, "CLDLOW": {"median": 0.8896115446184385, "last": 0.961656188267074, "series": [0.6163079125015049, 0.7671298639904082, 0.7427114156779107, 0.7717236139785961, 0.783944813184997, 0.8245634122993021, 0.8849614239919896, 0.8942616652448873, 0.9568746881236035, 0.9614262489922669, 0.9967386172921872, 0.9211731203575335, 0.94836918005376, 0.961656188267074]}, "CLDMED": {"median": 0.9326537783884751, "last": 1.1417795293435646, "series": [0.353758630689014, 0.4970963709253609, 0.5163978026607188, 0.5848317390003339, 0.6797944544246816, 0.7716654403381689, 0.9007057753344557, 0.9646017814424944, 1.047605157368207, 1.0777282167911149, 1.0543635904268351, 1.1198209130796146, 1.1161517765863957, 1.1417795293435646]}, "CLDHGH": {"median": 0.9761066376503043, "last": 1.2758222997230255, "series": [0.16095370473037704, 0.3074825161427484, 0.43563758807479847, 0.5238159873678652, 0.6821188508462673, 0.7821668528636376, 0.9307385955806287, 1.0214746797199799, 1.1093492419589548, 1.1583780196169706, 1.1828717637680746, 1.2456996264997218, 1.2731372147313285, 1.2758222997230255]}, "CLDTOT": {"median": 0.9222447033511928, "last": 1.0868238529146765, "series": [0.5198361843239445, 0.7013815980899477, 0.698602060621246, 0.7140062937276296, 0.7787118436785202, 0.8273249770704809, 0.9124305002140863, 0.9320589064882993, 1.002849307963542, 1.0036127643778692, 1.039576662486872, 1.0379176224318887, 1.084537765872664, 1.0868238529146765]}, "TGCLDLWP": {"median": 1.0500753909973453, "last": 1.2911088912452626, "series": [0.40754155222040656, 0.5807209146209297, 0.6453755703392631, 0.6244734822323306, 0.8522595089540267, 1.030796393665078, 0.8866755444701822, 1.0693543883296124, 1.0901198540207149, 1.1270342108454299, 1.120715128651815, 1.0915085795254256, 1.1441899060030665, 1.2911088912452626]}, "FLNT": {"median": 0.6091222977601987, "last": 0.8711226271022026, "series": [0.12096554948181305, 0.2022359731069159, 0.30226367450758074, 0.37846371539338886, 0.46191878121889707, 0.5162920330298301, 0.5701342918081198, 0.6481103037122776, 0.6809226556521656, 0.73481535769079, 0.7178361364550322, 0.8449069703440079, 0.8299614789580768, 0.8711226271022026]}, "FSNT": {"median": 0.2891036684117557, "last": 0.3869709906438657, "series": [0.13718072610609347, 0.1761264555586653, 0.19238410388988986, 0.20080837919125039, 0.22805718365993288, 0.2616833357988294, 0.27830740505790225, 0.2998999317656092, 0.319469790124386, 0.35004826847361, 0.3454906261186732, 0.36665309148515907, 0.37225544800081434, 0.3869709906438657]}, "LHFLX": {"median": 0.516830205866639, "last": 0.7018780248455517, "series": [0.05853977509386533, 0.1296275065890577, 0.1467235661071758, 0.2086457250216838, 0.3094064557936442, 0.37486734298894936, 0.4967953210203576, 0.5368650907129203, 0.6306339960327707, 0.77559822656257, 0.815056436030508, 0.8397977003517291, 0.7789318868243496, 0.7018780248455517]}, "SHFLX": {"median": 0.7228900089014316, "last": 0.8592206003185453, "series": [0.16892578862291488, 0.2508902865421793, 0.28603592231705954, 0.29598334781194163, 0.378288229357252, 0.4318229650760844, 0.647400961308783, 0.8035111835851962, 0.8389227308324363, 0.7983790564940804, 0.887585330315649, 0.8811140476955909, 0.8503412292575159, 0.8592206003185453]}}, "mlp-gpu": {"T": {"median": 0.0652689221052604, "last": 0.1072020042755271, "series": [0.00808844092775508, 0.016589578069000556, 0.021463453236955504, 0.026134903930686224, 0.033019846755142766, 0.04569468438613514, 0.05828854417195883, 0.07224930003856199, 0.09380439302156506, 0.09619649127069696, 0.09838604780361077, 0.10096493511997669, 0.10066274010423959, 0.1072020042755271]}, "Q": {"median": 0.14853713125911694, "last": 0.2198823792566189, "series": [0.024750446529337507, 0.04737246148986461, 0.05552426998916085, 0.06947816191325339, 0.08816712463001597, 0.11462179302228523, 0.1408508919933259, 0.15622337052490795, 0.18771326327422125, 0.18278051984131655, 0.19496926179946839, 0.2149261595456196, 0.21572209096173073, 0.2198823792566189]}, "U": {"median": 0.27629825678798614, "last": 0.5231321527600589, "series": [0.011702092713569326, 0.03518576001139382, 0.06282191243768694, 0.09259649683537374, 0.1292353294049303, 0.20573708350990458, 0.2597682390545059, 0.2928282745214664, 0.4031148543335582, 0.4194392535720029, 0.4585752362873073, 0.4883104552755795, 0.500076071799495, 0.5231321527600589]}, "V": {"median": 0.7115162472142524, "last": 1.1436164146822116, "series": [0.02687337413466882, 0.08009617410555414, 0.15636624631205057, 0.25907045157400077, 0.34288485229280674, 0.5198138541631785, 0.6514367031321633, 0.7715957912963416, 0.9891556178207868, 0.9884540786205323, 1.0215151704000478, 1.0616690999464367, 1.0717373716387633, 1.1436164146822116]}, "PS": {"median": 0.0821191706427219, "last": 0.1407774661578255, "series": [0.002800606572746391, 0.009126854282255554, 0.016571287385304386, 0.021162391029822085, 0.03184992313107944, 0.05623333930503603, 0.07524410878458646, 0.08899423250085735, 0.12025235826357364, 0.12362100232323295, 0.1289214984277367, 0.12874439415678932, 0.13225561158751942, 0.1407774661578255]}, "TS": {"median": 0.17988173063520355, "last": 0.22767364355157152, "series": [0.07450923165640791, 0.12921979919466578, 0.1419246581316704, 0.14774686426429667, 0.1497078446146454, 0.15383287762117903, 0.171040937500182, 0.18872252377022508, 0.21093419948334743, 0.21410796024065634, 0.21957312389094455, 0.23466557440349667, 0.22182215151630436, 0.22767364355157152]}, "TMQ": {"median": 0.26195763517467163, "last": 0.41772371940875946, "series": [0.011774763017421702, 0.03530459083680455, 0.06170856892372581, 0.09736490630786711, 0.13745037468509272, 0.1942814987903392, 0.24125861108285387, 0.2826566592664894, 0.34086220885403007, 0.32740053830375615, 0.3584064304763999, 0.4134659957979486, 0.4239187805456101, 0.41772371940875946]}, "PRECT": {"median": 0.8250113597544423, "last": 1.0725518765323414, "series": [0.18267700072025594, 0.2672922493025789, 0.37377065380058505, 0.4479256986129942, 0.6044738267761274, 0.7158451392089684, 0.7586975003937181, 0.8913252191151665, 1.0174034689653406, 1.0811998526303659, 0.9692432150164763, 1.0358434849395324, 1.0811150921283195, 1.0725518765323414]}, "PRECC": {"median": 0.6847690732107716, "last": 1.0093384107229402, "series": [0.15036838813060358, 0.22673882475324394, 0.3039225472691421, 0.3527952329978708, 0.5098084014096644, 0.5665728699504039, 0.6335713168246625, 0.7359668295968808, 0.9192976581421325, 0.9223560873123343, 0.7790747369725011, 0.9203011337111907, 0.9495154142174773, 1.0093384107229402]}, "PRECL": {"median": 1.112200387019834, "last": 1.1094339097658648, "series": [0.1991636799176969, 0.2818079807031661, 0.4972655934777417, 0.7009604582496084, 0.8576977081057875, 0.9658286087125629, 1.114966864273803, 1.2389693827394135, 1.142695904115768, 1.2358872961839402, 1.3453054902579655, 1.2723712602523913, 1.3063515565481811, 1.1094339097658648]}, "CLDLOW": {"median": 0.8940551162740524, "last": 0.9583078635318636, "series": [0.6137585272571909, 0.7585440260732051, 0.7406861977158317, 0.7742672213987095, 0.7934429758544165, 0.8409785068430039, 0.8963845796008503, 0.8917256529472546, 0.9260015473918322, 0.930287748278415, 0.9506509387238454, 0.9329723024095091, 0.9251025596725105, 0.9583078635318636]}, "CLDMED": {"median": 0.9300013202834724, "last": 1.092856765019824, "series": [0.35460281320670106, 0.49448725032500995, 0.5109613225695308, 0.5944123358681522, 0.6856986398658858, 0.7772568513851608, 0.8904847827725338, 0.9695178577944109, 1.0210597826204233, 1.0248184216736302, 1.0555075186607414, 1.1183550406490819, 1.109931025135543, 1.092856765019824]}, "CLDHGH": {"median": 0.9103628574921208, "last": 1.1893252168330217, "series": [0.161061099615077, 0.3046345415018402, 0.4333911282306003, 0.518959110178791, 0.6732652474194051, 0.7776585700181401, 0.8837481417245889, 0.9369775732596527, 1.077343688014801, 1.0987197107784121, 1.1589625214135066, 1.270691557497835, 1.2568254719409906, 1.1893252168330217]}, "CLDTOT": {"median": 0.9085124911844689, "last": 1.0512985890841071, "series": [0.5196511459929145, 0.6937950551753227, 0.6888778717434249, 0.7158573190814764, 0.7778348647952184, 0.8324266493920381, 0.9005631013198294, 0.9164618810491082, 0.9795523822759797, 0.9642029471343084, 1.021794752937556, 1.0564535617856146, 1.0638299934884528, 1.0512985890841071]}, "TGCLDLWP": {"median": 1.0943100868534503, "last": 1.2707755404149543, "series": [0.4050214086301541, 0.5878390832052842, 0.6805971384864342, 0.6930624844211184, 0.8249802015218829, 1.168181027080854, 0.9987121465380532, 1.1111790984286603, 1.0849723880308613, 1.1036477856760394, 1.1874023285937843, 1.1233256568992431, 1.2089417193741525, 1.2707755404149543]}, "FLNT": {"median": 0.5814632250474057, "last": 0.814519942614665, "series": [0.11891521459069677, 0.19219067341899784, 0.30242212490261167, 0.36112556205410107, 0.44491314586087405, 0.5249830513606303, 0.5611539725714288, 0.6017724775233826, 0.6903033690847625, 0.6990388369444294, 0.7226056137028686, 0.8307111618373192, 0.8481679538808864, 0.814519942614665]}, "FSNT": {"median": 0.2969676042994724, "last": 0.39337589781056576, "series": [0.1366167143991068, 0.16901852392198247, 0.18922272669669235, 0.19843081731244008, 0.23145359780409255, 0.2667692156418705, 0.2874176755253985, 0.3065175330735463, 0.3271169966522331, 0.34307196078723834, 0.3511619588551773, 0.36931713105119773, 0.37029442801460327, 0.39337589781056576]}, "LHFLX": {"median": 0.5069114384100664, "last": 0.6919492474283971, "series": [0.059157161361799444, 0.13180851420688464, 0.14497620307158868, 0.21850397292702603, 0.2828227953591279, 0.3796468134385588, 0.5385835103056626, 0.4752393665144702, 0.5906400650366793, 0.5753486497044443, 0.7228436155372023, 0.6733618792763979, 0.6683503409145458, 0.6919492474283971]}, "SHFLX": {"median": 0.6008822444206197, "last": 0.8279090509242472, "series": [0.16868709228587614, 0.2568633635925849, 0.2747153664776359, 0.2977223023140799, 0.3797486388634451, 0.44083305420165225, 0.6325124384577422, 0.5906835775379193, 0.7219326801413342, 0.6110809113033199, 0.8291457711644726, 0.6841594939833412, 0.8047412162515996, 0.8279090509242472]}}}}</script>
+<script>
+(function () {
+  // chart hover: one tooltip per chart, from each hit target's data-tip
+  function bindTips(chart) {
+    var tip = chart.querySelector(".tip");
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.className = "tip";
+      tip.hidden = true;
+      chart.appendChild(tip);
+    }
+    tip.hidden = true;
+    function show(target, x, y) {
+      var parts = target.getAttribute("data-tip").split("|");
+      tip.innerHTML = "";
+      var head = document.createElement("b");
+      head.textContent = parts[0];
+      tip.appendChild(head);
+      parts.slice(1).forEach(function (line) {
+        var row = document.createElement("div");
+        row.textContent = line;
+        tip.appendChild(row);
+      });
+      tip.hidden = false;
+      var box = chart.getBoundingClientRect();
+      var left = x - box.left + chart.scrollLeft + 14;
+      var top = y - box.top + 14;
+      var maxLeft = chart.scrollLeft + chart.clientWidth - tip.offsetWidth - 4;
+      tip.style.left = Math.max(chart.scrollLeft + 4, Math.min(left, maxLeft)) + "px";
+      tip.style.top = Math.max(4, top) + "px";
+    }
+    chart.querySelectorAll(".hit").forEach(function (target) {
+      // a target inside a focusable row is reached through the row
+      var holder = target.parentNode && target.parentNode.closest ? target.parentNode.closest("[tabindex]") : null;
+      if (!holder) target.setAttribute("tabindex", "0");
+      target.addEventListener("pointermove", function (event) { show(target, event.clientX, event.clientY); });
+      target.addEventListener("pointerleave", function () { tip.hidden = true; });
+      target.addEventListener("focus", function () {
+        var r = target.getBoundingClientRect();
+        show(target, r.left + r.width / 2, r.top + r.height / 3);
+      });
+      target.addEventListener("blur", function () { tip.hidden = true; });
+    });
+  }
+  document.querySelectorAll("[data-chart]").forEach(function (chart) {
+    if (chart.querySelector(".hit")) bindTips(chart);
+  });
+
+  // figure 3: each variable, both models; the selected variable through the month
+  var pv = JSON.parse(document.getElementById("pv-data").textContent);
+  var state = { stat: "median", device: "cpu", selected: "T" };
+  var NS = "http://www.w3.org/2000/svg";
+  function el(name, attrs, text) {
+    var node = document.createElementNS(NS, name);
+    Object.keys(attrs).forEach(function (k) { node.setAttribute(k, attrs[k]); });
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+  function fmt(v) { return v.toFixed(2); }
+  function drawRows() {
+    var host = document.getElementById("pv-chart");
+    var old = host.querySelector("svg");
+    if (old) old.remove();
+    var x0 = 196, x1 = 620, vmax = 1.4, rowH = 26, groupH = 26, top = 14;
+    var x = function (v) { return x0 + v / vmax * (x1 - x0); };
+    var rows = [], y = top;
+    pv.groups.forEach(function (g) {
+      rows.push({ group: g[0], y: y + 16 }); y += groupH;
+      g[1].forEach(function (n) { rows.push({ name: n, y: y + rowH / 2 }); y += rowH; });
+    });
+    var height = y + 34;
+    var svg = el("svg", { viewBox: "0 0 640 " + height, role: "img", "aria-label": "Deviation of 19 variables from the original Fortran" });
+    for (var t = 0; t <= 1.4001; t += 0.2) {
+      svg.appendChild(el("line", { "class": "grid", x1: x(t), x2: x(t), y1: top, y2: y }));
+      svg.appendChild(el("text", { "class": "tick", x: x(t), y: y + 20, "text-anchor": "middle" }, t.toFixed(1)));
+    }
+    svg.appendChild(el("line", { "class": "ref", x1: x(1), x2: x(1), y1: top, y2: y }));
+    var newRun = pv.runs["new-" + state.device], mlpRun = pv.runs["mlp-" + state.device];
+    rows.forEach(function (r) {
+      if (r.group) {
+        svg.appendChild(el("text", { "class": "pv-group", x: 0, y: r.y }, r.group));
+        return;
+      }
+      var g = el("g", { "class": "pv-row", tabindex: "0", role: "button",
+                        "aria-label": r.name + " " + pv.names[r.name] + ": new model " + fmt(newRun[r.name][state.stat]) + ", MLP " + fmt(mlpRun[r.name][state.stat]) });
+      var band = el("rect", { "class": "band" + (r.name === state.selected ? " sel" : ""), x: 0, y: r.y - rowH / 2, width: 640, height: rowH, rx: 4 });
+      g.appendChild(band);
+      g.appendChild(el("text", { "class": "pv-code", x: 8, y: r.y + 4.5 }, r.name));
+      g.appendChild(el("text", { "class": "pv-name", x: 92, y: r.y + 4.5 }, pv.names[r.name]));
+      var a = newRun[r.name][state.stat], b = mlpRun[r.name][state.stat];
+      g.appendChild(el("line", { "class": "link", x1: x(a), x2: x(b), y1: r.y, y2: r.y }));
+      g.appendChild(el("circle", { "class": "dot-mlp", cx: x(b), cy: r.y, r: 6 }));
+      g.appendChild(el("circle", { "class": "dot-new", cx: x(a), cy: r.y, r: 6 }));
+      var hit = el("rect", { "class": "hit", x: 0, y: r.y - rowH / 2, width: 640, height: rowH,
+        "data-tip": r.name + " " + pv.names[r.name] + "|" + (state.stat === "median" ? "Month median" : "Month end") + " · " + state.device.toUpperCase() +
+          "|New model " + fmt(a) + ", MLP " + fmt(b) });
+      g.appendChild(hit);
+      function choose() { state.selected = r.name; drawRows(); drawLine(); }
+      g.addEventListener("click", choose);
+      g.addEventListener("keydown", function (event) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(); } });
+      svg.appendChild(g);
+    });
+    host.insertBefore(svg, host.firstChild);
+    bindTips(host);
+  }
+  function drawLine() {
+    var host = document.getElementById("pv-line");
+    var old = host.querySelector("svg");
+    if (old) old.remove();
+    var name = state.selected;
+    // the scale fits the variable: a step from a short list, about five ticks, the largest value inside
+    var peak = 0;
+    ["new-cpu", "new-gpu", "mlp-cpu", "mlp-gpu"].forEach(function (k) {
+      pv.runs[k][name].series.forEach(function (v) { if (v > peak) peak = v; });
+    });
+    var step = [0.02, 0.05, 0.1, 0.2, 0.25].filter(function (s) { return peak / s <= 6; })[0] || 0.5;
+    var vmax = Math.ceil(peak * 1.05 / step) * step;
+    var digits = step < 0.1 ? 2 : (step === 0.25 ? 2 : 1);
+    var x0 = 48, x1 = 620, y0 = 230, y1 = 16, dmax = 30;
+    var x = function (d) { return x0 + d / dmax * (x1 - x0); };
+    var y = function (v) { return y0 - v / vmax * (y0 - y1); };
+    var svg = el("svg", { viewBox: "0 0 640 262", role: "img", "aria-label": name + " deviation over the month" });
+    for (var i = 0; i * step <= vmax + 1e-9; i++) {
+      var t = i * step;
+      svg.appendChild(el("line", { "class": "grid", x1: x0, x2: x1, y1: y(t), y2: y(t) }));
+      svg.appendChild(el("text", { "class": "tick", x: x0 - 8, y: y(t) + 4, "text-anchor": "end" }, t.toFixed(digits)));
+    }
+    for (var d = 0; d <= 30; d += 5) {
+      svg.appendChild(el("text", { "class": "tick", x: x(d), y: y0 + 20, "text-anchor": "middle" }, d === 0 ? "day 0" : String(d)));
+    }
+    if (vmax >= 1) svg.appendChild(el("line", { "class": "ref", x1: x0, x2: x1, y1: y(1), y2: y(1) }));
+    svg.appendChild(el("line", { "class": "axis", x1: x0, x2: x1, y1: y0, y2: y0 }));
+    var series = [["mlp-gpu", "ln-mlp ln-dash", "pt-mlp"], ["mlp-cpu", "ln-mlp", "pt-mlp"],
+                  ["new-gpu", "ln-new ln-dash", "pt-new"], ["new-cpu", "ln-new", "pt-new"]];
+    series.forEach(function (s) {
+      var values = pv.runs[s[0]][name].series;
+      var path = values.map(function (v, i) { return (i ? "L" : "M") + x(pv.days[i]).toFixed(1) + "," + y(v).toFixed(1); }).join(" ");
+      svg.appendChild(el("path", { "class": s[1], d: path }));
+      values.forEach(function (v, i) { svg.appendChild(el("circle", { "class": s[2], cx: x(pv.days[i]), cy: y(v), r: 3.5 })); });
+    });
+    var cross = el("line", { "class": "cross", x1: 0, x2: 0, y1: y1, y2: y0, visibility: "hidden" });
+    svg.appendChild(cross);
+    pv.days.forEach(function (day, i) {
+      var left = i ? (x(pv.days[i - 1]) + x(day)) / 2 : x0;
+      var right = i < pv.days.length - 1 ? (x(day) + x(pv.days[i + 1])) / 2 : x1;
+      var r = pv.runs;
+      var hit = el("rect", { "class": "hit", x: left, y: y1, width: right - left, height: y0 - y1,
+        "data-tip": "Day " + day.toFixed(1) + "|New model CPU " + fmt(r["new-cpu"][name].series[i]) + ", GPU " + fmt(r["new-gpu"][name].series[i]) +
+          "|MLP CPU " + fmt(r["mlp-cpu"][name].series[i]) + ", GPU " + fmt(r["mlp-gpu"][name].series[i]) });
+      hit.addEventListener("pointerenter", function () { cross.setAttribute("x1", x(day)); cross.setAttribute("x2", x(day)); cross.setAttribute("visibility", "visible"); });
+      hit.addEventListener("pointerleave", function () { cross.setAttribute("visibility", "hidden"); });
+      svg.appendChild(hit);
+    });
+    host.insertBefore(svg, host.firstChild);
+    document.getElementById("pv-line-caption").textContent =
+      name + " (" + pv.names[name] + "): deviation from the original Fortran over the month, one point every 100 steps. The vertical axis scales with the selected variable.";
+    bindTips(host);
+  }
+  document.querySelectorAll("[data-stat]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      state.stat = b.getAttribute("data-stat");
+      document.querySelectorAll("[data-stat]").forEach(function (o) { o.setAttribute("aria-pressed", String(o === b)); });
+      drawRows();
+    });
+  });
+  document.querySelectorAll("[data-device]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      state.device = b.getAttribute("data-device");
+      document.querySelectorAll("[data-device]").forEach(function (o) { o.setAttribute("aria-pressed", String(o === b)); });
+      drawRows();
+    });
+  });
+  drawRows();
+  drawLine();
+
+  // code notes: highlight the lines a note names
+  var lines = document.querySelectorAll(".ln");
+  var buttons = document.querySelectorAll(".notes button");
+  function mark(range, on) {
+    var bounds = range.split("-").map(Number);
+    lines.forEach(function (line) {
+      var n = Number(line.getAttribute("data-line"));
+      if (n >= bounds[0] && n <= bounds[1]) line.classList.toggle("on", on);
+    });
+  }
+  var pinned = null;
+  buttons.forEach(function (button) {
+    var range = button.getAttribute("data-lines");
+    button.setAttribute("aria-pressed", "false");
+    button.addEventListener("mouseenter", function () { if (!pinned) mark(range, true); });
+    button.addEventListener("mouseleave", function () { if (!pinned) mark(range, false); });
+    button.addEventListener("click", function () {
+      lines.forEach(function (line) { line.classList.remove("on"); });
+      buttons.forEach(function (other) { other.setAttribute("aria-pressed", "false"); });
+      if (pinned === button) { pinned = null; return; }
+      pinned = button;
+      button.setAttribute("aria-pressed", "true");
+      mark(range, true);
+      var first = document.querySelector('.ln[data-line="' + range.split("-")[0] + '"]');
+      var code = document.querySelector(".code");
+      if (first && code) code.scrollTop = first.offsetTop - code.clientHeight / 3;
+    });
+  });
+})();
+</script>
+
+</body></html>

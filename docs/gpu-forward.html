@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The GPU Forward, Step by Step</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)} body{margin:0} img{max-width:100%} [hidden]{display:none!important}
+/* layout: one column, four animated panels, each with its own controls */
+:root {
+  --page: #f6f6f3; --surface: #fcfcfb; --ink: #121212; --ink-2: #4f4e4a; --muted: #85837d;
+  --grid: #e3e2db; --axis: #c3c2b7; --ring: rgba(18,18,18,0.10);
+  --cpu: #2a78d6; --gpu: #1baf7a; --mps: #eda100; --work: #eb6834; --bad: #c8412f; --wait: #b9b7ae; --prep: #93b9e8;
+  --sans: "IBM Plex Sans", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0f0f0e; --surface: #1a1a19; --ink: #f4f4f1; --ink-2: #c3c2b7; --muted: #8d8b84;
+    --grid: #2c2c2a; --axis: #3d3d3a; --ring: rgba(255,255,255,0.10);
+    --cpu: #3987e5; --gpu: #199e70; --mps: #c98500; --work: #d95926; --bad: #e66767; --wait: #55534e; --prep: #2b5384;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0f0f0e; --surface: #1a1a19; --ink: #f4f4f1; --ink-2: #c3c2b7; --muted: #8d8b84;
+  --grid: #2c2c2a; --axis: #3d3d3a; --ring: rgba(255,255,255,0.10);
+  --cpu: #3987e5; --gpu: #199e70; --mps: #c98500; --work: #d95926; --bad: #e66767; --wait: #55534e; --prep: #2b5384;
+}
+body { background: var(--page); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.6; }
+.wrap { max-width: 940px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 56px; display: grid; gap: 26px; }
+h1 { font-size: 24px; margin: 0; font-weight: 600; }
+.lede { margin: 6px 0 0; color: var(--ink-2); }
+figure { margin: 0; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 16px; display: grid; gap: 10px; min-width: 0; }
+figcaption { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
+figcaption h2 { font-size: 16px; margin: 0; font-weight: 600; }
+.controls { display: flex; flex-wrap: wrap; gap: 6px; }
+button { font: inherit; font-size: 13px; color: var(--ink); background: var(--page); border: 1px solid var(--axis); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button[aria-pressed="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+button:focus-visible { outline: 2px solid var(--cpu); outline-offset: 2px; }
+svg { width: 100%; height: auto; display: block; }
+svg text { font-family: var(--sans); fill: var(--ink-2); font-size: 14px; }
+svg .t-strong { fill: var(--ink); font-weight: 600; }
+svg .t-mono { font-family: var(--mono); font-size: 13px; }
+svg .t-small { font-size: 12.5px; fill: var(--muted); }
+svg .t-on { font-size: 12.5px; fill: var(--surface); }
+svg .t-tf32 { font-family: var(--mono); font-size: 12px; fill: var(--cpu); font-weight: 500; }
+.stepno { font-family: var(--mono); font-size: 13px; color: var(--muted); align-self: center; min-width: 4.5em; text-align: center; }
+.caption { margin: 0; color: var(--ink-2); font-size: 14px; min-height: 1.6em; }
+.caption b { color: var(--ink); }
+svg .t-big { font-family: var(--mono); font-size: 30px; fill: var(--ink); font-weight: 500; }
+.source { margin: 0; color: var(--muted); font-size: 12.5px; }
+.phases { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px 16px; margin: 0; padding: 0; list-style: none; }
+.phases li { display: grid; grid-template-columns: 12px 1fr; column-gap: 8px; align-items: baseline; color: var(--muted); font-size: 13.5px; min-width: 0; }
+.phases li i { width: 12px; height: 12px; border-radius: 2px; align-self: center; }
+.phases li span.sec { grid-column: 2; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.phases li[aria-current="step"] { color: var(--ink); font-weight: 600; }
+.roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 24px; margin: 4px 0 0; padding: 12px 0 0; list-style: none; border-top: 1px solid var(--grid); }
+.roles h3 { margin: 0 0 2px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.roles h3 i { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+.roles p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.roles p b { color: var(--ink); font-weight: 500; }
+.parts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; max-width: 560px; margin: 0; padding: 0; list-style: none; }
+.parts li { display: grid; grid-template-columns: 12px 1fr auto; column-gap: 8px; align-items: baseline; font-size: 13.5px; color: var(--muted); min-width: 0; }
+.parts li i { width: 12px; height: 12px; border-radius: 2px; align-self: center; }
+.parts li .ms { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.parts li[data-on="true"] { color: var(--ink); }
+.parts li[aria-current="step"] { color: var(--ink); font-weight: 600; }
+.parts li.total { border-top: 1px solid var(--grid); padding-top: 4px; color: var(--ink); font-weight: 600; }
+.parts li.sum .ms { color: var(--ink); font-weight: 600; }
+.parts li.sum[data-on="false"], .parts li.sum[data-on="false"] .ms { color: var(--muted); font-weight: 500; }
+.back { justify-self: start; color: var(--muted); font-size: 13px; text-decoration: none; }
+.back:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <a class="back" href="index.html">← freeCAM docs</a>
+  <header>
+    <h1>How a model forward runs on the GPU</h1>
+    <p class="lede">Before a process first uses the GPU, it creates its own CUDA context, once per process. This page goes from there, through the one-time start-up and how libtorch runs one forward, to CUDA Graph, compiled fusion and TF32.</p>
+  </header>
+
+  <figure>
+    <figcaption><h2>Why a process needs a context</h2><div class="controls"><button id="prev1">Back</button><span class="stepno" id="stepno"></span><button id="next1">Next</button><button id="auto1" aria-pressed="false">Play</button></div></figcaption>
+    <svg id="s1" viewBox="0 0 900 300" role="img" aria-label="The steps by which a process creates its CUDA context"></svg>
+    <p class="caption" id="cap1"></p>
+  </figure>
+
+  <figure>
+    <figcaption><h2>Why crowding makes it slow</h2>
+      <div class="controls" role="group" aria-label="Processes per GPU">
+        <button data-n="1">1 process</button><button data-n="8">8 per GPU</button><button data-n="32" aria-pressed="true">32 per GPU (production)</button>
+      </div>
+    </figcaption>
+    <svg id="s2" viewBox="0 0 900 320" role="img" aria-label="Many processes creating their CUDA contexts at the same moment"></svg>
+    <p class="caption" id="cap2"></p>
+  </figure>
+
+  <figure>
+    <figcaption><h2>The one-time start-up cost</h2>
+      <div class="controls"><button id="prev3">Back</button><span class="stepno" id="stepno3"></span><button id="next3">Next</button><button id="auto3" aria-pressed="false">Play</button></div>
+    </figcaption>
+    <div class="controls" role="group" aria-label="Processes per GPU">
+      <button data-n3="1">1 process</button><button data-n3="8">8 per GPU</button><button data-n3="32" aria-pressed="true">32 per GPU (production)</button>
+    </div>
+    <svg id="s3" viewBox="0 0 900 200" role="img" aria-label="The seconds each part of one process's start-up takes, appearing in turn along a time axis"></svg>
+    <ul class="phases" id="legend3"></ul>
+    <p class="caption" id="cap3"></p>
+    <ol class="roles" aria-label="What each part does">
+      <li><h3><i style="background:var(--mps)"></i>Create the CUDA context, connect to MPS</h3>
+        <p><b>What it does:</b> opens this process's own workspace on the GPU (memory address space, GPU code, command queues) and connects to the MPS server.</p>
+        <p><b>Why it is needed:</b> without it the process can neither put data on the GPU nor compute there; connected to MPS, it can compute at the same time as the other processes on the same GPU.</p></li>
+      <li><h3><i style="background:var(--cpu)"></i>Load the model</h3>
+        <p><b>What it does:</b> reads the TorchScript file (network structure and trained weights) and copies the weights to GPU memory.</p>
+        <p><b>Why it is needed:</b> the weights stay in GPU memory and every later step uses them directly, without reading them again.</p></li>
+      <li><h3><i style="background:var(--work)"></i>Warm-up forward</h3>
+        <p><b>What it does:</b> runs one forward on an input of the right shape filled with zeros and discards the result, so the model's results are unaffected.</p>
+        <p><b>Why it is needed:</b> a model's first forward optimises the graph, loads the GPU operators it uses for the first time, and allocates the memory pool. The warm-up moves this before step 1, so step 1 is not suddenly more than ten seconds slower.</p></li>
+      <li><h3><i style="background:var(--gpu)"></i>First real forward</h3>
+        <p><b>What it does:</b> step 1 computes with real data for the first time.</p>
+        <p><b>Why it is slower than later ones:</b> it is not a dedicated preparation step. The warm-up used 16 columns and a real step has 27; the shape changed, so it prepares once more for the new shape.</p></li>
+    </ol>
+    <p class="source">Measured, job 7692487: 1 GPU node (4 A100s), all processes starting at the same moment, median per process.</p>
+  </figure>
+
+  <figure>
+    <figcaption><h2>How libtorch runs one forward</h2>
+      <div class="controls"><button id="prev4">Back</button><span class="stepno" id="stepno4"></span><button id="next4">Next</button><button id="auto4" aria-pressed="false">Play</button></div>
+    </figcaption>
+    <svg id="s4" viewBox="0 0 900 330" role="img" aria-label="At start-up libtorch compiles the model into a graph and optimises it; on every call it dispatches the operators to the GPU one by one"></svg>
+    <p class="caption" id="cap4"></p>
+    <ul class="parts" id="parts4"></ul>
+    <p class="source">The graph shows 12 representative operators; the real one has 793. Times are measured: the start-up from job 7692487 (32 processes per GPU), each call from job 7692425 (1 GPU node), and 52.3 ms is the forward per step in the half-year production run 7689590.</p>
+  </figure>
+
+  <figure>
+    <figcaption><h2>CUDA Graph: record once, then replay</h2>
+      <div class="controls"><button id="prev4b">Back</button><span class="stepno" id="stepno4b"></span><button id="next4b">Next</button><button id="auto4b" aria-pressed="false">Play</button></div>
+    </figcaption>
+    <svg id="s4b" viewBox="0 90 900 240" role="img" aria-label="CUDA Graph first records one forward's kernels as a graph; after that each call only copies the input in, issues one replay command and copies the result back"></svg>
+    <p class="caption" id="cap4b"></p>
+    <ul class="parts" id="parts4b"></ul>
+    <p class="source">Measured: the times with Graph come from job 7752711, the 8.2 and 41.8 ms without Graph from job 7692425 (both on one A100, 27 columns a call; 7752711 re-measured 32 processes without Graph at 40.2 ms). The 12 operators in the drawing stand for the real 793.</p>
+  </figure>
+
+  <figure>
+    <figcaption><h2>Compiled fusion and TF32</h2>
+      <div class="controls"><button id="prev4c">Back</button><span class="stepno" id="stepno4c"></span><button id="next4c">Next</button><button id="auto4c" aria-pressed="false">Play</button></div>
+    </figcaption>
+    <svg id="s4c" viewBox="0 90 900 240" role="img" aria-label="Compiled fusion joins small operators into one kernel, TF32 runs the matrix products on tensor cores, and the measured time of each combination with 32 processes sharing one GPU"></svg>
+    <p class="caption" id="cap4c"></p>
+    <ul class="parts" id="parts4c"></ul>
+    <p class="source">Measured: jobs 7752711 and 7755073 (one A100, 32 processes, 27 columns a call); the month's numbers come from jobs 7689590, 7749460 and 7755194.</p>
+  </figure>
+
+</div>
+
+<script>
+(function () {
+  const NS = "http://www.w3.org/2000/svg";
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const el = (tag, attrs, parent, text) => {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+  const ease = (x) => (x < 0 ? 0 : x > 1 ? 1 : x * x * (3 - 2 * x));
+
+  // ---------------- panel 1: the four steps ----------------
+  const s1 = document.getElementById("s1"), cap1 = document.getElementById("cap1");
+  const STEPS = [
+    [0.0, 2.2, "<b>Without a context:</b> the process cannot submit work to the GPU: it has no memory space there, and no command queue to submit kernels through."],
+    [2.2, 3.6, "<b>① Initialise the CUDA driver</b> (cuInit)"],
+    [3.6, 5.0, "<b>② Create the context, allocating the process's GPU address space</b>, where the model weights and data live"],
+    [5.0, 6.4, "<b>③ Create a command queue (stream)</b>; every later kernel is submitted to the GPU through it"],
+    [6.4, 7.8, "<b>④ Connect to the MPS server</b> (many processes sharing one GPU)"],
+    [7.8, 99, "<b>Context ready:</b> from now on every computation is submitted straight through the command queue, with no more initialisation."],
+  ];
+  function draw1(t) {
+    s1.innerHTML = "";
+    const step = STEPS.findIndex(([a, b]) => t >= a && t < b);
+    cap1.innerHTML = STEPS[step < 0 ? STEPS.length - 1 : step][2];
+    const done = (i) => t >= STEPS[i][1];
+    const prog = (i) => ease((t - STEPS[i][0]) / (STEPS[i][1] - STEPS[i][0]));
+    // CPU process
+    el("rect", { x: 30, y: 105, width: 170, height: 90, rx: 10, fill: "none", stroke: "var(--cpu)", "stroke-width": 2 }, s1);
+    el("text", { x: 115, y: 140, "text-anchor": "middle", class: "t-strong" }, s1, "Process");
+    el("text", { x: 115, y: 165, "text-anchor": "middle", class: "t-small" }, s1, "on the CPU");
+    // MPS box
+    const mpsOn = t >= STEPS[4][0];
+    el("rect", { x: 300, y: 115, width: 120, height: 70, rx: 10, fill: "none", stroke: mpsOn ? "var(--mps)" : "var(--axis)", "stroke-width": 2, "stroke-dasharray": mpsOn ? "" : "5 5" }, s1);
+    el("text", { x: 360, y: 147, "text-anchor": "middle", class: mpsOn ? "t-strong" : "t-small" }, s1, "MPS server");
+    el("text", { x: 360, y: 168, "text-anchor": "middle", class: "t-small" }, s1, "multi-process");
+    // GPU
+    el("rect", { x: 520, y: 30, width: 350, height: 240, rx: 12, fill: "none", stroke: "var(--gpu)", "stroke-width": 2 }, s1);
+    el("text", { x: 845, y: 58, "text-anchor": "end", class: "t-strong" }, s1, "GPU (A100)");
+    // driver init glow
+    if (t >= STEPS[1][0]) {
+      const a = done(1) ? 1 : prog(1);
+      el("rect", { x: 540, y: 74, width: 310 * a, height: 26, rx: 6, fill: "var(--gpu)", opacity: 0.18 }, s1);
+      el("text", { x: 552, y: 92, class: "t-small" }, s1, a >= 1 ? "Driver initialised" : "Initialising driver…");
+    }
+    // memory
+    const memOn = t >= STEPS[2][0];
+    el("rect", { x: 540, y: 116, width: 150, height: 130, rx: 8, fill: "none", stroke: memOn ? "var(--gpu)" : "var(--axis)", "stroke-dasharray": memOn ? "" : "5 5" }, s1);
+    if (memOn) {
+      const a = done(2) ? 1 : prog(2);
+      el("rect", { x: 540, y: 246 - 130 * a, width: 150, height: 130 * a, rx: 8, fill: "var(--gpu)", opacity: 0.25 }, s1);
+    }
+    el("text", { x: 615, y: 185, "text-anchor": "middle", class: memOn ? "t-strong" : "t-small" }, s1, "Process memory");
+    // queue lane
+    const qOn = t >= STEPS[3][0];
+    const qa = qOn ? (done(3) ? 1 : prog(3)) : 0;
+    el("rect", { x: 710, y: 116, width: 140, height: 40, rx: 8, fill: "none", stroke: qOn ? "var(--work)" : "var(--axis)", "stroke-dasharray": qOn ? "" : "5 5" }, s1);
+    if (qOn) el("rect", { x: 710, y: 116, width: 140 * qa, height: 40, rx: 8, fill: "var(--work)", opacity: 0.18 }, s1);
+    el("text", { x: 780, y: 141, "text-anchor": "middle", class: qOn ? "t-strong" : "t-small" }, s1, "Queue (stream)");
+    // links
+    const linkA = t >= STEPS[4][0] ? (done(4) ? 1 : prog(4)) : 0;
+    el("line", { x1: 200, y1: 150, x2: 200 + 100 * linkA, y2: 150, stroke: "var(--mps)", "stroke-width": 3 }, s1);
+    el("line", { x1: 420, y1: 150, x2: 420 + 100 * linkA, y2: 150, stroke: "var(--mps)", "stroke-width": 3 }, s1);
+    // a piece of work
+    if (t < STEPS[0][1]) {
+      const u = (t % 2.2) / 2.2, x = 200 + 300 * ease(Math.min(u * 1.6, 1)) - (u > 0.65 ? (u - 0.65) * 500 : 0);
+      el("rect", { x: x, y: 140, width: 20, height: 20, rx: 4, fill: "var(--work)" }, s1);
+      if (u > 0.55) {
+        el("text", { x: 505, y: 132, "text-anchor": "middle", fill: "var(--bad)", style: "fill: var(--bad); font-size: 26px; font-weight: 600" }, s1, "×");
+      }
+    } else if (t >= STEPS[5][0]) {
+      for (let k = 0; k < 4; k++) {
+        const u = ((t - STEPS[5][0]) * 0.55 + k / 4) % 1;
+        let x, y;
+        if (u < 0.75) { x = 200 + (780 - 200) * (u / 0.75); y = 140; }
+        else { x = 780; y = 140 + 60 * ((u - 0.75) / 0.25); }
+        el("rect", { x: x - 10, y: y, width: 20, height: 20, rx: 4, fill: "var(--work)" }, s1);
+      }
+    }
+  }
+  // manual stepping: each step plays its own short animation, then holds
+  let k = 0, local = 0, last1 = null, raf1 = null, auto = false;
+  const HOLD = 3.0;                        // seconds a step stays before auto-play moves on
+  const stepno = document.getElementById("stepno");
+  function frameTime() {
+    const [a, b] = STEPS[k];
+    if (k === 0) return local % (b - a);                 // the refused piece of work, repeating
+    if (k === STEPS.length - 1) return a + local;        // work flowing, continuously
+    return a + Math.min(local, b - a - 0.001);           // the step completes, then holds
+  }
+  function render() {
+    draw1(reduce && k > 0 && k < STEPS.length - 1 ? STEPS[k][1] - 0.001 : frameTime());
+    stepno.textContent = `${k + 1} / ${STEPS.length}`;
+    document.getElementById("prev1").disabled = k === 0;
+    document.getElementById("next1").disabled = k === STEPS.length - 1;
+  }
+  function loop1(ts) {
+    if (last1 != null) local += (ts - last1) / 1000;
+    last1 = ts;
+    if (auto && local >= HOLD) {
+      if (k < STEPS.length - 1) { k++; local = 0; }
+      else { auto = false; document.getElementById("auto1").setAttribute("aria-pressed", "false"); document.getElementById("auto1").textContent = "Play"; }
+    }
+    render();
+    raf1 = requestAnimationFrame(loop1);
+  }
+  function go(step) { k = Math.max(0, Math.min(STEPS.length - 1, step)); local = 0; render(); }
+  document.getElementById("prev1").addEventListener("click", () => { setAuto(false); go(k - 1); });
+  document.getElementById("next1").addEventListener("click", () => { setAuto(false); go(k + 1); });
+  function setAuto(on) {
+    auto = on;
+    const b = document.getElementById("auto1");
+    b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "Pause" : "Play";
+  }
+  document.getElementById("auto1").addEventListener("click", () => {
+    if (auto) { setAuto(false); return; }
+    if (k === STEPS.length - 1) go(0);
+    setAuto(true); local = 0;
+  });
+  function play1() { go(0); if (!reduce) raf1 = requestAnimationFrame(loop1); }
+
+  // ---------------- panel 2: everyone at the same moment ----------------
+  // measured seconds each process spent creating its context (job 7692487): one value per dot,
+  // the quantiles of the measured distribution; they start together and finish together
+  const FIN = {"1": [0.27], "8": [6.54, 6.56, 6.58, 6.58, 6.58, 6.6, 6.61, 6.62],
+               "32": [38.07, 38.07, 38.07, 38.07, 38.07, 38.07, 38.07, 38.07, 38.07, 38.07, 38.07, 38.07, 38.07, 38.07, 38.07, 38.07,
+                      38.07, 38.08, 38.08, 38.08, 38.08, 38.08, 38.08, 38.08, 38.08, 38.08, 38.08, 38.08, 38.08, 38.08, 38.08, 38.08]};
+  const s2 = document.getElementById("s2"), cap2 = document.getElementById("cap2");
+  let N = 32, t2 = 0, last2 = null, raf2 = null;
+  const PLAY = { 1: 1.5, 8: 4.0, 32: 8.0 };     // real seconds of playback
+  function draw2(sim) {
+    s2.innerHTML = "";
+    const fin = FIN[N], total = Math.max(...fin);
+    el("text", { x: 30, y: 30, class: "t-strong" }, s2, "All start creating contexts at once");
+    el("text", { x: 665, y: 30, class: "t-strong" }, s2, "Context ready");
+    const busy = sim > 0 && sim < total;
+    el("rect", { x: 380, y: 110, width: 150, height: 110, rx: 10, fill: busy ? "var(--mps)" : "none", "fill-opacity": busy ? 0.12 : 0, stroke: "var(--mps)", "stroke-width": 2 }, s2);
+    el("text", { x: 455, y: 156, "text-anchor": "middle", class: "t-strong" }, s2, "Driver / MPS");
+    el("text", { x: 455, y: 180, "text-anchor": "middle", class: "t-small" }, s2, busy ? "creating at once" : (sim >= total ? "all done" : ""));
+    // shared progress bar
+    el("rect", { x: 380, y: 232, width: 150, height: 8, rx: 4, fill: "var(--grid)" }, s2);
+    el("rect", { x: 380, y: 232, width: 150 * Math.min(sim / total, 1), height: 8, rx: 4, fill: "var(--mps)" }, s2);
+    const cols = 8, gap = 30, r = 10;
+    let doneCount = 0;
+    fin.forEach((f, i) => {
+      const row = Math.floor(i / cols), col = i % cols;
+      const wx = 40 + col * gap, wy = 60 + row * gap, dx = 670 + col * gap, dy = 60 + row * gap;
+      let x = wx, y = wy, fill = sim > 0 ? "var(--mps)" : "var(--wait)";
+      if (sim >= f) { x = dx; y = dy; fill = "var(--gpu)"; doneCount++; }
+      el("circle", { cx: x + r, cy: y + r, r: r, fill: fill }, s2);
+    });
+    el("text", { x: 455, y: 272, "text-anchor": "middle", class: "t-mono" }, s2, `${Math.min(sim, total).toFixed(2)} s`);
+    el("text", { x: 455, y: 296, "text-anchor": "middle", class: "t-small" }, s2, `ready ${doneCount} / ${N}`);
+    cap2.innerHTML = N === 1
+      ? `One process alone: creating the context takes only <b>0.27 s</b>.`
+      : `${N} processes per GPU creating contexts at once: they do not queue and finish one after another; all of them slow down together and finish almost together, after about <b>${total.toFixed(N === 8 ? 1 : 0)} s</b> (one alone takes 0.27 s). Measured, job 7692487.`;
+  }
+  function loop2(ts) {
+    const total = Math.max(...FIN[N]);
+    if (last2 != null) t2 += (ts - last2) / 1000;
+    last2 = ts;
+    const sim = Math.min((t2 / PLAY[N]) * total, total);
+    draw2(sim);
+    raf2 = sim < total ? requestAnimationFrame(loop2) : null;
+  }
+  function play2(n) {
+    N = n; cancelAnimationFrame(raf2); t2 = 0; last2 = null;
+    document.querySelectorAll("[data-n]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.n === n)));
+    if (reduce) { draw2(Math.max(...FIN[N])); return; }
+    raf2 = requestAnimationFrame(loop2);
+  }
+  document.querySelectorAll("[data-n]").forEach((b) => b.addEventListener("click", () => play2(+b.dataset.n)));
+
+  // ---------------- panel 3: one process's one-time start-up, phase by phase ----------------
+  // seconds each phase took per process (median), and each later forward in ms (job 7692487)
+  const START = {
+    1:  { s: [0.27, 0.11, 0.62, 0.16], forward: 8.2 },
+    8:  { s: [6.58, 0.12, 0.69, 0.17], forward: 8.6 },
+    32: { s: [38.07, 2.55, 12.75, 0.59], forward: 36.6 },
+  };
+  const PHASES = [
+    ["CUDA context, MPS connection", "var(--mps)"],
+    ["Load the model", "var(--cpu)"],
+    ["Warm-up forward (zeros)", "var(--work)"],
+    ["First real forward", "var(--gpu)"],
+  ];
+  const CAP3 = [
+    "<b>Start:</b> every process has imported torch, and all begin start-up at the same moment.",
+    "<b>① Create the CUDA context, connect to MPS:</b> each process creates its own context on the GPU. All 128 processes on a node do it at once, and all wait at the driver and MPS.",
+    "<b>② Load the model:</b> read the TorchScript file and put the weights on the GPU.",
+    "<b>③ Warm-up forward:</b> run once on an all-zero input and discard the result. About half is TorchScript's profiling and optimisation on its first run; the other half is GPU operators being loaded only when first used.",
+    "<b>④ First real forward:</b> the warm-up used 16 columns and a real step has 27; the shape changed, so it costs a little more.",
+  ];
+  const s3 = document.getElementById("s3"), cap3 = document.getElementById("cap3"), stepno3 = document.getElementById("stepno3");
+  const X0 = 30, PX = 14;                 // the time axis: 0 to 60 s over 840 px, the same for every density
+  const GROW = 1.6;                        // real seconds a phase takes to draw
+  let n3 = 32, k3 = 0, local3 = 0, last3 = null, auto3 = false;
+  const fmt = (x) => x.toLocaleString("en-US");
+  function draw3() {
+    s3.innerHTML = "";
+    const d = START[n3], total = d.s.reduce((a, b) => a + b, 0);
+    const final = k3 === PHASES.length + 1;
+    // how far each phase has drawn: the ones before the current step whole, the current one growing
+    const shown = d.s.map((sec, i) => (i + 1 < k3 || final ? 1 : i + 1 === k3 ? (reduce ? 1 : ease(local3 / GROW)) : 0));
+    const elapsed = d.s.reduce((a, sec, i) => a + sec * shown[i], 0);
+    el("text", { x: X0, y: 28, class: "t-small" }, s3, "This process has used");
+    el("text", { x: X0, y: 64, class: "t-big" }, s3, `${elapsed.toFixed(2)} s`);
+    el("text", { x: 870, y: 28, "text-anchor": "end", class: "t-small" }, s3, n3 === 1 ? "1 process alone" : `${n3} processes per GPU`);
+    // axis: 0 to 60 s
+    for (let s = 0; s <= 60; s += 10) {
+      const x = X0 + s * PX;
+      el("line", { x1: x, x2: x, y1: 84, y2: 138, stroke: "var(--grid)", "stroke-width": 1 }, s3);
+      el("text", { x: x, y: 156, "text-anchor": "middle", class: "t-small" }, s3, `${s} s`);
+    }
+    el("rect", { x: X0, y: 92, width: 60 * PX, height: 38, rx: 6, fill: "var(--grid)", opacity: 0.5 }, s3);
+    let x = X0;
+    d.s.forEach((sec, i) => {
+      const w = sec * PX * shown[i];
+      if (w > 0) el("rect", { x: x, y: 92, width: Math.max(w, 2), height: 38, fill: PHASES[i][1], stroke: "var(--surface)", "stroke-width": 1 }, s3);
+      x += sec * PX * shown[i];
+    });
+    if (final) el("text", { x: Math.min(x + 10, 790), y: 116, class: "t-strong" }, s3, `${total.toFixed(1)} s`);
+    // legend: every phase with its seconds, the current one emphasised
+    const legend = PHASES.map(([name, color], i) =>
+      `<li${i + 1 === k3 ? ' aria-current="step"' : ""}><i style="background:${color}"></i><span>${name}</span><span class="sec">${d.s[i].toFixed(2)} s</span></li>`).join("");
+    const list = document.getElementById("legend3");
+    if (list.innerHTML !== legend) list.innerHTML = legend;
+    // after start-up: one forward per step; the start-up is worth this many of them
+    if (final) {
+      const forwards = Math.round((total * 1000) / d.forward);
+      const u = reduce ? 1 : ease(local3 / 2.5), count = Math.round(forwards * u);
+      el("rect", { x: X0, y: 176, width: total * PX * u, height: 14, rx: 3, fill: "var(--gpu)", opacity: 0.35 }, s3);
+      cap3.innerHTML = `<b>Start-up done:</b> <b>${total.toFixed(1)} s</b> in all, once per process. After that each step has just one forward, ${d.forward} ms; `
+        + `the start-up time is worth <b>${fmt(count)}</b> forwards` + (n3 === 32 ? ", about a month (1,488 steps)." : ".");
+    } else {
+      cap3.innerHTML = CAP3[k3];
+    }
+    stepno3.textContent = `${k3 + 1} / ${PHASES.length + 2}`;
+    document.getElementById("prev3").disabled = k3 === 0;
+    document.getElementById("next3").disabled = final;
+  }
+  function loop3(ts) {
+    if (last3 != null) local3 += (ts - last3) / 1000;
+    last3 = ts;
+    if (auto3 && local3 >= HOLD) {
+      if (k3 < PHASES.length + 1) { k3++; local3 = 0; } else setAuto3(false);
+    }
+    draw3();
+    requestAnimationFrame(loop3);
+  }
+  function go3(step) { k3 = Math.max(0, Math.min(PHASES.length + 1, step)); local3 = 0; draw3(); }
+  function setAuto3(on) {
+    auto3 = on;
+    const b = document.getElementById("auto3");
+    b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "Pause" : "Play";
+  }
+  document.getElementById("prev3").addEventListener("click", () => { setAuto3(false); go3(k3 - 1); });
+  document.getElementById("next3").addEventListener("click", () => { setAuto3(false); go3(k3 + 1); });
+  document.getElementById("auto3").addEventListener("click", () => {
+    if (auto3) { setAuto3(false); return; }
+    if (k3 === PHASES.length + 1) go3(0);
+    setAuto3(true); local3 = 0;
+  });
+  document.querySelectorAll("[data-n3]").forEach((b) => b.addEventListener("click", () => {
+    n3 = +b.dataset.n3;
+    document.querySelectorAll("[data-n3]").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+    local3 = 0; draw3();
+  }));
+
+  // ---------------- panel 4: what libtorch does, once and on every call; then how it got faster ----------------
+  const BOXES = [
+    ["Model file .pt", "code + weights"],
+    ["TorchScript IR", "graph, 793 nodes"],
+    ["Profiling", "notes shapes, types"],
+    ["Optimisation", "fusion: off"],
+    ["Instruction list", "interpreted in order"],
+  ];
+  // twelve operators standing for the 793: the inputs normalised, three layers, the outputs limited
+  const OPS = ["cat", "sub", "div", "linear", "relu", "linear", "relu", "linear", "mul", "add", "clamp", "where"];
+  const FUSABLE = [[1, 2], [8, 11]];          // runs of element-wise operators a fuser would join
+  const LINEAR = [3, 5, 7];                   // the matrix products: what TF32 speeds up
+  // the operators after compilation: each fusable run is one kernel
+  const FUSED = [[0, 0, "cat"], [1, 2, "sub+div"], [3, 3, "linear"], [4, 4, "relu"], [5, 5, "linear"],
+                 [6, 6, "relu"], [7, 7, "linear"], [8, 11, "4 into 1"]];
+  const GRAPH_STEP = 8, BARS_STEP = 13;       // from here the CUDA Graph; the last step, the summary
+  const CAP4 = [
+    "<b>At start-up, load the model file:</b> the .pt package holds the TorchScript code and the trained weights. (The CUDA context is created before this; see the panels above.)",
+    "<b>① Parse and compile to IR:</b> libtorch compiles the code into TorchScript IR, a graph in which every node is an operator (aten::linear, aten::relu…); this model has 793. The weights are copied to GPU memory.",
+    "<b>② Profiling:</b> on the first run the graph executor runs once while recording, noting every tensor's shape, type and device, in preparation for optimisation.",
+    "<b>③ Graph optimisation and operator fusion:</b> specialise for the recorded shapes, fold constants, remove redundant nodes. Fusion would join neighbouring small element-wise operators (dashed boxes) into one, compiling a new GPU program on the spot; we turned it off with PYTORCH_TENSOREXPR=0 (left on, every process stalls here for about 10 minutes), so none of the 793 operators is merged.",
+    "<b>④ Build the instruction list:</b> the optimised graph becomes a sequence of instructions the interpreter runs in order. All of the above happens only once, at start-up.",
+    "<b>⑤ On every call, dispatch one by one:</b> the interpreter reaches an operator; the dispatcher picks its GPU implementation by 'device CUDA, type float64', allocates GPU memory for the result (3.7 ms in all), then puts the kernel in the command queue (4.0 ms in all), and moves on to the next without waiting for the GPU.",
+    "<b>⑥ The GPU follows behind:</b> it takes the kernels from the command queue in order; the actual computing is 3.0 ms in all, overlapping the CPU's dispatch. Adding 0.5 ms for copying the input in at the start, copying the result back at the end and waiting, one process alone takes 8.2 ms a call.",
+    "<b>⑦ 32 processes crowd one GPU:</b> each process dispatches its own 793 kernels, so one GPU executes about 25,000 small kernels a round. Measured: up to 8 processes a call barely changes (8.6 ms), at 16 it slows (12.6 ms), at 32 it slows sharply to 41.8 ms; in production a step takes 52.3 ms. Which part of the GPU is congested has not been measured yet; the grey only stands for waiting.",
+    "<b>① Record:</b> on the first call, put CUDA in recording mode and walk through the forward once. The 793 kernels, with their arguments and memory addresses, all go into a graph; the GPU executes nothing yet. The input and output live in fixed GPU buffers whose addresses never change afterwards.",
+    "<b>② Replay:</b> on every later call, copy the new input into the fixed buffer and issue one replay command; the GPU runs the 793 kernels from the graph in order, and finally the result is copied back. The CPU no longer interprets and dispatches operators one by one, so the former 7.7 ms is gone: one process alone drops from 8.2 to 3.0 ms a call, and what remains is essentially the GPU's own computing.",
+    "<b>③ All 32 processes use Graph:</b> 14.7 ms a call, against 41.8 without Graph. Either way the GPU executes about 25,000 kernels with the same amount of computing, so what Graph saves is not computing: the extra time with 32 processes drops from 33.6 to 11.7 ms. Which part of the GPU it relieves has not been measured yet.",
+    "<b>① Compiled fusion (AOTInductor):</b> compiled ahead of time, with neighbouring small element-wise operators joined into one kernel, so there are far fewer kernels; the compiled forward is likewise recorded as a CUDA Graph and replayed. One process alone drops to 1.8 ms; with 32 processes it is 15.4 ms, no faster: most of the GPU's time goes to the matrix products, and fusion does not reduce them.",
+    "<b>② Add TF32:</b> the matrix products move to the A100's tensor cores: inputs are rounded to a 10-bit mantissa and still accumulated in float32, much faster, with slightly different results. Compiled fusion plus TF32: 6.7 ms a call with 32 processes; Graph plus TF32 alone: 12.8 ms.",
+    "<b>Summary:</b> all measured with 32 processes sharing one GPU, 27 columns a call. In the month-long production runs the mean forward fell from 52.3 ms (H) to 15.4 ms (R), then to 8.3 ms (T).",
+  ];
+  // [what, value, colour, the steps it belongs to, the panel: b the ordinary call, g the graph, c compilation and TF32]
+  const PARTS4 = [
+    ["At start-up (once per process, with 32 processes per GPU)", null, null, [], "b"],
+    ["Load the model, compile to IR, put the weights in GPU memory", "2.55 s", "var(--cpu)", [1], "b"],
+    ["Profiling + graph optimisation (with it off, the warm-up is 6.4 s shorter)", "~6.4 s", "var(--mps)", [2, 3, 4], "b"],
+    ["GPU operators loaded only when first used", "~6.4 s", "var(--wait)", [2], "b"],
+    ["Start-up total (without the 38 s CUDA context)", "~15.3 s", null, [4], "b"],
+    ["Every call (one process alone)", null, null, [], "b"],
+    ["Interpreter + dispatcher: pick the implementation, allocate memory", "3.7 ms", "var(--prep)", [5], "b"],
+    ["Launch the kernels into the command queue", "4.0 ms", "var(--cpu)", [5], "b"],
+    ["Copy the input in, the result back, and wait", "0.5 ms", "var(--work)", [6], "b"],
+    ["GPU computing: overlaps the CPU dispatch, already inside the 8.2, not added", "3.0 ms", "var(--gpu)", [6], "b"],
+    ["One process alone, total per call (3.7 + 4.0 + 0.5)", "8.2 ms", null, [6], "b"],
+    ["Extra with 32 processes per GPU (cause not yet measured)", "+33.6 ms", "var(--wait)", [7], "b"],
+    ["32 processes per GPU, total per call", "41.8 ms", null, [7], "b"],
+    ["Extra in production (not broken down)", "+10.5 ms", "var(--wait)", [7], "b"],
+    ["Production total per step (half-year run)", "52.3 ms", null, [7], "b"],
+    ["CUDA Graph (recorded once per process, replayed on every call after)", null, null, [], "g"],
+    ["Record the 793 kernels, with the warm-up", "~1–3 s, once", "var(--mps)", [8], "g"],
+    ["Saved: interpreter and dispatcher (⑤ in the panel above)", "3.7 → 0 ms", "var(--prep)", [9], "g"],
+    ["Saved: 793 kernel launches, replaced by one replay command (⑤)", "4.0 → 0 ms", "var(--cpu)", [9], "g"],
+    ["One process alone, total per call", "8.2 → 3.0 ms", null, [9], "g"],
+    ["Extra with 32 processes (⑦)", "33.6 → 11.7 ms", "var(--wait)", [10], "g"],
+    ["32 processes per GPU, total per call", "41.8 → 14.7 ms", null, [10], "g"],
+    ["Compiled fusion + Graph", null, null, [], "c"],
+    ["One process alone, per call", "1.8 ms", "var(--gpu)", [11], "c"],
+    ["32 processes per GPU, per call", "15.4 ms", "var(--wait)", [11], "c"],
+    ["Add TF32", null, null, [], "c"],
+    ["32 processes: Graph + TF32", "12.8 ms", "var(--cpu)", [12], "c"],
+    ["32 processes: compiled + Graph + TF32", "6.7 ms", "var(--gpu)", [12], "c"],
+    ["A month measured, mean forward H → R → T", "52.3 → 15.4 → 8.3 ms", "var(--work)", [13], "c"],
+  ];
+  // 32 processes sharing one A100, 27 columns a forward (jobs 7752711, 7755073)
+  const BARS = [["Plain forward", 40.2], ["Graph", 14.7], ["Compiled + Graph", 15.4], ["Graph + TF32", 12.8], ["Compiled + Graph + TF32", 6.7]];
+  // the three panels that share this drawing, each with its own steps (indices into CAP4)
+  const FORWARD_PANELS = [["4", 0, 7, "b"], ["4b", 8, 10, "g"], ["4c", 11, 13, "c"]].map(([id, first, last, group]) => ({
+    id, first, last, group, k: first, local: 0, auto: false,
+    svg: document.getElementById("s" + id), cap: document.getElementById("cap" + id),
+    parts: document.getElementById("parts" + id), stepno: document.getElementById("stepno" + id),
+  }));
+  let s4 = null, k4 = 0;                       // the panel being drawn, and its step
+  // the operators and the lanes under them start after a column for the lanes' names
+  const BOX_W = 160, BOX_GAP = 20, CHIP_X0 = 120, CHIP_W = 56, CHIP_GAP = (770 - 12 * CHIP_W) / 11;
+  const chipX = (i) => CHIP_X0 + i * (CHIP_W + CHIP_GAP);
+  let last4 = null;
+
+  // the kernels the graph holds: one per operator, or one per fused run after compilation
+  function kernels() {
+    return k4 >= 11
+      ? FUSED.map(([a, b]) => ({ x0: chipX(a), x1: chipX(b) + CHIP_W, linear: a === b && LINEAR.includes(a) }))
+      : OPS.map((op, i) => ({ x0: chipX(i), x1: chipX(i) + CHIP_W, linear: LINEAR.includes(i) }));
+  }
+
+  function drawGraphLanes(u) {
+    const capture = k4 === GRAPH_STEP;
+    el("text", { x: 10, y: 186, class: "t-small" }, s4, capture ? "Recording (once per process)" : "Every call");
+    [["CPU", 211], ["CUDA Graph", 248], ["GPU: runs", 285]].forEach(([name, y]) => el("text", { x: 10, y: y, class: "t-small" }, s4, name));
+    const ks = kernels(), per = 0.32, pos = capture ? u / per : 99;
+    const recorded = capture ? Math.min(ks.length, Math.max(0, Math.floor(pos - 0.5) + 1)) : ks.length;
+    // the graph: a fixed list of kernels with their arguments and device addresses
+    el("rect", { x: CHIP_X0 - 6, y: 232, width: 782, height: 26, rx: 6, fill: "var(--mps)", "fill-opacity": 0.10,
+      stroke: "var(--mps)", "stroke-width": 1.4, "stroke-dasharray": capture && recorded < ks.length ? "5 4" : "" }, s4);
+    ks.forEach((kk, j) => {
+      if (j < recorded) el("rect", { x: (kk.x0 + kk.x1) / 2 - 6, y: 239, width: 12, height: 12, rx: 2, fill: "var(--cpu)" }, s4);
+    });
+    if (capture) {
+      // the CPU walks the operators once more, but every kernel goes into the graph, not to the GPU
+      OPS.forEach((op, i) => {
+        if (pos <= i) return;
+        const p = Math.min(pos - i, 1), x = chipX(i);
+        el("rect", { x: x + 4, y: 196, width: (CHIP_W - 8) * p, height: 20, rx: 3, fill: "var(--prep)" }, s4);
+        el("rect", { x: x + 4 + (CHIP_W - 8) * 0.48, y: 196, width: Math.max(0, (CHIP_W - 8) * (p - 0.48)), height: 20, rx: 3, fill: "var(--cpu)" }, s4);
+      });
+      el("text", { x: CHIP_X0, y: 285, class: "t-small" }, s4, "While recording, the GPU runs nothing; it only notes what to run");
+      el("text", { x: 10, y: 318, class: "t-mono" }, s4, `Recorded ${Math.round((recorded / ks.length) * 793)} / 793 kernels, memory addresses fixed`);
+      return;
+    }
+    // a replay: the inputs copied into the fixed buffers and one launch; the answer copied back
+    el("rect", { x: CHIP_X0, y: 196, width: 76, height: 20, rx: 3, fill: "var(--work)" }, s4);
+    el("text", { x: CHIP_X0 + 38, y: 211, "text-anchor": "middle", class: "t-on" }, s4, "in + replay");
+    el("rect", { x: 830, y: 196, width: 56, height: 20, rx: 3, fill: "var(--work)" }, s4);
+    el("text", { x: 858, y: 211, "text-anchor": "middle", class: "t-on" }, s4, "out");
+    el("text", { x: CHIP_X0 + 90, y: 211, class: "t-small" }, s4, "The CPU no longer dispatches operators one by one");
+    // the GPU runs the recorded kernels back to back; at 32 a GPU, other processes' kernels sit between
+    const crowded = k4 >= 10, waits = k4 >= 12 ? 2 : crowded ? 4 : 0;
+    const cycle = 2.4, shown = reduce ? ks.length : Math.floor(((u % cycle) / cycle) * (ks.length + 2));
+    ks.forEach((kk, j) => {
+      if (j >= shown) return;
+      const green = !crowded ? 30 : (k4 >= 12 && kk.linear ? 4 : 10);
+      for (let q = 0; q < waits; q++)
+        el("rect", { x: kk.x0 + 2 + q * 7, y: 270, width: 5, height: 20, rx: 1, fill: "var(--wait)" }, s4);
+      const gx = crowded ? kk.x0 + 4 + waits * 7 : (kk.x0 + kk.x1) / 2 - green / 2;
+      el("rect", { x: gx, y: 270, width: green, height: 20, rx: 3, fill: "var(--gpu)" }, s4);
+    });
+    const lines = {
+      9: "One process alone: 3.0 ms a call (was 8.2); the CPU sends one replay command",
+      10: "32 processes per GPU: 14.7 ms a call (41.8 without Graph); still slower than alone",
+      11: "Compiled + Graph: 1.8 ms for one process alone; 15.4 ms for 32 processes",
+      12: "Compiled + Graph + TF32: 6.7 ms a call for 32 processes (Graph + TF32 only: 12.8)",
+    };
+    el("text", { x: 10, y: 318, class: "t-mono" }, s4, lines[k4]);
+  }
+
+  function drawBars(u) {
+    el("text", { x: 10, y: 182, class: "t-strong" }, s4, "One forward with 32 processes per GPU (ms, measured)");
+    const X0b = 200, PXb = 14.4;               // 0 to 45 ms over 648 px
+    for (let ms = 0; ms <= 40; ms += 10) {
+      const x = X0b + ms * PXb;
+      el("line", { x1: x, x2: x, y1: 192, y2: 310, stroke: "var(--grid)", "stroke-width": 1 }, s4);
+      el("text", { x: x, y: 326, "text-anchor": "middle", class: "t-small" }, s4, String(ms));
+    }
+    const g = reduce ? 1 : ease(u / 1.2);
+    BARS.forEach(([name, ms], i) => {
+      const y = 196 + i * 23, best = i === BARS.length - 1;
+      el("text", { x: X0b - 10, y: y + 13, "text-anchor": "end", class: best ? "t-strong" : "" }, s4, name);
+      el("rect", { x: X0b, y: y, width: Math.max(ms * PXb * g, 1), height: 16, rx: 3, fill: best ? "var(--gpu)" : "var(--wait)" }, s4);
+      el("text", { x: X0b + ms * PXb * g + 6, y: y + 13, class: "t-mono" }, s4, ms.toFixed(1));
+    });
+  }
+
+  function draw4(panel) {
+    s4 = panel.svg; k4 = panel.k;
+    s4.innerHTML = "";
+    const u = reduce ? 99 : panel.local;                  // seconds into this step
+    // the start-up row, in the first panel only
+    if (k4 < GRAPH_STEP) el("text", { x: 10, y: 16, class: "t-small" }, s4, "At start-up (once per process)");
+    if (k4 < GRAPH_STEP) BOXES.forEach(([title, sub], i) => {
+      const x = 10 + i * (BOX_W + BOX_GAP), on = k4 >= Math.min(i, 4) && (i === 0 || k4 >= i);
+      const now = k4 === i && k4 <= 4;
+      el("rect", { x, y: 24, width: BOX_W, height: 56, rx: 8, fill: now ? "var(--mps)" : "none", "fill-opacity": now ? 0.16 : 0,
+        stroke: on ? (i === 3 ? "var(--bad)" : "var(--ink-2)") : "var(--axis)", "stroke-width": now ? 2 : 1.2,
+        "stroke-dasharray": on ? "" : "5 4" }, s4);
+      el("text", { x: x + BOX_W / 2, y: 48, "text-anchor": "middle", class: on ? "t-strong" : "t-small" }, s4, title);
+      el("text", { x: x + BOX_W / 2, y: 68, "text-anchor": "middle", class: "t-small" }, s4, sub);
+      if (i < BOXES.length - 1) el("line", { x1: x + BOX_W + 3, y1: 52, x2: x + BOX_W + BOX_GAP - 3, y2: 52, stroke: on && k4 > i ? "var(--ink-2)" : "var(--axis)", "stroke-width": 1.5 }, s4);
+    });
+    // the IR: twelve operators in their order, or the fused kernels after compilation
+    if (k4 >= 1) {
+      const head = k4 >= 11 ? "Compiled graph: the small operators fused" : k4 >= GRAPH_STEP ? "Graph (IR): these are the kernels the CUDA Graph records" : "Graph (IR): the interpreter runs it in this order";
+      el("text", { x: 10, y: 106, class: "t-small" }, s4, head);
+      el("text", { x: 10, y: 133, class: "t-small" }, s4, k4 >= 11 ? "12 ops → 8" : "12 of 793 ops");
+      if (k4 >= 11) {
+        FUSED.forEach(([a, b, label], j) => {
+          const x = chipX(a), w = chipX(b) + CHIP_W - x;
+          el("rect", { x, y: 114, width: w, height: 28, rx: 5, fill: "var(--surface)", stroke: a !== b ? "var(--gpu)" : "var(--ink-2)", "stroke-width": a !== b ? 1.8 : 1 }, s4);
+          el("text", { x: x + w / 2, y: 133, "text-anchor": "middle", class: "t-mono" }, s4, label);
+          if (j > 0) el("line", { x1: x - CHIP_GAP + 1, y1: 128, x2: x - 1, y2: 128, stroke: "var(--axis)", "stroke-width": 1.5 }, s4);
+          if (a !== b) el("text", { x: x + w / 2, y: 160, "text-anchor": "middle", class: "t-small" }, s4, "fused");
+        });
+      } else {
+        const shown = k4 === 1 ? Math.floor(u / 0.12) + 1 : 12;
+        OPS.forEach((op, i) => {
+          if (i >= shown) return;
+          const x = chipX(i);
+          el("rect", { x, y: 114, width: CHIP_W, height: 28, rx: 5, fill: "var(--surface)", stroke: "var(--ink-2)", "stroke-width": 1 }, s4);
+          el("text", { x: x + CHIP_W / 2, y: 133, "text-anchor": "middle", class: "t-mono" }, s4, op);
+          if (i > 0) el("line", { x1: x - CHIP_GAP + 1, y1: 128, x2: x - 1, y2: 128, stroke: "var(--axis)", "stroke-width": 1.5 }, s4);
+        });
+      }
+    }
+    // fusion: the runs a fuser would join, crossed out, until the package fuses them
+    if (k4 >= 3 && k4 < GRAPH_STEP) {
+      FUSABLE.forEach(([a, b]) => {
+        const x = chipX(a) - 4, w = chipX(b) + CHIP_W + 4 - x;
+        el("rect", { x, y: 109, width: w, height: 38, rx: 7, fill: "none", stroke: "var(--bad)", "stroke-width": 1.5, "stroke-dasharray": "5 4" }, s4);
+        el("text", { x: x + w / 2, y: 160, "text-anchor": "middle", class: "t-small" }, s4, "fusable, but off");
+      });
+    }
+    // TF32: the matrix products move to the tensor cores
+    if (k4 >= 12) {
+      LINEAR.forEach((i) => el("text", { x: chipX(i) + CHIP_W / 2, y: 160, "text-anchor": "middle", class: "t-tf32" }, s4, "TF32"));
+    }
+    // every call before the graph: the interpreter's pointer, the CPU lane, the command queue, the GPU lane
+    if (k4 >= 5 && k4 < GRAPH_STEP) {
+      el("text", { x: 10, y: 186, class: "t-small" }, s4, "Every call");
+      const lanes = [["CPU: dispatch", 211], ["Queue", 248], ["GPU: runs", 285]];
+      lanes.forEach(([name, y]) => el("text", { x: 10, y: y, class: "t-small" }, s4, name));
+      const per = 0.32;                                    // real seconds per operator chip
+      const pos = k4 === 5 ? u / per : 99;                 // how many operators the interpreter has passed
+      OPS.forEach((op, i) => {
+        const x = chipX(i);
+        if (pos > i) {
+          const p = Math.min(pos - i, 1);
+          el("rect", { x: x + 4, y: 196, width: (CHIP_W - 8) * p, height: 20, rx: 3, fill: "var(--prep)" }, s4);
+          el("rect", { x: x + 4 + (CHIP_W - 8) * 0.48, y: 196, width: Math.max(0, (CHIP_W - 8) * (p - 0.48)), height: 20, rx: 3, fill: "var(--cpu)" }, s4);
+        }
+        // the kernel travels down the queue to the GPU a little after it is launched
+        const g = pos - i - 0.8;
+        if (g > 0 && g < 1 && k4 === 5) {
+          el("rect", { x: x + CHIP_W / 2 - 6, y: 226 + 30 * g, width: 12, height: 12, rx: 2, fill: "var(--cpu)" }, s4);
+        }
+        if (g >= 1 || k4 >= 6) {
+          const crowded = k4 >= 7;
+          el("rect", { x: x + (crowded ? 30 : 13), y: 270, width: crowded ? 10 : 30, height: 20, rx: 3, fill: "var(--gpu)" }, s4);
+          if (crowded) for (let q = 0; q < 4; q++)
+            el("rect", { x: x + 2 + q * 7, y: 270, width: 5, height: 20, rx: 1, fill: "var(--wait)" }, s4);
+        }
+      });
+      if (pos > 0 && pos < 12) {
+        const x = chipX(Math.floor(pos)) + CHIP_W / 2;
+        el("path", { d: `M${x - 7},104 L${x + 7},104 L${x},112 Z`, fill: "var(--bad)" }, s4);
+      }
+      el("line", { x1: CHIP_X0, y1: 244, x2: 890, y2: 244, stroke: "var(--axis)", "stroke-width": 1, "stroke-dasharray": "3 4" }, s4);
+      const issued = Math.min(793, Math.round(Math.min(pos, 12) / 12 * 793));
+      const cpu = issued * 7.7 / 793;
+      let line = `Dispatched ${issued} / 793 kernels · CPU time ${cpu.toFixed(1)} ms`;
+      if (k4 === 6) line = "One process alone: a forward takes 8.2 ms, of which the GPU computes only 3.0 ms";
+      if (k4 >= 7) line = "32 processes per GPU: 41.8 ms a call, 52.3 ms a step in production (the Fortran it replaces: ~12 ms)";
+      el("text", { x: 10, y: 318, class: "t-mono" }, s4, line);
+    } else if (k4 >= GRAPH_STEP && k4 < BARS_STEP) {
+      drawGraphLanes(u);
+    } else if (k4 === BARS_STEP) {
+      drawBars(u);
+    }
+    // the parts of this panel, each lit from its step on
+    const list = panel.parts;
+    const html = PARTS4.filter((row) => row[4] === panel.group).map(([name, value, color, steps]) => value == null
+      ? `<li class="total"><i></i><span>${name}</span><span class="ms"></span></li>`
+      : color == null
+      ? `<li class="total sum" data-on="${k4 >= steps[0]}"${steps.includes(k4) ? ' aria-current="step"' : ""}><i></i><span>${name}</span><span class="ms">${value}</span></li>`
+      : `<li data-on="${k4 >= steps[0]}"${steps.includes(k4) ? ' aria-current="step"' : ""}><i style="background:${k4 >= steps[0] ? color : "var(--grid)"}"></i><span>${name}</span><span class="ms">${value}</span></li>`).join("");
+    if (list.innerHTML !== html) list.innerHTML = html;
+    panel.cap.innerHTML = CAP4[k4];
+    panel.stepno.textContent = `${k4 - panel.first + 1} / ${panel.last - panel.first + 1}`;
+    document.getElementById("prev" + panel.id).disabled = k4 === panel.first;
+    document.getElementById("next" + panel.id).disabled = k4 === panel.last;
+  }
+  function loop4(ts) {
+    const dt = last4 != null ? (ts - last4) / 1000 : 0;
+    last4 = ts;
+    FORWARD_PANELS.forEach((panel) => {
+      panel.local += dt;
+      const hold = panel.k === 5 || panel.k === GRAPH_STEP ? 5.0 : HOLD;   // the dispatch and the recording take their time
+      if (panel.auto && panel.local >= hold) {
+        if (panel.k < panel.last) { panel.k++; panel.local = 0; } else setAuto4(panel, false);
+      }
+      draw4(panel);
+    });
+    requestAnimationFrame(loop4);
+  }
+  function go4(panel, step) { panel.k = Math.max(panel.first, Math.min(panel.last, step)); panel.local = 0; draw4(panel); }
+  function setAuto4(panel, on) {
+    panel.auto = on;
+    const b = document.getElementById("auto" + panel.id);
+    b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "Pause" : "Play";
+  }
+  FORWARD_PANELS.forEach((panel) => {
+    document.getElementById("prev" + panel.id).addEventListener("click", () => { setAuto4(panel, false); go4(panel, panel.k - 1); });
+    document.getElementById("next" + panel.id).addEventListener("click", () => { setAuto4(panel, false); go4(panel, panel.k + 1); });
+    document.getElementById("auto" + panel.id).addEventListener("click", () => {
+      if (panel.auto) { setAuto4(panel, false); return; }
+      if (panel.k === panel.last) go4(panel, panel.first);
+      setAuto4(panel, true); panel.local = 0;
+    });
+  });
+
+  draw2(0);
+  play1(); play2(32);
+  go3(0);
+  FORWARD_PANELS.forEach((panel) => go4(panel, panel.first));
+  if (!reduce) { requestAnimationFrame(loop3); requestAnimationFrame(loop4); }
+})();
+</script>
+</body>
+</html>
