@@ -233,6 +233,7 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
     if seconds_entry is not None:
         seconds_entry.restype = ctypes.c_int32
         seconds_entry.argtypes = [ctypes.c_int32] + [ctypes.POINTER(ctypes.c_double)] * 6
+    tf32 = bool(read_torch_tf32(library))
     result: dict[str, dict[str, int]] = {}
     for hook in range(1, int(count_entry()) + 1):
         buffer = ctypes.create_string_buffer(64)
@@ -263,6 +264,11 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
         batch = read_hook_batch(library, hook)
         if batch is not None and batch["forwards"]:
             record["batch"] = batch
+        graph = read_hook_graph(library, hook)
+        if graph is not None:
+            record["graph"] = graph
+        if record.get("modeled") and tf32:
+            record["tf32"] = True               # its float32 matrix products on the tensor cores
         result[buffer.value.decode("ascii", errors="replace")] = record
     return result
 
@@ -481,11 +487,155 @@ def bind_hook_plugin(library: Any, hook_id: int, address: int, *, shadow: bool =
             f"cannot bind a plugin at hook {hook_id}: {BIND_STATUS.get(status, f'status {status}')}")
 
 
+#: a hook's CUDA graph (pycam_hooks_graph_state_v1): the mode, and the runner's status at the capture
+GRAPH_MODES = {0: "off", 1: "wanted", 2: "replaying", 3: "refused"}
+GRAPH_STATUS = {0: "captured", 1: "the image's libtorch has no CUDA", 2: "the runner was handed incomplete arrays",
+                4: "the forward could not be captured", 5: "the replay does not answer as the ordinary forward does",
+                6: "the batch was laid out anew", 7: "a replay failed",
+                8: "the compiled forward does not answer as the model does"}
+SET_GRAPH_STATUS = {1: "no such hook", 2: "the hook takes no model (hooks.yaml has no model block for it)",
+                    9: "no TorchScript model is bound there on a CUDA device", 10: "the hook does not answer in batches"}
+
+
+#: the package paths handed to the image, as C strings it reads at the capture: kept for the life
+#: of the process, a hook's replaced when it is asked again
+_GRAPH_PACKAGES: dict[tuple[int, int], Any] = {}
+
+#: what each hook's GPU model asked of libtorch's TF32 switch, by image: the switch is the process's
+_TF32_REQUESTS: dict[int, dict[int, bool]] = {}
+
+
+def set_hook_tf32(library: Any, hook_id: int, on: bool) -> None:
+    """Let the float32 matrix products of the model bound at ``hook_id`` run as TF32 on the
+    GPU's tensor cores (``on``), or in full float32.  The switch is libtorch's, one for the
+    process: every GPU model bound in it must ask the same, and a different request while
+    another hook's model is bound is refused.  Set before a CUDA graph is asked for, so the
+    graph captures the mode."""
+
+    import ctypes
+
+    requests = _TF32_REQUESTS.setdefault(id(library), {})
+    others = sorted(hook for hook, asked in requests.items() if hook != int(hook_id) and asked != bool(on))
+    if others:
+        raise PICAMConfigurationError(
+            f"TF32 is one switch for the process: the model at hook {hook_id} asks for it {'on' if on else 'off'}, "
+            f"the models bound at hooks {others} the other way")
+    entry = getattr(library, "pycam_torch_set_tf32", None)
+    if entry is None:
+        if on:
+            raise PICAMConfigurationError(f"cannot run hook {hook_id}'s model with TF32: the image has no "
+                                          f"pycam_torch_set_tf32 (it predates TF32); rebuild it")
+        requests[int(hook_id)] = False
+        return
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.c_int32]
+    if int(entry(1 if on else 0)) != 0:
+        raise PICAMConfigurationError(f"cannot run hook {hook_id}'s model with TF32: the image's libtorch has no CUDA")
+    requests[int(hook_id)] = bool(on)
+
+
+def read_torch_tf32(library: Any) -> bool | None:
+    """Whether float32 matrix products may use TF32 in this process; None for an image without the switch."""
+
+    import ctypes
+
+    entry = getattr(library, "pycam_torch_tf32", None)
+    if entry is None:
+        return None
+    entry.restype = ctypes.c_int32
+    entry.argtypes = []
+    return bool(entry())
+
+
+def set_hook_graph(library: Any, hook_id: int, on: bool, *, package: str | None = None) -> None:
+    """Replay the model bound at ``hook_id`` as a CUDA graph (``on``), captured over the rank's
+    batch at its next batched forward and checked there against an ordinary forward, or answer
+    with the ordinary forward again.  With ``package`` (an AOTInductor package made from the same
+    model, tools/compile_torch_model.py), the graph captures the package's fused forward instead,
+    after checking it against the model's on the same batch.  A model must be bound there on a
+    CUDA device first; a rebinding turns the graph off."""
+
+    import ctypes
+
+    if package is not None and on:
+        entry = getattr(library, "pycam_hooks_set_graph_v2", None)
+        if entry is None:
+            raise PICAMConfigurationError(f"cannot replay hook {hook_id}'s compiled forward as a CUDA graph: the "
+                                          f"image has no pycam_hooks_set_graph_v2 (it predates compiled forwards); "
+                                          f"rebuild it")
+        path = ctypes.create_string_buffer(str(package).encode())
+        _GRAPH_PACKAGES[(id(library), int(hook_id))] = path
+        entry.restype = ctypes.c_int32
+        entry.argtypes = [ctypes.c_int32, ctypes.c_int32, ctypes.c_void_p]
+        status = int(entry(int(hook_id), 1, ctypes.addressof(path)))
+        if status != 0:
+            raise PICAMConfigurationError(f"cannot replay hook {hook_id}'s compiled forward as a CUDA graph: "
+                                          f"{SET_GRAPH_STATUS.get(status, f'status {status}')}")
+        return
+    entry = getattr(library, "pycam_hooks_set_graph_v1", None)
+    if entry is None:
+        if on:
+            raise PICAMConfigurationError(f"cannot replay hook {hook_id}'s model as a CUDA graph: the image has no "
+                                          f"pycam_hooks_set_graph_v1 (it predates CUDA graphs); rebuild it")
+        return
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.c_int32, ctypes.c_int32]
+    status = int(entry(int(hook_id), 1 if on else 0))
+    if status != 0:
+        raise PICAMConfigurationError(f"cannot replay hook {hook_id}'s model as a CUDA graph: "
+                                      f"{SET_GRAPH_STATUS.get(status, f'status {status}')}")
+
+
+def read_hook_graph(library: Any, hook_id: int) -> dict[str, Any] | None:
+    """A hook's CUDA graph on this rank: its mode, why it was refused, its replays and the
+    capture's wall seconds; None when the image has none or the hook's graph is off."""
+
+    import ctypes
+
+    entry = getattr(library, "pycam_hooks_graph_state_v1", None)
+    if entry is None:
+        return None
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.c_int32, ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int32),
+                      ctypes.POINTER(ctypes.c_int64), ctypes.POINTER(ctypes.c_double)]
+    mode, status, replays, seconds = ctypes.c_int32(0), ctypes.c_int32(0), ctypes.c_int64(0), ctypes.c_double(0.0)
+    if entry(int(hook_id), ctypes.byref(mode), ctypes.byref(status), ctypes.byref(replays), ctypes.byref(seconds)) != 0:
+        return None
+    if mode.value == 0:
+        return None
+    record: dict[str, Any] = {"mode": GRAPH_MODES.get(mode.value, mode.value), "replays": int(replays.value),
+                              "capture_seconds": float(seconds.value)}
+    compiled_entry = getattr(library, "pycam_hooks_graph_compiled_v1", None)
+    if compiled_entry is not None:
+        compiled_entry.restype = ctypes.c_int32
+        compiled_entry.argtypes = [ctypes.c_int32, ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_double),
+                                   ctypes.POINTER(ctypes.c_double)]
+        compiled, median, largest = ctypes.c_int32(0), ctypes.c_double(-1.0), ctypes.c_double(-1.0)
+        if (compiled_entry(int(hook_id), ctypes.byref(compiled), ctypes.byref(median), ctypes.byref(largest)) == 0
+                and compiled.value):
+            # the package's answer against the model's at the capture, over each output column's
+            # range: the median column's (refused beyond 1e-3) and the largest
+            record["forward"] = "compiled"
+            if median.value >= 0.0:
+                record["compiled_gap"] = {"median": float(median.value), "max": float(largest.value)}
+    if mode.value == 3:
+        record["status"] = GRAPH_STATUS.get(status.value, f"status {status.value}")
+        message = getattr(library, "pycam_hooks_graph_message_v1", None)
+        if message is not None:
+            message.restype = ctypes.c_int32
+            message.argtypes = [ctypes.c_char_p, ctypes.c_int32]
+            buffer = ctypes.create_string_buffer(512)
+            message(buffer, 512)
+            record["message"] = buffer.value.decode(errors="replace")
+    return record
+
+
 def unbind_hook_model(library: Any, hook_id: int) -> None:
     """Release the model bound at ``hook_id``; the hook answers with the original again."""
 
     import ctypes
 
+    _TF32_REQUESTS.get(id(library), {}).pop(int(hook_id), None)
     entry = getattr(library, "pycam_hooks_unbind_model_v1", None)
     if entry is None:
         return
@@ -494,4 +644,5 @@ def unbind_hook_model(library: Any, hook_id: int) -> None:
     entry(int(hook_id))
 
 
-__all__ += ["read_hook_counts", "bind_hook_model", "bind_hook_plugin", "unbind_hook_model", "BIND_STATUS", "ARM_STATUS"]
+__all__ += ["read_hook_counts", "bind_hook_model", "bind_hook_plugin", "unbind_hook_model", "BIND_STATUS", "ARM_STATUS",
+            "GRAPH_MODES", "read_hook_graph", "set_hook_graph", "set_hook_tf32", "read_torch_tf32"]

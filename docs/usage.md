@@ -563,7 +563,64 @@ deep.kernels["cldfrc_fice"] = my_ice_fraction        # a function over the kerne
 deep.kernels["cldfrc_fice"] = compile_kernel("cldfrc_fice", my_numba_kernel)   # compiled, called by Fortran at the hook
 deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt")                          # TorchScript, run by the image through FTorch
 deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt", device="cuda")           # the same, on this rank's GPU (a CUDA-linked image)
+shallow.kernels["compute_uwshcu_inv"] = fc.NativeModel("v4.pt", device="cuda", graph=True)   # batched forward replayed as a CUDA graph
+shallow.kernels["compute_uwshcu_inv"] = fc.NativeModel("v4.pt", device="cuda", graph=True,
+                                                       compiled="v4.pt2")                # the graph of its AOTInductor package
+shallow.kernels["compute_uwshcu_inv"] = fc.NativeModel("v4.pt", device="cuda", graph=True,
+                                                       compiled="v4.pt2", tf32=True)     # its matrix products as TF32
 ```
+
+On a GPU each forward of a TorchScript model is hundreds of small kernels, each
+prepared by TorchScript's interpreter and launched by the CPU one at a time;
+with `graph=True` (`--model-graph`; the online jobs' leg R, the pausable jobs'
+`PYCAM_MODEL_GRAPH=1`) the image captures the forward of a rank's batch
+(`--batch-chunks`) as a CUDA graph at its first batched step and replays it
+with one launch after.  The capture runs a
+few ordinary forwards first, then replays the graph once against an ordinary
+forward on the same inputs and keeps it only if the two answers agree bit for
+bit; a forward that cannot be captured (one that waits on the GPU for a value),
+or a mismatch, leaves the ordinary forward answering, and the run record's
+`hooks.<kernel>.graph` counts the ranks that replay and those refused, with the
+reason.  The inputs are copied into the graph's own device arrays before each
+replay and the answer copied back after, as without it.  A hook answered chunk
+by chunk has no fixed batch to capture and keeps the ordinary forward.
+
+The graph can capture a compiled forward instead: `compiled=` (`--model-compiled
+NAME=PATH`; the online jobs' leg F) names an AOTInductor package of the same
+model, in which the model's element-wise work is fused into a few generated
+kernels and the matrix products are left to cuBLAS.
+`tools/compile_torch_model.py` makes it on the GPU it will run on, from the
+TorchScript archive and the model's eager form (a function building an
+`nn.Module` with the same forward from the archive's weights: TorchScript whose
+loops have trip counts it cannot see does not export directly).  It checks the
+eager form against the archive bit for bit before compiling, and the package
+against the archive after, and writes `<package>.json` beside the package with
+the archive's sha256.  The binding refuses a package that its record does not
+describe, one made from another model, one compiled for another kernel, and one
+compiled for the CPU.  Its answers are not the TorchScript forward's bit for
+bit: it evaluates the same expressions in another order and with other library
+routines, and its transformer layers are unfused rather than run through
+PyTorch's fast path.  At the capture the image measures each output column's
+gap from the model's answer over the column's own range.  It refuses the package
+when the median column is further than 1e-3 or when the package is non-finite
+where the model is not; the run record's `hooks.<kernel>.graph.compiled_gap`
+keeps the median and the largest gap.
+
+`tf32=True` (`--model-tf32`; the online jobs' leg T) lets the model's float32
+matrix products run as TF32 on the A100's tensor cores: the inputs of each
+product are rounded to a 10-bit mantissa and the sums kept in float32.  The
+switch is libtorch's, one for the whole rank: every GPU model bound in it must
+ask the same, and a mixed request is refused.  It is set before the graph is
+captured, and the graph keeps it.  On one A100 with 32 ranks sharing it, a
+rank's 27-column forward of the v4 model takes 6.7 ms as the graph of the
+compiled package with TF32, against 14.7 ms as the float32 graph.  TF32 alone
+gains little (12.8 ms).  That fits the TorchScript transformer computing its
+attention in a fused kernel of its own, which TF32 does not reach, while the
+package computes it as matrix products, which TF32 does reach; this has not
+been profiled.  TF32 moves the answer further from the
+float32 forward: about 400 of the 1190 output columns more than 1e-3 of their
+range on a rank's columns, against 342 for the float32 forward moved from the
+CPU to the GPU (`validation/pi_cam_torch_compiled_bench_v4-gpu-batch.json`).
 
 A function in a slot runs where the stage can run it.  Written over the
 kernel's arrays, one positional argument per input then per output of the

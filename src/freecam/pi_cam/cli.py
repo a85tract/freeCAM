@@ -211,21 +211,22 @@ def _frame_capture_summary(records, args, native_evidence) -> dict[str, object] 
     return provenance
 
 
-def _parse_kernel_models(values: list[str] | None) -> dict[str, Path]:
-    """``NAME=PATH`` pairs from --kernel-model, one model per kernel."""
+def _parse_kernel_models(values: list[str] | None, flag: str = "--kernel-model") -> dict[str, Path]:
+    """``NAME=PATH`` pairs from --kernel-model (or ``flag``), one file per kernel."""
 
     models: dict[str, Path] = {}
     for item in values or ():
         name, sep, path = item.partition("=")
         if not sep or not name.strip() or not path.strip():
-            raise SystemExit(f"--kernel-model takes NAME=PATH, got {item!r}")
+            raise SystemExit(f"{flag} takes NAME=PATH, got {item!r}")
         if name.strip() in models:
-            raise SystemExit(f"--kernel-model names {name.strip()!r} twice")
+            raise SystemExit(f"{flag} names {name.strip()!r} twice")
         models[name.strip()] = Path(path.strip()).expanduser()
     return models
 
 
-def _load_kernel_model(path: Path, *, shadow: bool = False, device: str = "cpu"):
+def _load_kernel_model(path: Path, *, shadow: bool = False, device: str = "cpu", graph: bool = False,
+                       compiled: Path | None = None, tf32: bool = False):
     """What stands in a kernel's slot: a TorchScript archive the image runs itself at the
     kernel's hook (no Python in the step; on ``device``), or a cloudpickled callable
     answering the kernel's frame at a pause; anything else is refused."""
@@ -235,7 +236,7 @@ def _load_kernel_model(path: Path, *, shadow: bool = False, device: str = "cpu")
     if not path.is_file():
         raise SystemExit(f"--kernel-model: {path} is not a file")
     if NativeModel.is_torchscript(path):
-        return NativeModel(path, shadow=shadow, device=device)
+        return NativeModel(path, shadow=shadow, device=device, graph=graph, compiled=compiled, tf32=tf32)
     if shadow:
         raise SystemExit(f"--shadow-kernel-model: {path} is not a TorchScript archive; only a model the image "
                          f"runs itself can shadow the original")
@@ -383,7 +384,9 @@ def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | No
 
 
 def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | None = None,
-                           device: str = "cpu") -> dict[str, dict[str, Any]] | None:
+                           device: str = "cpu", graph: bool = False,
+                           compiled: dict[str, Path] | None = None,
+                           tf32: bool = False) -> dict[str, dict[str, Any]] | None:
     """Which artifact stood in which slot: file name and content hash, and the path when
     it lies inside this checkout (records name no site directory); shadow models say so,
     and a TorchScript model names the device the image ran it on."""
@@ -403,6 +406,14 @@ def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | No
                                    "binding": "torchscript" if torchscript else "cloudpickle"}
             if torchscript:
                 row["device"] = device
+                if graph:
+                    row["graph"] = True
+                if tf32:
+                    row["tf32"] = True
+                package = (compiled or {}).get(name)
+                if package is not None:
+                    row["compiled"] = {"file": package.name,
+                                       "sha256": hashlib.sha256(package.read_bytes()).hexdigest()}
             if is_shadow:
                 row["shadow"] = True
             resolved = path.resolve()
@@ -440,6 +451,23 @@ def _hook_summary(records) -> dict[str, object] | None:
                 batch["forward_seconds_max"] = max(batch.get("forward_seconds_max", 0.0), seconds)
                 batch["check_max_abs_diff"] = max(batch.get("check_max_abs_diff", 0.0),
                                                   float(counts["batch"]["check_max_abs_diff"]))
+            if "graph" in counts:           # the batched forward replayed as a CUDA graph
+                graph = entry.setdefault("graph", {"ranks": {}, "replays": 0, "capture_seconds_max": 0.0})
+                mode = str(counts["graph"]["mode"])
+                graph["ranks"][mode] = graph["ranks"].get(mode, 0) + 1
+                graph["replays"] += int(counts["graph"].get("replays", 0))
+                graph["capture_seconds_max"] = max(graph["capture_seconds_max"], float(counts["graph"]["capture_seconds"]))
+                if "status" in counts["graph"] and "refused" not in graph:
+                    graph["refused"] = {key: counts["graph"][key] for key in ("status", "message") if key in counts["graph"]}
+                if counts["graph"].get("forward") == "compiled":
+                    graph["compiled_ranks"] = graph.get("compiled_ranks", 0) + 1
+                    gap = counts["graph"].get("compiled_gap")
+                    if gap:                 # the package's gap from the model at each rank's capture, the worst
+                        worst = graph.setdefault("compiled_gap", {"median": 0.0, "max": 0.0})
+                        worst["median"] = max(worst["median"], float(gap["median"]))
+                        worst["max"] = max(worst["max"], float(gap["max"]))
+            if counts.get("tf32"):          # its float32 matrix products ran as TF32
+                entry["tf32_ranks"] = entry.get("tf32_ranks", 0) + 1
     return totals or None
 
 
@@ -756,6 +784,36 @@ def main(argv: list[str] | None = None) -> int:
             "where the image runs the TorchScript models of --kernel-model and --shadow-kernel-model: the host, "
             "or this rank's share of the node's GPUs (the node-local rank over CUDA_VISIBLE_DEVICES); the image "
             "must have been linked with a CUDA FTorch (default cpu)"
+        ),
+    )
+    parser.add_argument(
+        "--model-graph",
+        action="store_true",
+        help=(
+            "with --model-device cuda: replay each TorchScript model's batched forward as a CUDA graph, "
+            "captured over the rank's batch at its first forward and checked there, bit for bit, against an "
+            "ordinary forward; refused (the ordinary forward answering) when it cannot be captured or does not match"
+        ),
+    )
+    parser.add_argument(
+        "--model-tf32",
+        action="store_true",
+        help=(
+            "with --model-device cuda: let the models' float32 matrix products run as TF32 on the GPU's tensor "
+            "cores (inputs rounded to a 10-bit mantissa, sums in float32): faster, and further from the float32 "
+            "answer; one switch for every model of a rank"
+        ),
+    )
+    parser.add_argument(
+        "--model-compiled",
+        action="append",
+        default=None,
+        metavar="NAME=PATH",
+        help=(
+            "with --model-graph: the graph of kernel NAME's model captures the AOTInductor package PATH "
+            "(tools/compile_torch_model.py, made from that very model) instead of the model's own forward: its "
+            "element-wise work fused into a few kernels; checked at the capture against the model's forward on the "
+            "rank's batch and refused beyond 1e-3 of an output's range.  Not bit-for-bit with the model's forward"
         ),
     )
     parser.add_argument(
@@ -1188,8 +1246,27 @@ def main(argv: list[str] | None = None) -> int:
         twice = sorted(set(kernel_model_paths) & set(shadow_model_paths))
         if twice:
             raise SystemExit(f"--shadow-kernel-model: {twice} are also given to --kernel-model; a model answers or shadows")
-        kernel_models = {name: _load_kernel_model(path, device=args.model_device) for name, path in kernel_model_paths.items()}
-        kernel_models.update({name: _load_kernel_model(path, shadow=True, device=args.model_device) for name, path in shadow_model_paths.items()})
+        if args.model_graph and args.model_device != "cuda":
+            raise SystemExit("--model-graph replays the models on a GPU: it needs --model-device cuda")
+        if args.model_tf32 and args.model_device != "cuda":
+            raise SystemExit("--model-tf32 runs the models' matrix products on a GPU's tensor cores: it needs "
+                             "--model-device cuda")
+        compiled_paths = _parse_kernel_models(args.model_compiled, "--model-compiled")
+        if compiled_paths and not args.model_graph:
+            raise SystemExit("--model-compiled is captured by the CUDA graph runner: it needs --model-graph")
+        if sorted(set(compiled_paths) - set(kernel_model_paths)):
+            raise SystemExit(f"--model-compiled: {sorted(set(compiled_paths) - set(kernel_model_paths))} have no "
+                             f"--kernel-model; a package stands beside the model it was made from")
+        from freecam.physics.errors import PhysicsError
+
+        try:
+            kernel_models = {name: _load_kernel_model(path, device=args.model_device, graph=args.model_graph,
+                                                      compiled=compiled_paths.get(name), tf32=args.model_tf32)
+                             for name, path in kernel_model_paths.items()}
+        except PhysicsError as error:
+            raise SystemExit(f"--model-compiled: {error}") from None
+        kernel_models.update({name: _load_kernel_model(path, shadow=True, device=args.model_device, graph=args.model_graph)
+                              for name, path in shadow_model_paths.items()})
         kernel_models.update({name: _load_kernel_plugin(name, spec) for name, spec in kernel_plugin_specs.items()})
         kernel_models.update({name: _load_kernel_plugin(name, spec, shadow=True) for name, spec in shadow_plugin_specs.items()})
         if args.radiation_python:
@@ -1703,7 +1780,10 @@ def main(argv: list[str] | None = None) -> int:
             "stage_execution": _stage_executions(cam),
             "frame_capture": _frame_capture_summary(records, args, native_evidence),
             "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths,
-                                                         args.model_device) or {}),
+                                                         args.model_device, args.model_graph,
+                                                         _parse_kernel_models(args.model_compiled,
+                                                                              "--model-compiled"),
+                                                         args.model_tf32) or {}),
                                **_kernel_plugins_summary(kernel_plugin_specs, shadow_plugin_specs)} or None),
             "radiation_process": _radiation_process_summary(records),
             "cloud_process": _cloud_process_summary(records),

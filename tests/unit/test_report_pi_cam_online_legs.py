@@ -91,3 +91,48 @@ def test_the_site_servers_evidence_is_read_from_its_own_lines(tmp_path: Path) ->
     path.write_text("".join(f"deg00{n}: site MPS exclusive GPUs 4 of 4\n" for n in range(4)) + "refused ranks 0\n")
     assert rl.mps_evidence(path) == {"server": "site", "nodes": 4, "gpus": 16, "exclusive_process_gpus": 16,
                                      "refused_ranks": 0}
+
+
+def test_the_graph_leg_carries_which_ranks_replayed_and_its_ratio_to_the_batched_leg(tmp_path: Path) -> None:
+    import report_pi_cam_online_legs as rl
+
+    root = tmp_path / "root"
+    _freecam(root, "H", 300.0, device="cuda")
+    _freecam(root, "R", 240.0, device="cuda")
+    summary_path = root / "R-freecam" / "summary.json"
+    summary = json.loads(summary_path.read_text())
+    graph = {"ranks": {"replaying": 512}, "replays": 512 * 49, "capture_seconds_max": 3.0}
+    summary["hooks"]["compute_uwshcu_inv"]["graph"] = graph
+    summary_path.write_text(json.dumps(summary))
+    legs = {name: rl.freecam_leg(root / f"{name}-freecam", "compute_uwshcu_inv") for name in "HR"}
+    assert legs["R"]["model"]["graph"] == graph and "graph" not in legs["H"]["model"]
+    assert rl.ratios(legs) == {"R/H": 0.8}
+
+
+def test_the_steady_step_leaves_the_binding_step_out_and_another_legs_comparison_is_read(tmp_path: Path) -> None:
+    import report_pi_cam_online_legs as rl
+    from freecam.pi_cam.timing import _format_rank_report
+
+    root = tmp_path / "root"
+    _freecam(root, "R", 55.0, device="cuda")
+    timers = {"FREECAM:TOTAL": {"calls": 1, "walltotal": 70.0, "wallmax": 70.0, "wallmin": 70.0},
+              "FREECAM:TOTAL/FREECAM:INITIALIZE": {"calls": 1, "walltotal": 14.0, "wallmax": 14.0, "wallmin": 14.0},
+              # initialization runs a step of its own, under its own path
+              "FREECAM:TOTAL/FREECAM:INITIALIZE/FREECAM:STEP": {"calls": 1, "walltotal": 2.0, "wallmax": 2.0,
+                                                                "wallmin": 2.0},
+              "FREECAM:TOTAL/FREECAM:STEP": {"calls": 50, "walltotal": 34.0 + 49 * 0.4, "wallmax": 34.0,
+                                             "wallmin": 0.3},
+              "FREECAM:TOTAL/FREECAM:STEP/CAM:shallow_convection_python": {
+                  "calls": 50, "walltotal": 33.0 + 49 * 0.015, "wallmax": 33.0, "wallmin": 0.01}}
+    timing = root / "R-freecam" / "cam-run" / "timing"
+    timing.mkdir(parents=True)
+    (timing / "freecam_timing.0000").write_text(_format_rank_report({"rank": 0, "size": 512, "timers": timers}))
+    (root / "R-freecam" / "bfb_vs_H.json").write_text(json.dumps({"bfb": True, "compared_files": 4}))
+    leg = rl.freecam_leg(root / "R-freecam", "compute_uwshcu_inv")
+    steady = leg["steady_steps"]
+    assert steady["steps"] == 50 and steady["slowest_step_seconds"] == 34.0
+    assert abs(steady["seconds_per_step_without_slowest"] - 0.4) < 1e-9
+    assert abs(steady["stage_seconds_per_step_without_slowest"]["shallow_convection"] - 0.015) < 1e-9
+    assert leg["bfb_vs_H"] == {"bfb": True, "files": 4}
+    other = {"completed": True, "steady_steps": {"seconds_per_step_without_slowest": 0.5}}
+    assert abs(rl.steady_ratios({"H": other, "R": leg})["R/H"] - 0.8) < 1e-9

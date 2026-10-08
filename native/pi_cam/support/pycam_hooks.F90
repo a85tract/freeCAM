@@ -9,7 +9,7 @@
 ! the kernels' function contracts.  Do not edit by hand.
 module pycam_hooks
   use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t, c_double, c_ptr, c_loc, c_f_pointer, c_null_ptr, c_char, c_null_char, &
-                                         c_funptr, c_null_funptr, c_f_procpointer
+                                         c_funptr, c_null_funptr, c_f_procpointer, c_associated
   use ftorch, only: torch_model, torch_tensor, torch_kCPU, torch_kCUDA, torch_model_load, torch_model_forward, &
                     torch_tensor_from_array, torch_delete
   ! the image's own grid: every hook array is shaped by it, whatever numbers its contract was reviewed at
@@ -20,7 +20,9 @@ module pycam_hooks
   public :: pycam_hooks_arm_v1, pycam_hooks_counts_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
             pycam_hooks_original_v1, pycam_hooks_reset_v1, pycam_hooks_count_v1, pycam_hooks_name_v1, &
             pycam_hooks_bind_model_v1, pycam_hooks_bind_model_v2, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1, &
-            pycam_hooks_model_seconds_v1, pycam_hooks_bind_plugin_v1, pycam_hooks_batch_v1, pycam_hooks_batch_stats_v1, &
+            pycam_hooks_model_seconds_v1, pycam_hooks_bind_plugin_v1, pycam_hooks_set_graph_v1, &
+            pycam_hooks_set_graph_v2, pycam_hooks_graph_state_v1, pycam_hooks_graph_message_v1, &
+            pycam_hooks_graph_compiled_v1, pycam_hooks_batch_v1, pycam_hooks_batch_stats_v1, &
             pycam_hooks_batch_begin_compute_uwshcu_inv, pycam_hooks_batch_put_compute_uwshcu_inv, pycam_hooks_batch_forward_compute_uwshcu_inv
 
   integer, parameter :: nhooks = 11
@@ -77,6 +79,55 @@ module pycam_hooks
       type(c_ptr), intent(in) :: in_ptrs(*), out_ptrs(*)
       integer(c_int64_t), intent(in) :: in_shapes(*), out_shapes(*)
     end function plugin_interface
+  end interface
+  ! a bound model's batched forward replayed as a CUDA graph (pycam_hooks_set_graph_v1,
+  ! native/pi_cam/support/pycam_torch_graph.cpp): 0 off; 1 wanted, captured at the next batch;
+  ! 2 replaying; 3 refused, graph_status saying why, the ordinary forward answering
+  integer(c_int), save :: graph_mode(nhooks) = 0_c_int, graph_status(nhooks) = 0_c_int
+  type(c_ptr), save :: graph_runners(nhooks) = c_null_ptr
+  ! the wall time of the capture (its warm-up forwards and its check included), and the replays
+  integer(c_int64_t), save :: graph_ticks(nhooks) = 0_c_int64_t, graph_replays(nhooks) = 0_c_int64_t
+  ! the AOTInductor package captured instead of the model's own forward (a C string the caller
+  ! keeps; null: the model's), and its answer's gap from the model's at the capture, the median
+  ! output column's and the largest (-1: none)
+  type(c_ptr), save :: graph_package(nhooks) = c_null_ptr
+  real(c_double), save :: graph_gap(2, nhooks) = -1.0_c_double
+  interface
+    function pycam_torch_graph_open_v2(module, package, device_index, nin, host_in, ndim, shapes, host_out, &
+                                       out_ndim, out_shape, warmup, status) bind(C, name='pycam_torch_graph_open_v2') &
+                                       result(runner)
+      import :: c_ptr, c_int, c_int64_t
+      type(c_ptr), value :: module, package, host_out
+      integer(c_int), value :: device_index, nin, out_ndim, warmup
+      type(c_ptr), intent(in) :: host_in(*)
+      integer(c_int), intent(in) :: ndim(*)
+      integer(c_int64_t), intent(in) :: shapes(*), out_shape(*)
+      integer(c_int), intent(out) :: status
+      type(c_ptr) :: runner
+    end function pycam_torch_graph_open_v2
+    subroutine pycam_torch_graph_compiled_gaps(runner, median, largest) bind(C, name='pycam_torch_graph_compiled_gaps')
+      import :: c_ptr, c_double
+      type(c_ptr), value :: runner
+      real(c_double), intent(out) :: median, largest
+    end subroutine pycam_torch_graph_compiled_gaps
+    integer(c_int) function pycam_torch_graph_run(runner, nin, host_in, ndim, shapes, host_out, out_ndim, out_shape) &
+         bind(C, name='pycam_torch_graph_run')
+      import :: c_ptr, c_int, c_int64_t
+      type(c_ptr), value :: runner, host_out
+      integer(c_int), value :: nin, out_ndim
+      type(c_ptr), intent(in) :: host_in(*)
+      integer(c_int), intent(in) :: ndim(*)
+      integer(c_int64_t), intent(in) :: shapes(*), out_shape(*)
+    end function pycam_torch_graph_run
+    subroutine pycam_torch_graph_close(runner) bind(C, name='pycam_torch_graph_close')
+      import :: c_ptr
+      type(c_ptr), value :: runner
+    end subroutine pycam_torch_graph_close
+    integer(c_int) function pycam_torch_graph_message(buffer, length) bind(C, name='pycam_torch_graph_message')
+      import :: c_int, c_char
+      character(kind=c_char) :: buffer(*)
+      integer(c_int), value :: length
+    end function pycam_torch_graph_message
   end interface
   integer, save :: paused_hook = 0
   type(c_ptr), save :: frame_ptrs(max_slots)
@@ -4109,6 +4160,10 @@ contains
     real(c_double), save :: l_wtqc_inv(hk_pcols, hk_pver, hk_pcnst)
     integer :: slot, n, o
     integer(c_int64_t) :: t0, t1
+    type(c_ptr) :: g_in(20)
+    integer(c_int) :: g_nd(20), g_status
+    integer(c_int64_t) :: g_shape(38), g_out_shape(2), g0, g1
+    logical :: done
     if (bn_compute_uwshcu_inv /= bcap_compute_uwshcu_inv .or. bfill_compute_uwshcu_inv /= brows_compute_uwshcu_inv) error stop 'pycam_hooks: compute_uwshcu_inv: the batch is not complete'
     call system_clock(t0)
     select case (batch_mode(6))
@@ -4116,51 +4171,123 @@ contains
       ! dt goes to the model once: every chunk's must be alike
       if (any(bs_compute_uwshcu_inv_dt(1:bn_compute_uwshcu_inv) /= bs_compute_uwshcu_inv_dt(1))) error stop 'pycam_hooks: compute_uwshcu_inv: the chunks differ in dt'
       s_dt(1) = bs_compute_uwshcu_inv_dt(1)
-      sp_dt => s_dt
-      call torch_tensor_from_array(in_t(1), sp_dt, model_device(6), model_device_index(6))
-      v_ps0_inv => bi_compute_uwshcu_inv_ps0_inv
-      call torch_tensor_from_array(in_t(2), v_ps0_inv, model_device(6), model_device_index(6))
-      v_zs0_inv => bi_compute_uwshcu_inv_zs0_inv
-      call torch_tensor_from_array(in_t(3), v_zs0_inv, model_device(6), model_device_index(6))
-      v_p0_inv => bi_compute_uwshcu_inv_p0_inv
-      call torch_tensor_from_array(in_t(4), v_p0_inv, model_device(6), model_device_index(6))
-      v_z0_inv => bi_compute_uwshcu_inv_z0_inv
-      call torch_tensor_from_array(in_t(5), v_z0_inv, model_device(6), model_device_index(6))
-      v_dp0_inv => bi_compute_uwshcu_inv_dp0_inv
-      call torch_tensor_from_array(in_t(6), v_dp0_inv, model_device(6), model_device_index(6))
-      v_u0_inv => bi_compute_uwshcu_inv_u0_inv
-      call torch_tensor_from_array(in_t(7), v_u0_inv, model_device(6), model_device_index(6))
-      v_v0_inv => bi_compute_uwshcu_inv_v0_inv
-      call torch_tensor_from_array(in_t(8), v_v0_inv, model_device(6), model_device_index(6))
-      v_qv0_inv => bi_compute_uwshcu_inv_qv0_inv
-      call torch_tensor_from_array(in_t(9), v_qv0_inv, model_device(6), model_device_index(6))
-      v_ql0_inv => bi_compute_uwshcu_inv_ql0_inv
-      call torch_tensor_from_array(in_t(10), v_ql0_inv, model_device(6), model_device_index(6))
-      v_qi0_inv => bi_compute_uwshcu_inv_qi0_inv
-      call torch_tensor_from_array(in_t(11), v_qi0_inv, model_device(6), model_device_index(6))
-      v_t0_inv => bi_compute_uwshcu_inv_t0_inv
-      call torch_tensor_from_array(in_t(12), v_t0_inv, model_device(6), model_device_index(6))
-      v_s0_inv => bi_compute_uwshcu_inv_s0_inv
-      call torch_tensor_from_array(in_t(13), v_s0_inv, model_device(6), model_device_index(6))
-      v_tr0_inv => bi_compute_uwshcu_inv_tr0_inv
-      call torch_tensor_from_array(in_t(14), v_tr0_inv, model_device(6), model_device_index(6))
-      v_tke_inv => bi_compute_uwshcu_inv_tke_inv
-      call torch_tensor_from_array(in_t(15), v_tke_inv, model_device(6), model_device_index(6))
-      v_cldfrct_inv => bi_compute_uwshcu_inv_cldfrct_inv
-      call torch_tensor_from_array(in_t(16), v_cldfrct_inv, model_device(6), model_device_index(6))
-      v_concldfrct_inv => bi_compute_uwshcu_inv_concldfrct_inv
-      call torch_tensor_from_array(in_t(17), v_concldfrct_inv, model_device(6), model_device_index(6))
-      v_pblh => bi_compute_uwshcu_inv_pblh
-      call torch_tensor_from_array(in_t(18), v_pblh, model_device(6), model_device_index(6))
-      v_cush => bi_compute_uwshcu_inv_cush
-      call torch_tensor_from_array(in_t(19), v_cush, model_device(6), model_device_index(6))
-      v_dpdry0_inv => bi_compute_uwshcu_inv_dpdry0_inv
-      call torch_tensor_from_array(in_t(20), v_dpdry0_inv, model_device(6), model_device_index(6))
-      op_packed => bo_compute_uwshcu_inv
-      call torch_tensor_from_array(out_t(1), op_packed, torch_kCPU)
-      call torch_model_forward(models(6), in_t, out_t)
-      call torch_delete(in_t)
-      call torch_delete(out_t)
+      done = .false.
+      if (graph_mode(6) == 1_c_int .or. graph_mode(6) == 2_c_int) then
+        g_in(1) = c_loc(s_dt); g_nd(1) = 1_c_int
+        g_shape(1:1) = shape(s_dt, kind=c_int64_t)
+        g_in(2) = c_loc(bi_compute_uwshcu_inv_ps0_inv); g_nd(2) = 2_c_int
+        g_shape(2:3) = shape(bi_compute_uwshcu_inv_ps0_inv, kind=c_int64_t)
+        g_in(3) = c_loc(bi_compute_uwshcu_inv_zs0_inv); g_nd(3) = 2_c_int
+        g_shape(4:5) = shape(bi_compute_uwshcu_inv_zs0_inv, kind=c_int64_t)
+        g_in(4) = c_loc(bi_compute_uwshcu_inv_p0_inv); g_nd(4) = 2_c_int
+        g_shape(6:7) = shape(bi_compute_uwshcu_inv_p0_inv, kind=c_int64_t)
+        g_in(5) = c_loc(bi_compute_uwshcu_inv_z0_inv); g_nd(5) = 2_c_int
+        g_shape(8:9) = shape(bi_compute_uwshcu_inv_z0_inv, kind=c_int64_t)
+        g_in(6) = c_loc(bi_compute_uwshcu_inv_dp0_inv); g_nd(6) = 2_c_int
+        g_shape(10:11) = shape(bi_compute_uwshcu_inv_dp0_inv, kind=c_int64_t)
+        g_in(7) = c_loc(bi_compute_uwshcu_inv_u0_inv); g_nd(7) = 2_c_int
+        g_shape(12:13) = shape(bi_compute_uwshcu_inv_u0_inv, kind=c_int64_t)
+        g_in(8) = c_loc(bi_compute_uwshcu_inv_v0_inv); g_nd(8) = 2_c_int
+        g_shape(14:15) = shape(bi_compute_uwshcu_inv_v0_inv, kind=c_int64_t)
+        g_in(9) = c_loc(bi_compute_uwshcu_inv_qv0_inv); g_nd(9) = 2_c_int
+        g_shape(16:17) = shape(bi_compute_uwshcu_inv_qv0_inv, kind=c_int64_t)
+        g_in(10) = c_loc(bi_compute_uwshcu_inv_ql0_inv); g_nd(10) = 2_c_int
+        g_shape(18:19) = shape(bi_compute_uwshcu_inv_ql0_inv, kind=c_int64_t)
+        g_in(11) = c_loc(bi_compute_uwshcu_inv_qi0_inv); g_nd(11) = 2_c_int
+        g_shape(20:21) = shape(bi_compute_uwshcu_inv_qi0_inv, kind=c_int64_t)
+        g_in(12) = c_loc(bi_compute_uwshcu_inv_t0_inv); g_nd(12) = 2_c_int
+        g_shape(22:23) = shape(bi_compute_uwshcu_inv_t0_inv, kind=c_int64_t)
+        g_in(13) = c_loc(bi_compute_uwshcu_inv_s0_inv); g_nd(13) = 2_c_int
+        g_shape(24:25) = shape(bi_compute_uwshcu_inv_s0_inv, kind=c_int64_t)
+        g_in(14) = c_loc(bi_compute_uwshcu_inv_tr0_inv); g_nd(14) = 3_c_int
+        g_shape(26:28) = shape(bi_compute_uwshcu_inv_tr0_inv, kind=c_int64_t)
+        g_in(15) = c_loc(bi_compute_uwshcu_inv_tke_inv); g_nd(15) = 2_c_int
+        g_shape(29:30) = shape(bi_compute_uwshcu_inv_tke_inv, kind=c_int64_t)
+        g_in(16) = c_loc(bi_compute_uwshcu_inv_cldfrct_inv); g_nd(16) = 2_c_int
+        g_shape(31:32) = shape(bi_compute_uwshcu_inv_cldfrct_inv, kind=c_int64_t)
+        g_in(17) = c_loc(bi_compute_uwshcu_inv_concldfrct_inv); g_nd(17) = 2_c_int
+        g_shape(33:34) = shape(bi_compute_uwshcu_inv_concldfrct_inv, kind=c_int64_t)
+        g_in(18) = c_loc(bi_compute_uwshcu_inv_pblh); g_nd(18) = 1_c_int
+        g_shape(35:35) = shape(bi_compute_uwshcu_inv_pblh, kind=c_int64_t)
+        g_in(19) = c_loc(bi_compute_uwshcu_inv_cush); g_nd(19) = 1_c_int
+        g_shape(36:36) = shape(bi_compute_uwshcu_inv_cush, kind=c_int64_t)
+        g_in(20) = c_loc(bi_compute_uwshcu_inv_dpdry0_inv); g_nd(20) = 2_c_int
+        g_shape(37:38) = shape(bi_compute_uwshcu_inv_dpdry0_inv, kind=c_int64_t)
+        g_out_shape = shape(bo_compute_uwshcu_inv, kind=c_int64_t)
+        if (graph_mode(6) == 1_c_int) then
+          call system_clock(g0)
+          graph_runners(6) = pycam_torch_graph_open_v2(models(6)%p, graph_package(6), &
+               int(model_device_index(6), c_int), 20_c_int, g_in, g_nd, g_shape, c_loc(bo_compute_uwshcu_inv), 2_c_int, &
+               g_out_shape, 3_c_int, g_status)
+          call system_clock(g1)
+          graph_ticks(6) = graph_ticks(6) + (g1 - g0)
+          graph_status(6) = g_status
+          graph_mode(6) = merge(2_c_int, 3_c_int, g_status == 0_c_int)
+          if (g_status == 0_c_int) call pycam_torch_graph_compiled_gaps(graph_runners(6), graph_gap(1, 6), &
+               graph_gap(2, 6))
+        end if
+        if (graph_mode(6) == 2_c_int) then
+          g_status = pycam_torch_graph_run(graph_runners(6), 20_c_int, g_in, g_nd, g_shape, c_loc(bo_compute_uwshcu_inv), &
+               2_c_int, g_out_shape)
+          if (g_status == 0_c_int) then
+            done = .true.; graph_replays(6) = graph_replays(6) + 1_c_int64_t
+          else if (g_status == 6_c_int) then
+            ! the batch was laid out anew: capture again over the new arrays
+            if (c_associated(graph_runners(6))) call pycam_torch_graph_close(graph_runners(6))
+            graph_runners(6) = c_null_ptr; graph_mode(6) = 1_c_int
+          else
+            graph_status(6) = g_status
+            error stop 'pycam_hooks: compute_uwshcu_inv: replaying the CUDA graph failed'
+          end if
+        end if
+      end if
+      if (.not. done) then
+        sp_dt => s_dt
+        call torch_tensor_from_array(in_t(1), sp_dt, model_device(6), model_device_index(6))
+        v_ps0_inv => bi_compute_uwshcu_inv_ps0_inv
+        call torch_tensor_from_array(in_t(2), v_ps0_inv, model_device(6), model_device_index(6))
+        v_zs0_inv => bi_compute_uwshcu_inv_zs0_inv
+        call torch_tensor_from_array(in_t(3), v_zs0_inv, model_device(6), model_device_index(6))
+        v_p0_inv => bi_compute_uwshcu_inv_p0_inv
+        call torch_tensor_from_array(in_t(4), v_p0_inv, model_device(6), model_device_index(6))
+        v_z0_inv => bi_compute_uwshcu_inv_z0_inv
+        call torch_tensor_from_array(in_t(5), v_z0_inv, model_device(6), model_device_index(6))
+        v_dp0_inv => bi_compute_uwshcu_inv_dp0_inv
+        call torch_tensor_from_array(in_t(6), v_dp0_inv, model_device(6), model_device_index(6))
+        v_u0_inv => bi_compute_uwshcu_inv_u0_inv
+        call torch_tensor_from_array(in_t(7), v_u0_inv, model_device(6), model_device_index(6))
+        v_v0_inv => bi_compute_uwshcu_inv_v0_inv
+        call torch_tensor_from_array(in_t(8), v_v0_inv, model_device(6), model_device_index(6))
+        v_qv0_inv => bi_compute_uwshcu_inv_qv0_inv
+        call torch_tensor_from_array(in_t(9), v_qv0_inv, model_device(6), model_device_index(6))
+        v_ql0_inv => bi_compute_uwshcu_inv_ql0_inv
+        call torch_tensor_from_array(in_t(10), v_ql0_inv, model_device(6), model_device_index(6))
+        v_qi0_inv => bi_compute_uwshcu_inv_qi0_inv
+        call torch_tensor_from_array(in_t(11), v_qi0_inv, model_device(6), model_device_index(6))
+        v_t0_inv => bi_compute_uwshcu_inv_t0_inv
+        call torch_tensor_from_array(in_t(12), v_t0_inv, model_device(6), model_device_index(6))
+        v_s0_inv => bi_compute_uwshcu_inv_s0_inv
+        call torch_tensor_from_array(in_t(13), v_s0_inv, model_device(6), model_device_index(6))
+        v_tr0_inv => bi_compute_uwshcu_inv_tr0_inv
+        call torch_tensor_from_array(in_t(14), v_tr0_inv, model_device(6), model_device_index(6))
+        v_tke_inv => bi_compute_uwshcu_inv_tke_inv
+        call torch_tensor_from_array(in_t(15), v_tke_inv, model_device(6), model_device_index(6))
+        v_cldfrct_inv => bi_compute_uwshcu_inv_cldfrct_inv
+        call torch_tensor_from_array(in_t(16), v_cldfrct_inv, model_device(6), model_device_index(6))
+        v_concldfrct_inv => bi_compute_uwshcu_inv_concldfrct_inv
+        call torch_tensor_from_array(in_t(17), v_concldfrct_inv, model_device(6), model_device_index(6))
+        v_pblh => bi_compute_uwshcu_inv_pblh
+        call torch_tensor_from_array(in_t(18), v_pblh, model_device(6), model_device_index(6))
+        v_cush => bi_compute_uwshcu_inv_cush
+        call torch_tensor_from_array(in_t(19), v_cush, model_device(6), model_device_index(6))
+        v_dpdry0_inv => bi_compute_uwshcu_inv_dpdry0_inv
+        call torch_tensor_from_array(in_t(20), v_dpdry0_inv, model_device(6), model_device_index(6))
+        op_packed => bo_compute_uwshcu_inv
+        call torch_tensor_from_array(out_t(1), op_packed, torch_kCPU)
+        call torch_model_forward(models(6), in_t, out_t)
+        call torch_delete(in_t)
+        call torch_delete(out_t)
+      end if
     case (2)
       do slot = 1, bn_compute_uwshcu_inv
         n = bcol_compute_uwshcu_inv(slot); o = boff_compute_uwshcu_inv(slot)
@@ -8312,6 +8439,7 @@ contains
     if (device_type /= torch_kCPU .and. device_type /= torch_kCUDA) then
       status = 7_c_int; return
     end if
+    call reset_graph(hook)
     if (modeled(hook) .and. .not. plugged(hook)) call torch_delete(models(hook))
     plugged(hook) = .false.; plugins(hook) = c_null_funptr
     model_device(hook) = device_type
@@ -8332,6 +8460,7 @@ contains
     integer(c_int), value, intent(in) :: hook
     status = 1_c_int
     if (hook < 1 .or. hook > nhooks) return
+    call reset_graph(hook)
     if (modeled(hook)) then
       if (.not. plugged(hook)) call torch_delete(models(hook))
       modeled(hook) = .false.
@@ -8342,6 +8471,91 @@ contains
     end if
     status = 0_c_int
   end function pycam_hooks_unbind_model_v1
+
+  integer(c_int) function pycam_hooks_set_graph_v1(hook, on) bind(C, name='pycam_hooks_set_graph_v1') result(status)
+    ! pycam_hooks_set_graph_v2 with the model's own forward
+    integer(c_int), value, intent(in) :: hook, on
+    status = pycam_hooks_set_graph_v2(hook, on, c_null_ptr)
+  end function pycam_hooks_set_graph_v1
+
+  integer(c_int) function pycam_hooks_set_graph_v2(hook, on, package) bind(C, name='pycam_hooks_set_graph_v2') &
+       result(status)
+    ! replay the bound model's batched forward as a CUDA graph (on /= 0), captured at the next
+    ! batch -- the model's own forward, or the AOTInductor package at package (a null-terminated
+    ! path the caller keeps while the graph is on) -- or answer it with the ordinary forward again
+    ! (on = 0): 0; 1 no such hook; 2 a hook without a model block; 9 no model bound on a CUDA
+    ! device; 10 a hook that does not batch
+    integer(c_int), value, intent(in) :: hook, on
+    type(c_ptr), value, intent(in) :: package
+    status = 1_c_int
+    if (hook < 1 .or. hook > nhooks) return
+    if (.not. has_model(hook)) then
+      status = 2_c_int; return
+    end if
+    call reset_graph(hook)
+    if (on == 0_c_int) then
+      status = 0_c_int; return
+    end if
+    if (.not. modeled(hook) .or. plugged(hook) .or. model_device(hook) /= torch_kCUDA) then
+      status = 9_c_int; return
+    end if
+    if (.not. can_batch(hook)) then
+      status = 10_c_int; return
+    end if
+    graph_mode(hook) = 1_c_int
+    graph_package(hook) = package
+    status = 0_c_int
+  end function pycam_hooks_set_graph_v2
+
+  integer(c_int) function pycam_hooks_graph_state_v1(hook, mode, graph_status_out, replays, capture_seconds) &
+       bind(C, name='pycam_hooks_graph_state_v1') result(status)
+    ! the hook's CUDA graph: its mode (0 off, 1 wanted, 2 replaying, 3 refused), the runner's
+    ! status at the capture, the replays so far and the capture's wall seconds
+    integer(c_int), value, intent(in) :: hook
+    integer(c_int), intent(out) :: mode, graph_status_out
+    integer(c_int64_t), intent(out) :: replays
+    real(c_double), intent(out) :: capture_seconds
+    integer(c_int64_t) :: rate
+    status = 1_c_int
+    if (hook < 1 .or. hook > nhooks) return
+    call system_clock(count_rate=rate)
+    mode = graph_mode(hook); graph_status_out = graph_status(hook); replays = graph_replays(hook)
+    capture_seconds = real(graph_ticks(hook), c_double) / real(rate, c_double)
+    status = 0_c_int
+  end function pycam_hooks_graph_state_v1
+
+  integer(c_int) function pycam_hooks_graph_compiled_v1(hook, compiled, median, largest) &
+       bind(C, name='pycam_hooks_graph_compiled_v1') result(status)
+    ! whether the hook's graph captures a compiled package (1) or the model's own forward (0), and
+    ! the package's gap from the model's answer at the capture over each output column's range,
+    ! the median column's and the largest (-1 before the capture, or without a package)
+    integer(c_int), value, intent(in) :: hook
+    integer(c_int), intent(out) :: compiled
+    real(c_double), intent(out) :: median, largest
+    status = 1_c_int
+    if (hook < 1 .or. hook > nhooks) return
+    compiled = merge(1_c_int, 0_c_int, c_associated(graph_package(hook)))
+    median = graph_gap(1, hook); largest = graph_gap(2, hook)
+    status = 0_c_int
+  end function pycam_hooks_graph_compiled_v1
+
+  integer(c_int) function pycam_hooks_graph_message_v1(buffer, length) bind(C, name='pycam_hooks_graph_message_v1') &
+       result(full)
+    ! the graph runner's last failure, in buffer (length bytes, null-terminated); its full length
+    character(kind=c_char) :: buffer(*)
+    integer(c_int), value, intent(in) :: length
+    full = pycam_torch_graph_message(buffer, length)
+  end function pycam_hooks_graph_message_v1
+
+  subroutine reset_graph(hook)
+    ! release the hook's graph, if any: it holds the bound model and device copies of the batch
+    integer(c_int), intent(in) :: hook
+    if (c_associated(graph_runners(hook))) call pycam_torch_graph_close(graph_runners(hook))
+    graph_runners(hook) = c_null_ptr
+    graph_mode(hook) = 0_c_int; graph_status(hook) = 0_c_int
+    graph_ticks(hook) = 0_c_int64_t; graph_replays(hook) = 0_c_int64_t
+    graph_package(hook) = c_null_ptr; graph_gap(:, hook) = -1.0_c_double
+  end subroutine reset_graph
 
   integer(c_int) function pycam_hooks_bind_plugin_v1(hook, plugin, shadow_flag) &
        bind(C, name='pycam_hooks_bind_plugin_v1') result(status)
@@ -8361,6 +8575,7 @@ contains
     if (armed(hook)) then
       status = 3_c_int; return
     end if
+    call reset_graph(hook)
     if (modeled(hook) .and. .not. plugged(hook)) call torch_delete(models(hook))
     plugins(hook) = plugin
     plugged(hook) = .true.

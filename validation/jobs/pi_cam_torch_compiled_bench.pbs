@@ -1,0 +1,169 @@
+#!/bin/bash
+# Submit with (one GPU node, the site's MPS):
+#   validation/jobs/submit.sh validation/jobs/pi_cam_torch_compiled_bench.pbs \
+#     -v PYCAM_MODEL=<model.pt>,PYCAM_EAGER=<eager.py:build>,PYCAM_ANCHORS=<anchors.npz>,PYCAM_FTORCH_ROOT=<CUDA FTorch>
+#PBS -N freecam-compiled-bench
+#PBS -q main
+#PBS -l select=1:ncpus=64:mpiprocs=64:ompthreads=1:ngpus=4:gpu_type=a100:mem=400GB:mps=1
+#PBS -l walltime=00:45:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+# A hooked kernel's model compiled with AOTInductor on the GPU it will run on
+# (tools/compile_torch_model.py, the package and its record into the job's directory), then its
+# batched forward timed the three ways the image can answer it (tools/bench_torch_graph.py): the
+# ordinary TorchScript forward, the CUDA graph of it, and the CUDA graph of the compiled package;
+# one process alone on GPU 0, then 32 sharing it on the 16 cores nearest it (a GPU's share of a
+# 512-rank run on four nodes).  One record: validation/pi_cam_torch_compiled_bench_<PYCAM_RUN_TAG>.json.
+#
+#   PYCAM_MODEL         the TorchScript archive the hook binds
+#   PYCAM_EAGER         <file.py>:<function>: the archive's eager form, for torch.export
+#   PYCAM_ANCHORS       an anchor dataset (one row a column, keyed by the model's input names)
+#   PYCAM_MODEL_KERNEL  the kernel slot (default compute_uwshcu_inv)
+#   PYCAM_FTORCH_ROOT   a CUDA FTorch with the graph runner that takes packages (tools/build_torch_graph.sh)
+#   PYCAM_ROWS          the batch: a rank's columns (default 27)
+#   PYCAM_PACKAGE       a package tools/compile_torch_model.py made before (its record beside it):
+#                       used instead of compiling again
+#   PYCAM_PHASES        what to time, mode:processes:rows[:tf32] each (default the three modes at
+#                       1 and 32 processes, PYCAM_ROWS rows; :tf32 lets the matrix products use
+#                       the tensor cores; rows 864 is one forward for a GPU's 32 ranks)
+#   PYCAM_PROFILE       set: Nsight Systems traces processes 1, 9, 17 and 25 of each phase (the CUDA
+#                       calls, the kernels one by one inside a graph, each timed call's NVTX range);
+#                       the record gets, call by call, their kernels' run time, the GPU's idle time
+#                       between them and the CPU's time launching them (tools/bench_torch_graph.py
+#                       profile-summary).  The other processes run untraced beside them
+#   PYCAM_RUN_TAG       names the record (default v4)
+
+set -euo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+kernel=${PYCAM_MODEL_KERNEL:-compute_uwshcu_inv}
+rows=${PYCAM_ROWS:-27}
+tag=${PYCAM_RUN_TAG:-v4}
+prefix=$(realpath "${PYCAM_FTORCH_ROOT:-${repo}/build/ftorch-cuda}")
+for name in PYCAM_MODEL PYCAM_EAGER PYCAM_ANCHORS; do
+  if [ -z "${!name:-}" ]; then echo "${name} is required" >&2; exit 2; fi
+done
+if [ "$(cat "${prefix}/gpu_device" 2>/dev/null)" != CUDA ] || [ "$(cat "${prefix}/torch_graph" 2>/dev/null)" != ON ]; then
+  echo "${prefix} is not a CUDA FTorch with the CUDA graph runner" >&2; exit 2
+fi
+# the Python whose libtorch the FTorch was built against: the package must be compiled by it
+torch_lib=$(cat "${prefix}/torch_lib_dir")
+# (the venv's own python, not the interpreter it links to: that one has no venv packages)
+python=$(cd "${torch_lib}/../../../../.." && pwd)/bin/python
+gcc_root=$(realpath "$(cat "${prefix}/cxx_runtime_dir")/..")
+root=${FREECAM_SCRATCH}/freeCAM/compiled-bench-${tag}-${PBS_JOBID}
+mkdir -p "${root}"
+
+export PYTORCH_TENSOREXPR=0 CUDA_MODULE_LOADING=LAZY OMP_NUM_THREADS=1
+# Inductor's host compiler: the GCC libtorch's C++ runtime comes from, not the environment's
+export CXX=${gcc_root}/bin/g++ CC=${gcc_root}/bin/gcc
+export LD_LIBRARY_PATH=${gcc_root}/lib64:${LD_LIBRARY_PATH:-}
+export TORCHINDUCTOR_CACHE_DIR=${root}/inductor-cache TRITON_CACHE_DIR=${root}/triton-cache
+# the package's C++ wrapper is compiled against a CUDA toolkit's headers: CUDA_HOME, else the
+# toolkit of nvcc on the PATH, else the site's cuda module
+if [ -z "${CUDA_HOME:-}" ]; then
+  if ! command -v nvcc >/dev/null 2>&1 && [ -n "${MODULESHOME:-}" ]; then
+    set +u                                     # the module system reads unset variables
+    source "${MODULESHOME}/init/bash" && module load cuda >/dev/null 2>&1 || true
+    set -u
+  fi
+  if command -v nvcc >/dev/null 2>&1; then
+    export CUDA_HOME=$(dirname "$(dirname "$(command -v nvcc)")")
+  fi
+fi
+echo "CUDA_HOME=${CUDA_HOME:-none}"
+nsys=${CUDA_HOME:+${CUDA_HOME}/bin/nsys}
+if [ -n "${PYCAM_PROFILE:-}" ] && [ ! -x "${nsys}" ]; then
+  echo "PYCAM_PROFILE needs Nsight Systems: no nsys under CUDA_HOME" >&2; exit 2
+fi
+cd "${repo}"
+echo "--- node $(hostname), $(date)"
+nvidia-smi --query-gpu=index,name,compute_mode --format=csv,noheader
+
+if [ -n "${PYCAM_PACKAGE:-}" ]; then
+  echo "--- the package made before: ${PYCAM_PACKAGE##*/}"
+  cp "${PYCAM_PACKAGE}" "${root}/model.pt2" && cp "${PYCAM_PACKAGE}.json" "${root}/model.pt2.json"
+else
+  echo "--- compile on the first GPU"
+  "${python}" tools/compile_torch_model.py "${kernel}" "${PYCAM_MODEL}" "${PYCAM_EAGER}" \
+    "${PYCAM_ANCHORS}" --output "${root}/model.pt2" --device cuda --rows "${rows}"
+fi
+
+# (the table read whole first: an awk that stops early would end nvidia-smi on a broken pipe)
+topo=$(nvidia-smi topo -m)
+aff=$(awk '$1=="GPU0"{for(i=2;i<=NF;i++) if($i ~ /^[0-9]+-[0-9]+/){print $i; exit}}' <<< "${topo}")
+first=${aff%%,*}; lo=${first%-*}
+cores16=""
+for c in $(seq "${lo}" $((lo + 15))); do
+  cores16="${cores16:+${cores16},}$(cat /sys/devices/system/cpu/cpu${c}/topology/thread_siblings_list)"
+done
+
+phase() {   # mode nprocs rows [tf32]
+  local mode=$1 n=$2 r=$3 tf=${4:-}
+  local label=${mode}-${n}-${r}${tf:+-tf32} bar=${root}/bar-${mode}-${n}-${r}${tf:+-tf32}
+  local out=${root}/${label}.jsonl flags=()
+  [ -n "${tf}" ] && flags+=(--tf32)
+  rm -rf "${bar}" "${out}"; mkdir -p "${bar}"
+  local traced=()
+  for i in $(seq 1 "${n}"); do
+    local wrap=() pflags=()
+    if [ -n "${PYCAM_PROFILE:-}" ] && (( (i - 1) % 8 == 0 )); then
+      wrap=("${nsys}" profile --trace=cuda,nvtx --cuda-graph-trace=node --capture-range=cudaProfilerApi
+            --capture-range-end=stop --sample=none --cpuctxsw=none --force-overwrite=true -o "${root}/${label}.${i}")
+      pflags=(--profile)
+      traced+=("${root}/${label}.${i}")
+    fi
+    timeout 900 taskset -c "${cores16}" ${wrap[@]+"${wrap[@]}"} "${python}" tools/bench_torch_graph.py proc "${mode}" \
+      "${PYCAM_MODEL}" "${PYCAM_ANCHORS}" "${bar}" "${n}" "${out}" --package "${root}/model.pt2" \
+      --ftorch-root "${prefix}" --kernel "${kernel}" --rows "${r}" ${flags[@]+"${flags[@]}"} ${pflags[@]+"${pflags[@]}"} \
+      > "${root}/${label}.${i}.log" 2>&1 &
+  done
+  wait
+  "${python}" tools/bench_torch_graph.py summarize "${out}" --mode "${mode}" --procs "${n}" | tee -a "${root}/phases.jsonl"
+  if (( ${#traced[@]} )); then
+    local sqlite=()
+    for report in "${traced[@]}"; do
+      if [ -f "${report}.nsys-rep" ] && "${nsys}" export --type sqlite --force-overwrite true \
+           --output "${report}.sqlite" "${report}.nsys-rep" > /dev/null 2>&1; then
+        sqlite+=("${report}.sqlite")
+      fi
+    done
+    if (( ${#sqlite[@]} )); then
+      "${python}" tools/bench_torch_graph.py profile-summary "${sqlite[@]}" --mode "${mode}" --procs "${n}" \
+        | tee -a "${root}/profiles.jsonl" || true
+    else
+      echo "no trace exported for ${label}" | tee -a "${root}/profiles.jsonl"
+    fi
+  fi
+}
+phases=${PYCAM_PHASES:-"ordinary:1:${rows} graph:1:${rows} compiled:1:${rows} ordinary:32:${rows} graph:32:${rows} compiled:32:${rows}"}
+echo "--- ${phases} (the 32 sharing GPU 0 on its 16 nearest cores)"
+for spec in ${phases}; do
+  IFS=: read -r mode n r tf <<< "${spec}"
+  phase "${mode}" "${n}" "${r}" "${tf}"
+done
+
+"${python}" - "${root}" "${repo}/validation/pi_cam_torch_compiled_bench_${tag}.json" "${PBS_JOBID}" \
+  "$(git rev-parse HEAD)" "${root#${FREECAM_SCRATCH}/}" <<'PY'
+import json, sys
+from pathlib import Path
+root, record_path, job, commit, label = Path(sys.argv[1]), Path(sys.argv[2]), *sys.argv[3:]
+compiled = json.loads((root / "model.pt2.json").read_text())
+phases = [json.loads(line) for line in (root / "phases.jsonl").read_text().splitlines()]
+traces = root / "profiles.jsonl"
+profiles = [json.loads(line) for line in traces.read_text().splitlines() if line.startswith("{")] if traces.is_file() else []
+record = {"schema_version": 1,
+          "what": "A hooked kernel's model compiled with AOTInductor, and its batched forward timed on one A100: "
+                  "the ordinary TorchScript forward, its CUDA graph, and the CUDA graph of the compiled package (the "
+                  "image's runner, as the hook drives it), alone or with processes sharing the GPU through MPS, a "
+                  "rank's columns or a GPU's, float32 or TF32 matrix products, as each phase says",
+          "pbs_job_id": job, "git_commit": commit, "root": label,
+          "compile": compiled, "phases": phases, **({"profiles": profiles} if profiles else {})}
+record_path.write_text(json.dumps(record, indent=2) + "\n")
+print("wrote", record_path)
+PY
+echo "--- done $(date)"

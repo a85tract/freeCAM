@@ -1787,7 +1787,8 @@ class NativeStage:
         A slot whose model changed is rebound; a slot emptied is unbound.
         """
 
-        from freecam.pi_cam.hooks import bind_hook_model, bind_hook_plugin, load_hooks, unbind_hook_model
+        from freecam.pi_cam.hooks import (bind_hook_model, bind_hook_plugin, load_hooks, set_hook_graph, set_hook_tf32,
+                                          unbind_hook_model)
 
         bound: dict[str, str] = getattr(self, "_native_bound", {})
         wanted = self._hook_bindings()
@@ -1819,6 +1820,16 @@ class NativeStage:
                 else:
                     bind_hook_model(native.library, hook.id, model.path, shadow=model.shadow,
                                     device=model.device, device_index=model.resolved_device_index())
+                    if model.device == "cuda":
+                        # before the graph: a capture keeps the matrix-product mode in force then
+                        set_hook_tf32(native.library, hook.id, getattr(model, "tf32", False))
+                    if getattr(model, "graph", False):
+                        compiled = getattr(model, "compiled", None)
+                        if compiled is not None and model.compiled_kernel != name:
+                            raise PhysicsError(f"{model.compiled.name} was compiled for {model.compiled_kernel!r}, "
+                                               f"not {name!r}")
+                        set_hook_graph(native.library, hook.id, True,
+                                       package=None if compiled is None else str(compiled))
                 bound[name] = keys[name]
         self._native_bound = bound
 

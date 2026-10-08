@@ -42,6 +42,11 @@ LEGS = {
     "N": "M with every chunk of a rank answered by one forward a step (--batch-chunks): the kernel's inputs "
          "gathered for every chunk before the stage runs, each call taking its chunk's rows",
     "H": "G with every chunk of a rank answered by one forward a step (--batch-chunks)",
+    "R": "H with the batched forward captured as a CUDA graph at the first batch and replayed after "
+         "(--model-graph)",
+    "F": "R with the graph capturing an AOTInductor package of the model, its element-wise work fused "
+         "(--model-compiled)",
+    "T": "F with the float32 matrix products as TF32 on the GPU's tensor cores (--model-tf32)",
 }
 _MPS_LINE = re.compile(r"GPU (?P<gpu>\d+) servers \[(?P<servers>[^\]]*)\] client disconnects (?P<clients>\d+) "
                        r"log faults (?P<faults>\d+)")
@@ -93,6 +98,9 @@ def model_cost(hooks: dict[str, Any] | None, kernel: str) -> dict[str, Any]:
         }
         if total is not None and ranks:
             cost["model_seconds_per_rank"] = (total + batch["forward_seconds"]) / ranks
+    if row.get("graph"):
+        # the ranks that replay the forward as a CUDA graph, and those refused with the reason
+        cost["graph"] = row["graph"]
     return cost
 
 
@@ -136,6 +144,40 @@ def original_leg(run: Path, executable: Path | None) -> dict[str, Any]:
     }
 
 
+def steady_steps(run_dir: Path, stages: list[str] | None) -> dict[str, Any] | None:
+    """The detail rank's steps with the slowest left out, from its timing report.
+
+    The slowest step is the first: it binds a model (on a GPU, the context, the archive and its
+    warm-up forwards), a one-time cost that moves by many seconds between runs of the same image.
+    """
+
+    report = run_dir / "timing" / "freecam_timing.0000"
+    if not report.is_file():
+        return None
+    rows: dict[str, tuple[int, float, float]] = {}
+    path: list[str] = []
+    for line in report.read_text().splitlines():
+        parts = line.split()
+        if len(parts) != 5 or not parts[1].isdigit():
+            continue
+        depth = (len(line) - len(line.lstrip(" "))) // 2
+        path = path[:depth] + [parts[0]]
+        rows["/".join(path)] = (int(parts[1]), float(parts[2]), float(parts[3]))
+
+    def per_step(key: str) -> float | None:
+        calls, total, slowest = rows.get(key, (0, 0.0, 0.0))
+        return (total - slowest) / (calls - 1) if calls > 1 else None
+
+    step = "FREECAM:TOTAL/FREECAM:STEP"
+    if step not in rows:
+        return None
+    return {"rank": 0, "steps": rows[step][0], "slowest_step_seconds": rows[step][2],
+            "seconds_per_step_without_slowest": per_step(step),
+            "stage_seconds_per_step_without_slowest": {
+                name: per_step(f"{step}/CAM:{name}_python") for name in stages or []
+                if f"{step}/CAM:{name}_python" in rows}}
+
+
 def freecam_leg(directory: Path, kernel: str) -> dict[str, Any]:
     summary = _load(directory / "summary.json")
     if summary is None:
@@ -167,6 +209,11 @@ def freecam_leg(directory: Path, kernel: str) -> dict[str, Any]:
         "mps": mps_evidence(directory / "mps.txt"),
         "bfb": bfb.get("bfb"),
         "bfb_files": bfb.get("compared_files"),
+        # another leg's output compared with this one's (R with H: the graph changes no answer)
+        **{f"bfb_vs_{path.stem.removeprefix('bfb_vs_')}": {"bfb": other.get("bfb"),
+                                                         "files": other.get("compared_files")}
+           for path in sorted(directory.glob("bfb_vs_*.json")) if (other := _load(path)) is not None},
+        "steady_steps": steady_steps(directory / "cam-run", summary.get("python_stages")),
         "peak_rank_rss_bytes": samples[-1].get("maximum_rank_rss_bytes") if samples else None,
         "total_rss_bytes": samples[-1].get("total_rss_bytes") if samples else None,
         "health": None if health is None else health.get("counts"),
@@ -175,10 +222,21 @@ def freecam_leg(directory: Path, kernel: str) -> dict[str, Any]:
     }
 
 
+_PAIRS = [(x, "A") for x in "CMGNHRFT"] + [("M", "C"), ("G", "C"), ("G", "M"), ("N", "M"), ("H", "G"), ("H", "N"),
+                                            ("R", "H"), ("F", "R"), ("F", "H"), ("T", "R"), ("T", "F")]
+
+
 def ratios(legs: dict[str, dict[str, Any]]) -> dict[str, float]:
     loops = {name: leg.get("coupling_loop_seconds") for name, leg in legs.items() if leg.get("completed")}
-    pairs = [(x, "A") for x in "CMGNH"] + [("M", "C"), ("G", "C"), ("G", "M"), ("N", "M"), ("H", "G"), ("H", "N")]
-    return {f"{x}/{y}": loops[x] / loops[y] for x, y in pairs if loops.get(x) and loops.get(y)}
+    return {f"{x}/{y}": loops[x] / loops[y] for x, y in _PAIRS if loops.get(x) and loops.get(y)}
+
+
+def steady_ratios(legs: dict[str, dict[str, Any]]) -> dict[str, float]:
+    """The freeCAM legs' ratios step for step, the binding step left out (A has no such step)."""
+
+    steps = {name: (leg.get("steady_steps") or {}).get("seconds_per_step_without_slowest")
+             for name, leg in legs.items() if leg.get("completed")}
+    return {f"{x}/{y}": steps[x] / steps[y] for x, y in _PAIRS if steps.get(x) and steps.get(y)}
 
 
 def main() -> int:
@@ -189,7 +247,7 @@ def main() -> int:
     parser.add_argument("--a-executable", type=Path)
     parser.add_argument("--hardware", default="", help="the nodes and layout the legs shared")
     parser.add_argument("--gpu-mps", choices=("own", "site"), default="own",
-                        help="whose MPS server G's ranks reached: the job's own, one a GPU, or the site's")
+                        help="whose MPS server the GPU legs' ranks reached: the job's own, one a GPU, or the site's")
     parser.add_argument("--root-label", default="", help="the root as the record names it (no site directory)")
     parser.add_argument("--pbs-job-id")
     parser.add_argument("--git-commit")
@@ -225,12 +283,13 @@ def main() -> int:
         "pbs_job_id": arguments.pbs_job_id,
         "git_commit": arguments.git_commit,
         "hardware": arguments.hardware,
-        "gpu_mps": arguments.gpu_mps if set("GH") & set(arguments.legs) else None,
+        "gpu_mps": arguments.gpu_mps if set("GHRFT") & set(arguments.legs) else None,
         "root": arguments.root_label or None,
         "order": arguments.legs,
         "kernel": arguments.kernel,
         "legs": legs,
         "ratios": ratios(legs),
+        "steady_ratios": steady_ratios(legs),
     }
     arguments.output.write_text(json.dumps(record, indent=2) + "\n")
     line = " | ".join(f"{name} {leg.get('coupling_loop_seconds') or float('nan'):.1f} s"

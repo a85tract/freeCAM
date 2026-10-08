@@ -641,7 +641,12 @@ def main() -> int:
         torch_lib = Path(recorded_torch_lib.read_text().strip())   # the libtorch FTorch was built against
     else:
         torch_lib = _torch_lib_dir()
-    ftorch_link = [f"-L{ftorch_lib}", "-lftorch", f"-Wl,-rpath,{ftorch_lib}", f"-Wl,-rpath,{torch_lib}"]
+    # the CUDA graph runner the hooks replay a bound model's forward with, built beside FTorch
+    # (tools/build_torch_graph.sh): the runner for a CUDA FTorch, a stub that refuses for a CPU one
+    torch_graph = ftorch_lib / "libpycam_torch_graph.so"
+    if not torch_graph.is_file():
+        raise RuntimeError(f"{torch_graph} is missing: run tools/build_torch_graph.sh {ftorch_root}")
+    ftorch_link = [f"-L{ftorch_lib}", "-lftorch", "-lpycam_torch_graph", f"-Wl,-rpath,{ftorch_lib}", f"-Wl,-rpath,{torch_lib}"]
     gpu_device = ftorch_root / "gpu_device"                  # written by tools/build_ftorch.sh
     if gpu_device.is_file() and gpu_device.read_text().strip() not in ("", "NONE"):
         ftorch_link.extend(f"-Wl,-rpath,{directory}" for directory in _wheel_cuda_lib_dirs(torch_lib))
@@ -1315,7 +1320,10 @@ def main() -> int:
         "capture_executable": str(capture_executable),
         "capture_executable_sha256": _sha256(capture_executable),
         "ftorch": {"root": str(ftorch_root), "library": str(ftorch_lib / "libftorch.so"),
-                   "library_sha256": _sha256(ftorch_lib / "libftorch.so"), "torch_lib": str(torch_lib)},
+                   "library_sha256": _sha256(ftorch_lib / "libftorch.so"), "torch_lib": str(torch_lib),
+                   "torch_graph": str(torch_graph), "torch_graph_sha256": _sha256(torch_graph),
+                   "torch_graph_cuda": (ftorch_root / "torch_graph").read_text().strip() == "ON"
+                   if (ftorch_root / "torch_graph").is_file() else False},
         "capture_link_command": capture_link,
         "driver_link_objects": driver_objects,
         "fixed_link_command": fixed_link,

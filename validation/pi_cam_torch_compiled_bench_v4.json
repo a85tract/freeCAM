@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "what": "A hooked kernel's model compiled with AOTInductor, and its batched forward timed on one A100 three ways: the ordinary TorchScript forward, its CUDA graph, and the CUDA graph of the compiled package (the image's runner, as the hook drives it), one process alone and 32 sharing the GPU through MPS",
+  "pbs_job_id": "7752711.desched1",
+  "git_commit": "6c7793830891d91c75541c6d5a454bf9d5814181",
+  "root": "freeCAM/compiled-bench-v4-7752711.desched1",
+  "compile": {
+    "schema_version": 1,
+    "what": "Compile a hooked kernel's TorchScript model with AOTInductor: its forward as fused kernels.",
+    "kernel": "compute_uwshcu_inv",
+    "model": "uwshcu_trigger_gated_r5_v4.pt",
+    "model_sha256": "fd64c5a9dbb9b14e590b7883a6fabc142ee8af9f37b78e4dcf2dca2da6011a5b",
+    "eager": "v4_eager.py:build",
+    "torch": "2.14.0+cu126",
+    "cuda": "12.6",
+    "device": "cuda",
+    "gpu": "NVIDIA A100-SXM4-40GB",
+    "inputs": [
+      "dt",
+      "ps0_inv",
+      "zs0_inv",
+      "p0_inv",
+      "z0_inv",
+      "dp0_inv",
+      "u0_inv",
+      "v0_inv",
+      "qv0_inv",
+      "ql0_inv",
+      "qi0_inv",
+      "t0_inv",
+      "s0_inv",
+      "tr0_inv",
+      "tke_inv",
+      "cldfrct_inv",
+      "concldfrct_inv",
+      "pblh",
+      "cush",
+      "dpdry0_inv"
+    ],
+    "rows": {
+      "min": 2,
+      "max": 4096
+    },
+    "layout": "C-contiguous",
+    "eager_vs_torchscript": {
+      "bit_for_bit": true,
+      "scaled_gap": 0.0,
+      "scaled_gap_median": 0.0,
+      "columns": 1190,
+      "columns_over_1e-3": 0,
+      "max_abs_diff": 0.0,
+      "values_differing": 0,
+      "values": 32130,
+      "non_finite_mismatch": 0
+    },
+    "eager_vs_torchscript_on_device": {
+      "bit_for_bit": false,
+      "scaled_gap": 0.00010176720216336788,
+      "scaled_gap_median": 0.0,
+      "columns": 1190,
+      "columns_over_1e-3": 0,
+      "max_abs_diff": 0.033398718759144685,
+      "values_differing": 2588,
+      "values": 32130,
+      "non_finite_mismatch": 0
+    },
+    "torchscript_device_vs_cpu": {
+      "bit_for_bit": false,
+      "scaled_gap": 0.3301566464171141,
+      "scaled_gap_median": 0.0,
+      "columns": 1190,
+      "columns_over_1e-3": 342,
+      "max_abs_diff": 13.348697148405336,
+      "values_differing": 2768,
+      "values": 32130,
+      "non_finite_mismatch": 0
+    },
+    "export_seconds": 30.6654643882066,
+    "compile_seconds": 90.75318775512278,
+    "package": "model.pt2",
+    "package_sha256": "9216399cea1cef95ec2b10a0b25afc5e407f8d82f27787e24282191e290c03f4",
+    "compiled_vs_torchscript": {
+      "2 rows": {
+        "bit_for_bit": false,
+        "scaled_gap": 1.6499905685016144e-07,
+        "scaled_gap_median": 0.0,
+        "columns": 1190,
+        "columns_over_1e-3": 0,
+        "max_abs_diff": 3.8166711680215695e-16,
+        "values_differing": 911,
+        "values": 2380,
+        "non_finite_mismatch": 0
+      },
+      "27 rows": {
+        "bit_for_bit": false,
+        "scaled_gap": 0.24751936769741448,
+        "scaled_gap_median": 6.807212067780875e-10,
+        "columns": 1190,
+        "columns_over_1e-3": 343,
+        "max_abs_diff": 13.337906793113689,
+        "values_differing": 13280,
+        "values": 32130,
+        "non_finite_mismatch": 0
+      },
+      "64 rows": {
+        "bit_for_bit": false,
+        "scaled_gap": 0.09969970238243367,
+        "scaled_gap_median": 2.443159841555958e-09,
+        "columns": 1190,
+        "columns_over_1e-3": 425,
+        "max_abs_diff": 33.78768537617725,
+        "values_differing": 31483,
+        "values": 76160,
+        "non_finite_mismatch": 0
+      },
+      "27 rows, last 3 padding": {
+        "bit_for_bit": false,
+        "scaled_gap": 0.24751936769741448,
+        "scaled_gap_median": 6.807212067780875e-10,
+        "columns": 1190,
+        "columns_over_1e-3": 343,
+        "max_abs_diff": 13.337906793113689,
+        "values_differing": 11818,
+        "values": 32130,
+        "non_finite_mismatch": 0,
+        "padding_rows_zero": true
+      }
+    },
+    "ms_per_forward": {
+      "torchscript": 8.292234605178237,
+      "compiled": 1.1994043691083789,
+      "rows": 27,
+      "processes": 1
+    }
+  },
+  "phases": [
+    {
+      "mode": "ordinary",
+      "processes": 1,
+      "finished": 1,
+      "refused": [],
+      "ms_per_forward_median": 8.014007937163115,
+      "ms_per_forward_slowest": 8.014007937163115
+    },
+    {
+      "mode": "graph",
+      "processes": 1,
+      "finished": 1,
+      "refused": [],
+      "ms_per_forward_median": 3.010571002960205,
+      "ms_per_forward_slowest": 3.010571002960205,
+      "capture_seconds_max": 0.8999778842553496
+    },
+    {
+      "mode": "compiled",
+      "processes": 1,
+      "finished": 1,
+      "refused": [],
+      "ms_per_forward_median": 1.7770705744624138,
+      "ms_per_forward_slowest": 1.7770705744624138,
+      "compiled_gap": {
+        "median_largest": 6.807212067780875e-10,
+        "max": 0.24751936769741448
+      },
+      "capture_seconds_max": 1.4622782249934971
+    },
+    {
+      "mode": "ordinary",
+      "processes": 32,
+      "finished": 32,
+      "refused": [],
+      "ms_per_forward_median": 40.24179058615118,
+      "ms_per_forward_slowest": 40.40607041679323
+    },
+    {
+      "mode": "graph",
+      "processes": 32,
+      "finished": 32,
+      "refused": [],
+      "ms_per_forward_median": 14.664263930171728,
+      "ms_per_forward_slowest": 14.707880560308695,
+      "capture_seconds_max": 5.770392137113959
+    },
+    {
+      "mode": "compiled",
+      "processes": 32,
+      "finished": 32,
+      "refused": [],
+      "ms_per_forward_median": 15.411470201797783,
+      "ms_per_forward_slowest": 15.488802222535014,
+      "compiled_gap": {
+        "median_largest": 6.807212067780875e-10,
+        "max": 0.24751936769741448
+      },
+      "capture_seconds_max": 2.014340905006975
+    }
+  ]
+}

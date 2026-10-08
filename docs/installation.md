@@ -190,7 +190,13 @@ than producing its own.
    ```
 
    (a CUDA torch wheel of the same torch version as the checkout's, e.g. from
-   the `cu126` index; the toolkit's major version must be the wheel's).  The
+   the `cu126` index; the toolkit's major version must be the wheel's).
+   `build_ftorch.sh` also builds `libpycam_torch_graph.so` beside `libftorch.so`
+   (`tools/build_torch_graph.sh <prefix>` builds it alone, for a prefix built
+   before it): the CUDA graph runner a GPU model's `graph=True` uses, compiled
+   with FTorch's own C++ compiler against its libtorch; for a CPU FTorch, a stub
+   that refuses every graph.  The image links it from the FTorch prefix and
+   refuses to build without it.  The
    prefix records the libtorch it was built against, and an image built with
    `FREECAM_FTORCH_ROOT=$PWD/build/ftorch-cuda` links and rpaths that one, so
    it runs on GPU nodes only.  Both rpaths list the CUDA libraries the wheel
