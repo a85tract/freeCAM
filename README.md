@@ -111,6 +111,10 @@ nodes, rounded up) -- through PBS, charged to `FREECAM_ACCOUNT`. Leaving the
 
 ## Documentation and examples
 
+The project site, https://a85tract.github.io/freeCAM/, opens on the
+documentation pages: the architecture and the GPU model's pages, with links
+to the Workflow Builder preview and the implementation progress.
+
 Using freeCAM:
 
 - [docs/installation.md](docs/installation.md): site configuration, the
@@ -135,8 +139,8 @@ Using freeCAM:
   and [generate_compute_uwshcu_inv_training_data.ipynb](examples/generate_compute_uwshcu_inv_training_data.ipynb)
   generate training data for `mmacro_pcond` and for the shallow cumulus
   kernel from real columns, answered by the original Fortran.
-- The Workflow Builder preview at https://a85tract.github.io/freeCAM/: the
-  page without a model behind it; how to use it is in
+- The Workflow Builder preview at https://a85tract.github.io/freeCAM/builder/:
+  the page without a model behind it; how to use it is in
   [docs/usage.md](docs/usage.md#the-workflow-builder).
 
 Evidence:

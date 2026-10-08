@@ -78,10 +78,11 @@ process without inventory shows *Not inventoried*, not 0/0 = 100 %.
 ## How it is published
 
 `.github/workflows/pages.yml` builds one composite site per deployment: the
-homepage and the dashboard both from `main` (the development branch the
-dashboard followed until 2026-09-13 was merged and deleted), assembled and
-pushed to `gh-pages` together, so neither publication can delete the other.
-Pushes to `main` (and manual dispatch) republish the whole site; pull requests
-build previews of both halves from their own commit without publishing.
-`site-manifest.json` at the site root records the
-exact commits of both halves.
+documentation pages (`web/site`, the site's root sending visitors to
+`/freeCAM/docs/`), the Workflow Builder at `/freeCAM/builder/` and the
+dashboard, all from `main` (the development branch the dashboard followed
+until 2026-09-13 was merged and deleted), assembled and pushed to `gh-pages`
+together, so no publication can delete another.  Pushes to `main` (and manual
+dispatch) republish the whole site; pull requests build previews from their
+own commit without publishing.  `site-manifest.json` at the site root records
+the exact commits of the parts.

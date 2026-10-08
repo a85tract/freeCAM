@@ -113,7 +113,7 @@ export default function App({ load }: { load?: () => Promise<Snapshot> }) {
             file (<code>progress.json</code>) and shows nothing without it.
           </p>
           <p>
-            <a href="../">Back to the Workflow Builder</a>
+            <a href="../builder/">Back to the Workflow Builder</a>
           </p>
         </main>
       </div>
@@ -187,7 +187,8 @@ export default function App({ load }: { load?: () => Promise<Snapshot> }) {
       </div>
       <footer>
         <span>{snapshot.notes.snapshot}</span>
-        <a href="../">Workflow Builder</a>
+        <a href="../docs/">Docs</a>
+        <a href="../builder/">Workflow Builder</a>
       </footer>
     </div>
   );

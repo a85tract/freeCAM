@@ -1,13 +1,15 @@
 name: Site
 
-# One composite site, published in a single deployment so neither half can
-# delete the other:
-#   /freeCAM/           the Workflow Builder homepage, always built from main
-#   /freeCAM/progress/  the implementation-progress dashboard, built from the
-#                       same main checkout (a published snapshot of committed
-#                       records -- never a live job monitor)
-# Pushes to main and manual dispatch rebuild and publish the whole site; pull
-# requests build previews of both halves from their own commit without
+# One composite site, published in a single deployment so no part can delete
+# another:
+#   /freeCAM/           the homepage: sends the visitor on to the documentation
+#   /freeCAM/docs/      the documentation pages (web/site, copied as they are)
+#   /freeCAM/builder/   the Workflow Builder preview
+#   /freeCAM/progress/  the implementation-progress dashboard (a published
+#                       snapshot of committed records -- never a live job
+#                       monitor)
+# all built from main.  Pushes to main and manual dispatch rebuild and publish
+# the whole site; pull requests build previews from their own commit without
 # publishing.  The development branch the dashboard once followed was merged
 # into main and deleted (PR #13).  If any required build or export fails the
 # deployment fails and the last successful public site stays up; development
@@ -27,15 +29,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  homepage:
+  builder:
     runs-on: ubuntu-latest
     outputs:
       commit: ${{ steps.commit.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # a pull request against main previews its own homepage; everything
-          # else builds the homepage from main
+          # a pull request against main previews its own builder and pages;
+          # everything else builds them from main
           ref: ${{ (github.event_name == 'pull_request' && github.base_ref == 'main') && github.sha || 'main' }}
       - id: commit
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -57,13 +59,18 @@ jobs:
       - name: Type-check and test the page (the export contract tests spawn the checkout's Python)
         working-directory: web
         run: npm run typecheck && npm test
-      - name: Build the homepage for the project site path
+      - name: Build the Workflow Builder for its subpath
         working-directory: web
         run: npm run build:pages
       - uses: actions/upload-artifact@v4
         with:
-          name: site-homepage
+          name: site-builder
           path: web/dist-pages
+      - name: Keep the homepage and documentation pages from the same commit
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-pages
+          path: web/site
 
   progress:
     runs-on: ubuntu-latest
@@ -111,13 +118,17 @@ jobs:
           path: web/dist-progress
 
   publish:
-    needs: [homepage, progress]
+    needs: [builder, progress]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: site-homepage
+          name: site-pages
           path: site
+      - uses: actions/download-artifact@v4
+        with:
+          name: site-builder
+          path: site/builder
       - uses: actions/download-artifact@v4
         with:
           name: site-progress
@@ -126,7 +137,7 @@ jobs:
         run: |
           cat > site/site-manifest.json <<EOF
           {
-            "homepage_commit": "${{ needs.homepage.outputs.commit }}",
+            "builder_and_docs_commit": "${{ needs.builder.outputs.commit }}",
             "progress_commit": "${{ needs.progress.outputs.commit }}",
             "workflow_run": "${{ github.run_id }}",
             "trigger": "${{ github.event_name }} on ${{ github.ref_name }}"
@@ -137,15 +148,17 @@ jobs:
           python3 -m http.server 8123 --directory site &
           sleep 2
           set -e
-          for path in /index.html /progress/ /progress/index.html /progress/progress.json /site-manifest.json; do
+          for path in /index.html /docs/ /docs/index.html /docs/architecture.html /builder/ /builder/index.html /builder/catalog.json /progress/ /progress/index.html /progress/progress.json /site-manifest.json; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8123${path}")
             echo "${code} ${path}"
             test "${code}" = "200"
           done
-          asset=$(grep -o 'src="[^"]*assets/[^"]*"' site/progress/index.html | head -1 | sed 's/src="\/freeCAM//; s/"//g')
-          code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8123${asset}")
-          echo "${code} ${asset}"
-          test "${code}" = "200"
+          for page in builder progress; do
+            asset=$(grep -o 'src="[^"]*assets/[^"]*"' "site/${page}/index.html" | head -1 | sed 's/src="\/freeCAM//; s/"//g')
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8123${asset}")
+            echo "${code} ${asset}"
+            test "${code}" = "200"
+          done
           kill %1
       - name: Keep the preview build
         uses: actions/upload-artifact@v4
@@ -161,4 +174,4 @@ jobs:
           publish_branch: gh-pages
           force_orphan: true
           enable_jekyll: false
-          commit_message: "Publish the site: homepage ${{ needs.homepage.outputs.commit }}, progress ${{ needs.progress.outputs.commit }}"
+          commit_message: "Publish the site: docs and builder ${{ needs.builder.outputs.commit }}, progress ${{ needs.progress.outputs.commit }}"
