@@ -40,14 +40,15 @@
 #      bit for bit;
 #   F  R with the graph capturing PYCAM_MODEL_COMPILED, an AOTInductor package of the model
 #      (--model-compiled; tools/compile_torch_model.py): its element-wise work fused.  Not
-#      bit-for-bit with R: its drift from the oracle month is recorded as the other model legs'.
+#      bit-for-bit with R: its drift from the oracle month is recorded as the other model legs';
+#   T  F with the float32 matrix products as TF32 on the tensor cores (--model-tf32).
 #
 # M and G are not bit-for-bit by construction: their drift from the oracle month and their
 # health (the log's repair counts) are recorded instead.  One record for the allocation:
 # validation/pi_cam_online_model_1month_<PYCAM_RUN_TAG>.json (tools/report_pi_cam_online_legs.py).
 #
-#   PYCAM_LEGS             the legs in run order, from A C M G N H R F (default ACM)
-#   PYCAM_BATCH_STAGE      the stage N, H, R and F batch (default shallow_convection)
+#   PYCAM_LEGS             the legs in run order, from A C M G N H R F T (default ACM)
+#   PYCAM_BATCH_STAGE      the stage N, H, R, F and T batch (default shallow_convection)
 #   PYCAM_STEPS            the steps each leg runs (default 1488, the month)
 #   PYCAM_TIMELINE         set: every freeCAM leg records its ranks' action timeline
 #   PYCAM_NTASKS           the MPI ranks every leg runs on, spread evenly over the job's nodes
@@ -55,8 +56,8 @@
 #                          the seed's drv_in lays the components out over it (CICE keeps its
 #                          compiled 128 tasks), freeCAM runs a copy of the config with that
 #                          mpi_size, and the record is named for the steps and ranks
-#   PYCAM_MODEL            the TorchScript archive for M, G, N, H, R and F
-#   PYCAM_MODEL_COMPILED   F's AOTInductor package of PYCAM_MODEL (its record beside it)
+#   PYCAM_MODEL            the TorchScript archive for M, G, N, H, R, F and T
+#   PYCAM_MODEL_COMPILED   F's and T's AOTInductor package of PYCAM_MODEL (its record beside it)
 #   PYCAM_MODEL_KERNEL     the kernel slot it answers (default compute_uwshcu_inv)
 #   PYCAM_PYTHON_STAGES    the stage classes installed in every freeCAM leg (default
 #                          shallow_convection, the class that owns compute_uwshcu_inv)
@@ -88,12 +89,12 @@ case "${mps_mode}" in
   *) echo "PYCAM_GPU_MPS_MODE is own or site, not '${mps_mode}'" >&2; exit 2 ;;
 esac
 case "${legs}" in
-  *[!ACMGNHRF]*|"") echo "PYCAM_LEGS takes the letters A C M G N H R F, not '${legs}'" >&2; exit 2 ;;
+  *[!ACMGNHRFT]*|"") echo "PYCAM_LEGS takes the letters A C M G N H R F T, not '${legs}'" >&2; exit 2 ;;
 esac
-if [[ "${legs}" == *F* ]] && { [ -z "${PYCAM_MODEL_COMPILED:-}" ] || [ ! -f "${PYCAM_MODEL_COMPILED}" ]; }; then
-  echo "leg F needs PYCAM_MODEL_COMPILED, an AOTInductor package of PYCAM_MODEL" >&2; exit 2
+if [[ "${legs}" == *[FT]* ]] && { [ -z "${PYCAM_MODEL_COMPILED:-}" ] || [ ! -f "${PYCAM_MODEL_COMPILED}" ]; }; then
+  echo "legs F and T need PYCAM_MODEL_COMPILED, an AOTInductor package of PYCAM_MODEL" >&2; exit 2
 fi
-if [[ "${legs}" == *[MGNHRF]* ]]; then
+if [[ "${legs}" == *[MGNHRFT]* ]]; then
   if [ -z "${PYCAM_MODEL:-}" ] || [ ! -f "${PYCAM_MODEL}" ]; then
     echo "legs ${legs} need PYCAM_MODEL, a TorchScript archive" >&2; exit 2
   fi
@@ -187,12 +188,15 @@ run_freecam() {
   fi
   case "${leg}" in
     M|N) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cpu) ;;
-    G|H|R|F) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cuda)
-       if [[ "${leg}" == [RF] ]]; then
+    G|H|R|F|T) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cuda)
+       if [[ "${leg}" == [RFT] ]]; then
          flags+=(--model-graph)
        fi
-       if [ "${leg}" = F ]; then
+       if [[ "${leg}" == [FT] ]]; then
          flags+=(--model-compiled "${kernel}=${PYCAM_MODEL_COMPILED}")
+       fi
+       if [ "${leg}" = T ]; then
+         flags+=(--model-tf32)
        fi
        # the job shell's CUDA_VISIBLE_DEVICES names the head node's GPUs and must not reach the
        # other nodes; every rank sees its own GPU only, through its GPU's server of the job's own
@@ -200,7 +204,7 @@ run_freecam() {
        launch=(env -u CUDA_VISIBLE_DEVICES mpiexec)
        rank_env=(bash "${repo}/validation/jobs/gpu_rank_env.sh") ;;
   esac
-  if [[ "${leg}" == [NHRF] ]]; then
+  if [[ "${leg}" == [NHRFT] ]]; then
     flags+=(--batch-chunks "${batch_stage}")
   fi
   if [ -n "${PYCAM_TIMELINE:-}" ]; then
@@ -228,7 +232,7 @@ provider = CESMOnlineBoundaryProvider(library=Path("${library}"), run_dir=Path("
 Path("${cam_run}/.exact-cesm-provider.pkl").write_bytes(cloudpickle.dumps(provider, protocol=5))
 PY
     cd "${repo}"
-    if [[ "${leg}" == [GHRF] ]] && [ "${mps_mode}" = own ]; then
+    if [[ "${leg}" == [GHRFT] ]] && [ "${mps_mode}" = own ]; then
       "${launch[@]}" -ppn 1 -n 4 bash "${repo}/validation/jobs/gpu_mps_per_gpu.sh" start
     fi
     "${launch[@]}" --label -n "${ntasks}" --ppn "${ppn}" "${rank_env[@]}" "${python}" -m freecam.pi_cam.cli \
@@ -240,9 +244,9 @@ PY
       --memory-sample-every 0 \
       --summary "${dir}/summary.json" \
       > "${cam_run}/freecam.log" 2>&1 || echo "${leg} exited $?"
-    if [[ "${leg}" == [GHRF] ]] && [ "${mps_mode}" = own ]; then
+    if [[ "${leg}" == [GHRFT] ]] && [ "${mps_mode}" = own ]; then
       "${launch[@]}" -ppn 1 -n 4 bash "${repo}/validation/jobs/gpu_mps_per_gpu.sh" stop | tee "${dir}/mps.txt"
-    elif [[ "${leg}" == [GHRF] ]]; then
+    elif [[ "${leg}" == [GHRFT] ]]; then
       # the site's server: the GPUs in Exclusive_Process mode refuse any rank that missed MPS,
       # so a node's four GPUs in that mode and no refused rank show every rank went through it
       "${launch[@]}" -ppn 1 -n 4 bash -c 'echo "$(hostname): site MPS exclusive GPUs $(nvidia-smi --query-gpu=compute_mode --format=csv,noheader | grep -c Exclusive_Process) of $(nvidia-smi --query-gpu=index --format=csv,noheader | wc -l)"' | tee "${dir}/mps.txt" || true

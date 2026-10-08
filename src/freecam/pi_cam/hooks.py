@@ -233,6 +233,7 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
     if seconds_entry is not None:
         seconds_entry.restype = ctypes.c_int32
         seconds_entry.argtypes = [ctypes.c_int32] + [ctypes.POINTER(ctypes.c_double)] * 6
+    tf32 = bool(read_torch_tf32(library))
     result: dict[str, dict[str, int]] = {}
     for hook in range(1, int(count_entry()) + 1):
         buffer = ctypes.create_string_buffer(64)
@@ -266,6 +267,8 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
         graph = read_hook_graph(library, hook)
         if graph is not None:
             record["graph"] = graph
+        if record.get("modeled") and tf32:
+            record["tf32"] = True               # its float32 matrix products on the tensor cores
         result[buffer.value.decode("ascii", errors="replace")] = record
     return result
 
@@ -498,6 +501,51 @@ SET_GRAPH_STATUS = {1: "no such hook", 2: "the hook takes no model (hooks.yaml h
 #: of the process, a hook's replaced when it is asked again
 _GRAPH_PACKAGES: dict[tuple[int, int], Any] = {}
 
+#: what each hook's GPU model asked of libtorch's TF32 switch, by image: the switch is the process's
+_TF32_REQUESTS: dict[int, dict[int, bool]] = {}
+
+
+def set_hook_tf32(library: Any, hook_id: int, on: bool) -> None:
+    """Let the float32 matrix products of the model bound at ``hook_id`` run as TF32 on the
+    GPU's tensor cores (``on``), or in full float32.  The switch is libtorch's, one for the
+    process: every GPU model bound in it must ask the same, and a different request while
+    another hook's model is bound is refused.  Set before a CUDA graph is asked for, so the
+    graph captures the mode."""
+
+    import ctypes
+
+    requests = _TF32_REQUESTS.setdefault(id(library), {})
+    others = sorted(hook for hook, asked in requests.items() if hook != int(hook_id) and asked != bool(on))
+    if others:
+        raise PICAMConfigurationError(
+            f"TF32 is one switch for the process: the model at hook {hook_id} asks for it {'on' if on else 'off'}, "
+            f"the models bound at hooks {others} the other way")
+    entry = getattr(library, "pycam_torch_set_tf32", None)
+    if entry is None:
+        if on:
+            raise PICAMConfigurationError(f"cannot run hook {hook_id}'s model with TF32: the image has no "
+                                          f"pycam_torch_set_tf32 (it predates TF32); rebuild it")
+        requests[int(hook_id)] = False
+        return
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.c_int32]
+    if int(entry(1 if on else 0)) != 0:
+        raise PICAMConfigurationError(f"cannot run hook {hook_id}'s model with TF32: the image's libtorch has no CUDA")
+    requests[int(hook_id)] = bool(on)
+
+
+def read_torch_tf32(library: Any) -> bool | None:
+    """Whether float32 matrix products may use TF32 in this process; None for an image without the switch."""
+
+    import ctypes
+
+    entry = getattr(library, "pycam_torch_tf32", None)
+    if entry is None:
+        return None
+    entry.restype = ctypes.c_int32
+    entry.argtypes = []
+    return bool(entry())
+
 
 def set_hook_graph(library: Any, hook_id: int, on: bool, *, package: str | None = None) -> None:
     """Replay the model bound at ``hook_id`` as a CUDA graph (``on``), captured over the rank's
@@ -587,6 +635,7 @@ def unbind_hook_model(library: Any, hook_id: int) -> None:
 
     import ctypes
 
+    _TF32_REQUESTS.get(id(library), {}).pop(int(hook_id), None)
     entry = getattr(library, "pycam_hooks_unbind_model_v1", None)
     if entry is None:
         return
@@ -596,4 +645,4 @@ def unbind_hook_model(library: Any, hook_id: int) -> None:
 
 
 __all__ += ["read_hook_counts", "bind_hook_model", "bind_hook_plugin", "unbind_hook_model", "BIND_STATUS", "ARM_STATUS",
-            "GRAPH_MODES", "read_hook_graph", "set_hook_graph"]
+            "GRAPH_MODES", "read_hook_graph", "set_hook_graph", "set_hook_tf32", "read_torch_tf32"]

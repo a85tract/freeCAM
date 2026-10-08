@@ -46,6 +46,7 @@ LEGS = {
          "(--model-graph)",
     "F": "R with the graph capturing an AOTInductor package of the model, its element-wise work fused "
          "(--model-compiled)",
+    "T": "F with the float32 matrix products as TF32 on the GPU's tensor cores (--model-tf32)",
 }
 _MPS_LINE = re.compile(r"GPU (?P<gpu>\d+) servers \[(?P<servers>[^\]]*)\] client disconnects (?P<clients>\d+) "
                        r"log faults (?P<faults>\d+)")
@@ -221,8 +222,8 @@ def freecam_leg(directory: Path, kernel: str) -> dict[str, Any]:
     }
 
 
-_PAIRS = [(x, "A") for x in "CMGNHRF"] + [("M", "C"), ("G", "C"), ("G", "M"), ("N", "M"), ("H", "G"), ("H", "N"),
-                                           ("R", "H"), ("F", "R"), ("F", "H")]
+_PAIRS = [(x, "A") for x in "CMGNHRFT"] + [("M", "C"), ("G", "C"), ("G", "M"), ("N", "M"), ("H", "G"), ("H", "N"),
+                                            ("R", "H"), ("F", "R"), ("F", "H"), ("T", "R"), ("T", "F")]
 
 
 def ratios(legs: dict[str, dict[str, Any]]) -> dict[str, float]:
@@ -282,7 +283,7 @@ def main() -> int:
         "pbs_job_id": arguments.pbs_job_id,
         "git_commit": arguments.git_commit,
         "hardware": arguments.hardware,
-        "gpu_mps": arguments.gpu_mps if set("GHRF") & set(arguments.legs) else None,
+        "gpu_mps": arguments.gpu_mps if set("GHRFT") & set(arguments.legs) else None,
         "root": arguments.root_label or None,
         "order": arguments.legs,
         "kernel": arguments.kernel,

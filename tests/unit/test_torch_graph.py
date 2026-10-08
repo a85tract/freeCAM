@@ -262,3 +262,96 @@ def test_the_command_line_asks_for_a_graph_only_on_a_gpu(tmp_path: Path) -> None
     summary = cli._kernel_models_summary({"compute_uwshcu_inv": archive}, device="cuda", graph=True,
                                          compiled={"compute_uwshcu_inv": package})
     assert summary["compute_uwshcu_inv"]["compiled"]["file"] == "model.pt2"
+
+
+class _TF32Library(_CompiledLibrary):
+    """An image with libtorch's TF32 switch: it keeps the order of what was asked, and the switch's state."""
+
+    def __init__(self, cuda: bool = True, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.asked: list[tuple[str, int, int]] = []
+        self.on = False
+
+        def set_tf32(on):
+            if on and not cuda:
+                return 1
+            self.on = bool(on)
+            self.asked.append(("tf32", int(on), 0))
+            return 0
+
+        self.pycam_torch_set_tf32 = _Entry(set_tf32)
+        self.pycam_torch_tf32 = _Entry(lambda: int(self.on))
+        graph_v2 = self.pycam_hooks_set_graph_v2._function
+
+        def set_graph_v2(hook, on, package):
+            self.asked.append(("graph", int(hook), int(on)))
+            return graph_v2(hook, on, package)
+
+        self.pycam_hooks_set_graph_v2 = _Entry(set_graph_v2)
+
+
+def test_tf32_is_asked_of_a_gpu_model_and_set_before_its_graph_is_captured(tmp_path: Path, monkeypatch) -> None:
+    from freecam.physics.pausable import ShallowConvection
+    import freecam.pi_cam.hooks as hooks_module
+
+    archive = torchscript_archive(tmp_path / "v4.pt")
+    with pytest.raises(PhysicsError, match="needs device='cuda'"):
+        NativeModel(archive, tf32=True)
+    model = NativeModel(archive, device="cuda", device_index=0, graph=True, tf32=True,
+                        compiled=compiled_package(tmp_path, archive))
+    assert model.key.endswith(":tf32") and model.describe()["tf32"] is True and "tf32=True" in repr(model)
+    assert NativeModel(archive, device="cuda", device_index=0).key != NativeModel(archive, device="cuda", device_index=0,
+                                                                                  tf32=True).key
+    monkeypatch.setattr(hooks_module, "_cuda_device_report", lambda: (4, "four devices"))
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(__version__="2.14.0+cu126", version=SimpleNamespace(cuda="12.6")))
+    stage = ShallowConvection()
+    stage.kernels["compute_uwshcu_inv"] = model
+    library = _TF32Library()
+    native = SimpleNamespace(library=library, run_action=lambda name, phase=None: None, segment_runner=lambda s: None)
+    stage.tend(None, SimpleNamespace(native=native, step=1))
+    index = load_hooks().hook("compute_uwshcu_inv").id
+    assert library.asked == [("tf32", 1, 0), ("graph", index, 1)]               # the switch, then the capture
+    counts = next(iter(read_hook_counts(library).values()))                    # the test image names one hook
+    assert counts["tf32"] is True and counts["graph"]["forward"] == "compiled"
+
+
+def test_tf32_is_one_switch_a_process_and_an_old_image_refuses_it(tmp_path: Path) -> None:
+    from freecam.pi_cam.hooks import read_torch_tf32, set_hook_tf32, unbind_hook_model
+
+    library = _TF32Library()
+    set_hook_tf32(library, 3, True)
+    set_hook_tf32(library, 5, True)
+    with pytest.raises(PICAMConfigurationError, match="one switch for the process"):
+        set_hook_tf32(library, 7, False)                    # another hook's model asks the other way
+    unbind_hook_model(library, 3)
+    unbind_hook_model(library, 5)
+    set_hook_tf32(library, 7, False)                        # nothing bound asks for it any more
+    assert read_torch_tf32(library) is False
+    with pytest.raises(PICAMConfigurationError, match="predates TF32"):
+        set_hook_tf32(_GraphLibrary(), 3, True)
+    set_hook_tf32(_GraphLibrary(), 3, False)                # nothing to turn off in an old image
+    assert read_torch_tf32(_GraphLibrary()) is None
+    with pytest.raises(PICAMConfigurationError, match="has no CUDA"):
+        set_hook_tf32(_TF32Library(cuda=False), 3, True)
+
+
+def test_the_record_counts_the_ranks_on_tf32_and_the_packages_worst_gap() -> None:
+    from freecam.pi_cam import cli
+
+    records = [{"hook_counts": {"compute_uwshcu_inv": {"calls": 2, "paused": 0, "tf32": True, "graph": {
+        "mode": "replaying", "replays": 48, "capture_seconds": 1.0, "forward": "compiled",
+        "compiled_gap": {"median": median, "max": largest}}}}} for median, largest in ((1e-9, 0.2), (3e-9, 0.1))]
+    summary = cli._hook_summary(records)["compute_uwshcu_inv"]
+    assert summary["tf32_ranks"] == 2 and summary["graph"]["compiled_ranks"] == 2
+    assert summary["graph"]["compiled_gap"] == {"median": 3e-9, "max": 0.2}
+
+
+def test_the_command_line_asks_for_tf32_only_on_a_gpu(tmp_path: Path) -> None:
+    from freecam.pi_cam import cli
+
+    archive = torchscript_archive(tmp_path / "m.pt")
+    assert cli._load_kernel_model(archive, device="cuda", tf32=True).tf32 is True
+    with pytest.raises(PhysicsError, match="needs device='cuda'"):
+        cli._load_kernel_model(archive, device="cpu", tf32=True)
+    summary = cli._kernel_models_summary({"compute_uwshcu_inv": archive}, device="cuda", tf32=True)
+    assert summary["compute_uwshcu_inv"]["tf32"] is True

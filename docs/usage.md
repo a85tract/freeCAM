@@ -566,6 +566,8 @@ deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt", device="cuda")           
 shallow.kernels["compute_uwshcu_inv"] = fc.NativeModel("v4.pt", device="cuda", graph=True)   # batched forward replayed as a CUDA graph
 shallow.kernels["compute_uwshcu_inv"] = fc.NativeModel("v4.pt", device="cuda", graph=True,
                                                        compiled="v4.pt2")                # the graph of its AOTInductor package
+shallow.kernels["compute_uwshcu_inv"] = fc.NativeModel("v4.pt", device="cuda", graph=True,
+                                                       compiled="v4.pt2", tf32=True)     # its matrix products as TF32
 ```
 
 On a GPU each forward of a TorchScript model is hundreds of small kernels, each
@@ -603,6 +605,22 @@ gap from the model's answer over the column's own range.  It refuses the package
 when the median column is further than 1e-3 or when the package is non-finite
 where the model is not; the run record's `hooks.<kernel>.graph.compiled_gap`
 keeps the median and the largest gap.
+
+`tf32=True` (`--model-tf32`; the online jobs' leg T) lets the model's float32
+matrix products run as TF32 on the A100's tensor cores: the inputs of each
+product are rounded to a 10-bit mantissa and the sums kept in float32.  The
+switch is libtorch's, one for the whole rank: every GPU model bound in it must
+ask the same, and a mixed request is refused.  It is set before the graph is
+captured, and the graph keeps it.  On one A100 with 32 ranks sharing it, a
+rank's 27-column forward of the v4 model takes 6.7 ms as the graph of the
+compiled package with TF32, against 14.7 ms as the float32 graph.  TF32 alone
+gains little (12.8 ms).  That fits the TorchScript transformer computing its
+attention in a fused kernel of its own, which TF32 does not reach, while the
+package computes it as matrix products, which TF32 does reach; this has not
+been profiled.  TF32 moves the answer further from the
+float32 forward: about 400 of the 1190 output columns more than 1e-3 of their
+range on a rank's columns, against 342 for the float32 forward moved from the
+CPU to the GPU (`validation/pi_cam_torch_compiled_bench_v4-gpu-batch.json`).
 
 A function in a slot runs where the stage can run it.  Written over the
 kernel's arrays, one positional argument per input then per output of the

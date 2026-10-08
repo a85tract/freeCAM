@@ -23,6 +23,10 @@
 // every column; a rounded or gated output of the right one can flip in a few), the median and
 // the largest kept for the run record otherwise.
 //
+// The library also holds libtorch's TF32 switch for the process (pycam_torch_set_tf32): float32
+// matrix products on the A100's tensor cores, their inputs rounded to a 10-bit mantissa.  The
+// image's libtorch is reached only through FTorch and this library, so the switch lives here.
+//
 // Built against a CUDA libtorch with PYCAM_TORCH_GRAPH_CUDA defined; built without it, every
 // entry reports that this build has no CUDA graphs (status 1), and the hook keeps the ordinary
 // forward.  No floating-point work of its own: copies, a replay, a comparison.
@@ -256,6 +260,27 @@ void* pycam_torch_graph_open(void* module, int device_index, int nin, void** hos
                              int warmup, int* status) {
   return pycam_torch_graph_open_v2(module, nullptr, device_index, nin, host_in, ndim, shapes, host_out, out_ndim,
                                    out_shape, warmup, status);
+}
+
+// Let cuBLAS multiply float32 matrices as TF32 (on /= 0) or in full float32 (on = 0), for every
+// model in the process; a graph captures the mode in force at its capture.  0, or 1 in a build
+// without CUDA asked for TF32.
+int pycam_torch_set_tf32(int on) {
+#ifdef PYCAM_TORCH_GRAPH_CUDA
+  at::globalContext().setAllowTF32CuBLAS(on != 0);
+  return kOk;
+#else
+  return on != 0 ? fail(kUnavailable, "this image's libtorch has no CUDA: no TF32") : kOk;
+#endif
+}
+
+// 1 when float32 matrix products may use TF32 in this process, 0 when not
+int pycam_torch_tf32() {
+#ifdef PYCAM_TORCH_GRAPH_CUDA
+  return at::globalContext().allowTF32CuBLAS() ? 1 : 0;
+#else
+  return 0;
+#endif
 }
 
 // the gap between a runner's compiled forward and its model's answer at the capture, the median
