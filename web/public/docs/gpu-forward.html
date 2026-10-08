@@ -82,7 +82,7 @@ svg .t-big { font-family: var(--mono); font-size: 30px; fill: var(--ink); font-w
   <a class="back" href="index.html">← freeCAM docs</a>
   <header>
     <h1>How a model forward runs on the GPU</h1>
-    <p class="lede">Before a process first uses the GPU, it creates its own CUDA context, once per process. This page goes from there, through the one-time start-up and how libtorch runs one forward, to CUDA Graph, compiled fusion, TF32, and batching a GPU's ranks into one forward.</p>
+    <p class="lede">Before a process first uses the GPU, it creates its own CUDA context, once per process. This page goes from there, through the one-time start-up and how libtorch runs one forward, to CUDA Graph, compiled fusion and TF32.</p>
   </header>
 
   <figure>
@@ -158,15 +158,6 @@ svg .t-big { font-family: var(--mono); font-size: 30px; fill: var(--ink); font-w
     <p class="source">Measured: jobs 7752711 and 7755073 (one A100, 32 processes, 27 columns a call); the month's numbers come from jobs 7689590, 7749460 and 7755194.</p>
   </figure>
 
-  <figure>
-    <figcaption><h2>Batching by GPU: why that experiment was slow</h2>
-      <div class="controls"><button id="prev5">Back</button><span class="stepno" id="stepno5"></span><button id="next5">Next</button><button id="auto5" aria-pressed="false">Play</button></div>
-    </figcaption>
-    <svg id="s5" viewBox="0 0 900 330" role="img" aria-label="A GPU's 32 ranks merged into one forward: the design, the time measured on its own, the waiting once inside the model, and a comparison with now"></svg>
-    <p class="caption" id="cap5"></p>
-    <ul class="parts" id="parts5"></ul>
-    <p class="source">The 2026-09-22 experiment: 4 A100 nodes × 128 ranks, 50 steps, the small MLP model of the time, 16 columns per rank a call (records pi_cam_pausable_g35-uwshcu-sub-shadow-gpu-batch*_50step). The 120.6 ms a call is measured; the roughly 114 ms of waiting in it is inferred as 120.6 minus the 6.6 measured on its own; each rank's arrival time in the drawing is illustrative. Today's arrival spread comes from the timeline of job 7648576, the 864-column forward from job 7755073, and the send/receive times of "batched now" are estimates.</p>
-  </figure>
 </div>
 
 <script>
@@ -728,215 +719,11 @@ svg .t-big { font-family: var(--mono); font-size: 30px; fill: var(--ink); font-w
     });
   });
 
-  // ---------------- panel 5: a GPU's 32 ranks batched into one forward, 2026-09-22 ----------------
-  const CAP5 = [
-    "<b>Design:</b> on each call, each of the 32 ranks on one GPU first copies its own 16 columns of input into its slot in node-shared memory; once all 32 have arrived, the leader rank runs one 512-column forward on the GPU and writes the result back to shared memory; after a second wait, each copies its own 16 columns back. Only the leader uses the GPU.",
-    "<b>Measured on its own, all 32 ranks arriving together:</b> 6.6 ms a call. The leader's forward takes 5.6 ms, mostly copying the 7 MB tr0_inv onto the GPU; copying in, waiting and copying back take under 1 ms together. The other ranks spend these 5.6 ms waiting for the leader to finish.",
-    "<b>Inside the model:</b> 120.6 ms a call. The 32 ranks arrive up to about 0.1 s apart: deep convection, radiation and microphysics before it compute each rank's own columns and take different times. Every early arrival has to wait for the slowest, about 114 ms a call on average spent waiting, and the ranks gather like this twice a step (once for each of the two column chunks).",
-    "<b>Result:</b> over the 50-step loop, batching took 46.3 s, while each rank computing on the CPU by itself took only 17.8 s. The time spent waiting far exceeded the computing that batching saved.",
-    "<b>Looking again now:</b> with the meeting point moved to the start of shallow convection, once a step, the 32 ranks arrive only about 3 ms apart and wait 1.4 ms on average, so waiting is no longer the problem. But a v4 forward over 864 columns itself takes 13.2 ms (FP32) or 9.2 ms (TF32), so batching is no faster than each rank running its own, and it was not done.",
-  ];
-  // [what, value, colour, the step it belongs to]
-  const PARTS5 = [
-    ["Copy into shared memory, wait for the others, copy back: total", "under 1 ms", "var(--cpu)", 1],
-    ["Leader's forward (incl. copying the 7 MB tr0_inv to the GPU)", "5.6 ms", "var(--gpu)", 1],
-    ["Total per call", "6.6 ms", null, 1],
-    ["Waiting for the slowest rank (inferred, 120.6 − 6.6)", "~114 ms", "var(--wait)", 2],
-    ["Leader's forward", "5.6 ms", "var(--gpu)", 2],
-    ["Copy in and back", "under 1 ms", "var(--cpu)", 2],
-    ["Total per call (measured), twice a step", "120.6 ms", null, 2],
-    ["Each rank computing on the CPU by itself", "17.8 s", "var(--cpu)", 3],
-    ["Batched: one forward per GPU", "46.3 s", "var(--wait)", 3],
-    ["Batched without copying tr0_inv (incomplete answer, a bound only)", "32.4 s", "var(--wait)", 3],
-    ["Each rank using the GPU by itself (no MPS then)", "87.0 s", "var(--bad)", 3],
-    ["Now: spread of the 32 ranks' arrival (median)", "3.1 ms", "var(--wait)", 4],
-    ["Now: mean wait per rank", "1.4 ms", "var(--wait)", 4],
-    ["v4 forward over 864 columns: FP32 / TF32", "13.2 / 9.2 ms", "var(--gpu)", 4],
-    ["Each rank its own: Graph / compiled + Graph + TF32", "14.7 / 6.7 ms", "var(--gpu)", 4],
-  ];
-  const s5 = document.getElementById("s5"), cap5 = document.getElementById("cap5"), stepno5 = document.getElementById("stepno5");
-  const ROWS = 16;                              // 16 of the 32 ranks drawn; row 0 the leader
-  // arrival at the hook, ms after the first: together in the probe; in the model, an illustration
-  // of a few slow ranks among quick ones (the measured mean call was 120.6 ms)
-  const ARRIVE = {
-    1: Array.from({ length: ROWS }, (_, i) => i * 0.05),
-    2: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 9, 12, 30, 114],
-  };
-  const GATHER = 0.4, FORWARD = 5.6, SCATTER = 0.4;
-  let k5 = 0, local5 = 0, auto5 = false, last5 = null;
-
-  function drawDesign(u) {
-    const x0 = 30, cols = 8;
-    el("text", { x: x0, y: 24, class: "t-strong" }, s5, "32 ranks on one GPU (8 drawn)");
-    for (let i = 0; i < cols; i++) {
-      const y = 40 + i * 32;
-      el("rect", { x: x0, y, width: 110, height: 24, rx: 5, fill: "none", stroke: i === 0 ? "var(--gpu)" : "var(--ink-2)", "stroke-width": i === 0 ? 2 : 1 }, s5);
-      el("text", { x: x0 + 55, y: y + 17, "text-anchor": "middle", class: i === 0 ? "t-strong" : "t-small" }, s5, i === 0 ? "Leader" : `Rank ${i + 1}`);
-    }
-    // the node-shared window: one slot a rank, 16 columns each
-    el("rect", { x: 260, y: 40, width: 220, height: 248, rx: 8, fill: "var(--mps)", "fill-opacity": 0.08, stroke: "var(--mps)", "stroke-width": 1.4 }, s5);
-    el("text", { x: 370, y: 32, "text-anchor": "middle", class: "t-small" }, s5, "Shared memory: one slot per rank");
-    const phase = reduce ? 3 : (u % 6) / 1.5;              // 0-1 in, 1-2 together, 2-3 forward, 3-4 back
-    for (let i = 0; i < cols; i++) {
-      const y = 40 + i * 32;
-      el("rect", { x: 270, y: y + 4, width: 200, height: 16, rx: 3, fill: phase >= 1 || phase > i / cols ? "var(--cpu)" : "var(--grid)", opacity: 0.75 }, s5);
-      el("text", { x: 370, y: y + 16, "text-anchor": "middle", class: "t-on" }, s5, "16 columns");
-      if (phase < 1) {
-        const p = ease(Math.min(1, Math.max(0, phase * 1.4 - i * 0.05)));
-        el("rect", { x: 140 + 120 * p, y: y + 6, width: 12, height: 12, rx: 2, fill: "var(--cpu)" }, s5);
-      }
-      if (phase >= 3) {
-        const p = ease(Math.min(1, phase - 3));
-        el("rect", { x: 260 - 120 * p, y: y + 6, width: 12, height: 12, rx: 2, fill: "var(--gpu)" }, s5);
-      }
-    }
-    // the leader's one forward over the 512 columns, on the GPU
-    el("rect", { x: 600, y: 120, width: 260, height: 90, rx: 10, fill: phase >= 2 && phase < 3 ? "var(--gpu)" : "none",
-      "fill-opacity": 0.16, stroke: "var(--gpu)", "stroke-width": 2 }, s5);
-    el("text", { x: 730, y: 158, "text-anchor": "middle", class: "t-strong" }, s5, "GPU: one forward, 512 columns");
-    el("text", { x: 730, y: 182, "text-anchor": "middle", class: "t-small" }, s5, "called by the leader only");
-    el("line", { x1: 480, y1: 150, x2: 600, y2: 150, stroke: phase >= 2 && phase < 3 ? "var(--gpu)" : "var(--axis)", "stroke-width": 2 }, s5);
-    el("line", { x1: 600, y1: 180, x2: 480, y2: 180, stroke: phase >= 3 ? "var(--gpu)" : "var(--axis)", "stroke-width": 2 }, s5);
-    const label = phase < 1 ? "① each copies into its slot" : phase < 2 ? "② wait for all 32 (barrier 1)" : phase < 3 ? "③ the leader runs one forward" : "④ barrier 2, each copies back";
-    el("text", { x: 600, y: 250, class: "t-mono" }, s5, label);
-  }
-
-  function drawTimeline(arrive, u) {
-    const X0t = 150, PXt = 5.4, T = 130;            // 0 to 130 ms over 702 px
-    el("text", { x: 10, y: 24, class: "t-strong" }, s5, k5 === 1 ? "Measured on its own: each rank's time in one call (ms)" : "Inside the model: each rank's time in one call (ms)");
-    for (let ms = 0; ms <= T; ms += 20) {
-      const x = X0t + ms * PXt;
-      el("line", { x1: x, x2: x, y1: 36, y2: 286, stroke: "var(--grid)", "stroke-width": 1 }, s5);
-      el("text", { x, y: 302, "text-anchor": "middle", class: "t-small" }, s5, String(ms));
-    }
-    const now = reduce ? T : Math.min(T, (u / 3.2) * T);         // the playhead, ms
-    const lastIn = Math.max(...arrive) + GATHER;
-    const seg = (y, a, b, fill) => {
-      const e = Math.min(b, now);
-      if (e > a) el("rect", { x: X0t + a * PXt, y, width: Math.max((e - a) * PXt, 1), height: 11, rx: 2, fill }, s5);
-    };
-    arrive.forEach((a, i) => {
-      const y = 40 + i * 15;
-      el("text", { x: X0t - 10, y: y + 10, "text-anchor": "end", class: i === 0 ? "t-strong" : "t-small" }, s5, i === 0 ? "Leader" : `Rank ${i + 1}`);
-      if (now >= a) el("circle", { cx: X0t + a * PXt, cy: y + 5.5, r: 3.5, fill: "var(--ink-2)" }, s5);
-      seg(y, a, a + GATHER, "var(--cpu)");
-      seg(y, a + GATHER, lastIn, "var(--wait)");
-      seg(y, lastIn, lastIn + FORWARD, i === 0 ? "var(--gpu)" : "var(--prep)");
-      seg(y, lastIn + FORWARD, lastIn + FORWARD + SCATTER, "var(--cpu)");
-    });
-    if (now >= lastIn && k5 === 2) {
-      const x = X0t + lastIn * PXt;
-      el("line", { x1: x, x2: x, y1: 36, y2: 286, stroke: "var(--bad)", "stroke-width": 1.2, "stroke-dasharray": "4 3" }, s5);
-      el("text", { x: x - 6, y: 32, "text-anchor": "end", class: "t-small" }, s5, "last arrival");
-    }
-    // the key, in the same colours
-    [["copy in / back", "var(--cpu)"], ["wait for others", "var(--wait)"], ["leader's forward", "var(--gpu)"], ["wait for leader", "var(--prep)"]].forEach(([name, fill], j) => {
-      const x = 150 + j * 150;
-      el("rect", { x, y: 314, width: 12, height: 12, rx: 2, fill }, s5);
-      el("text", { x: x + 18, y: 325, class: "t-small" }, s5, name);
-    });
-  }
-
-  function drawLoopBars(u) {
-    el("text", { x: 10, y: 24, class: "t-strong" }, s5, "The 50-step loop (s, measured, rank 0)");
-    const X0b = 300, PXb = 6.2, rows = [["Each rank on the CPU", 17.8, "var(--cpu)"], ["Batched: one forward per GPU", 46.3, "var(--wait)"],
-      ["Each rank on the GPU (no MPS)", 87.0, "var(--bad)"]];
-    for (let s = 0; s <= 90; s += 30) {
-      const x = X0b + s * PXb;
-      el("line", { x1: x, x2: x, y1: 40, y2: 196, stroke: "var(--grid)", "stroke-width": 1 }, s5);
-      el("text", { x, y: 214, "text-anchor": "middle", class: "t-small" }, s5, String(s));
-    }
-    const g = reduce ? 1 : ease(u / 1.2);
-    rows.forEach(([name, s, fill], i) => {
-      const y = 52 + i * 48;
-      el("text", { x: X0b - 10, y: y + 18, "text-anchor": "end" }, s5, name);
-      el("rect", { x: X0b, y, width: Math.max(s * PXb * g, 1), height: 26, rx: 3, fill }, s5);
-      el("text", { x: X0b + s * PXb * g + 8, y: y + 18, class: "t-mono" }, s5, s.toFixed(1));
-    });
-    el("text", { x: 10, y: 260, class: "t-mono" }, s5, "Batched: 120.6 ms a call; on the CPU by itself: 3.86 ms a call");
-  }
-
-  function drawNow(u) {
-    el("text", { x: 10, y: 24, class: "t-strong" }, s5, "Time one rank spends in the model each step (ms)");
-    const X0b = 330, PXb = 4.3;                     // 0 to 125 ms over 538 px
-    for (let ms = 0; ms <= 120; ms += 20) {
-      const x = X0b + ms * PXb;
-      el("line", { x1: x, x2: x, y1: 38, y2: 268, stroke: "var(--grid)", "stroke-width": 1 }, s5);
-      el("text", { x, y: 286, "text-anchor": "middle", class: "t-small" }, s5, String(ms));
-    }
-    const rows = [
-      ["Batched then (small MLP, per call)", [[114, "var(--wait)"], [5.6, "var(--gpu)"], [1, "var(--cpu)"]], "120.6"],
-      ["Batched now, FP32 (estimate)", [[1.4, "var(--wait)"], [1, "var(--cpu)"], [13.2, "var(--gpu)"]], "~15.6"],
-      ["Unbatched now, Graph", [[14.7, "var(--gpu)"]], "14.7"],
-      ["Batched now, TF32 (estimate)", [[1.4, "var(--wait)"], [1, "var(--cpu)"], [9.2, "var(--gpu)"]], "~11.6"],
-      ["Unbatched now, compiled + Graph + TF32", [[6.7, "var(--gpu)"]], "6.7"],
-    ];
-    const g = reduce ? 1 : ease(u / 1.2);
-    rows.forEach(([name, parts, total], i) => {
-      const y = 46 + i * 44;
-      el("text", { x: X0b - 10, y: y + 17, "text-anchor": "end", class: i === 4 ? "t-strong" : "" }, s5, name);
-      let x = X0b;
-      parts.forEach(([ms, fill]) => {
-        const w = ms * PXb * g;
-        el("rect", { x, y, width: Math.max(w, 1), height: 24, fill, stroke: "var(--surface)", "stroke-width": 1 }, s5);
-        x += w;
-      });
-      el("text", { x: x + 8, y: y + 17, class: "t-mono" }, s5, total);
-    });
-    [["wait for others", "var(--wait)"], ["forward", "var(--gpu)"], ["send / receive", "var(--cpu)"]].forEach(([name, fill], j) => {
-      const x = 330 + j * 140;
-      el("rect", { x, y: 306, width: 12, height: 12, rx: 2, fill }, s5);
-      el("text", { x: x + 18, y: 317, class: "t-small" }, s5, name);
-    });
-  }
-
-  function draw5() {
-    s5.innerHTML = "";
-    const u = reduce ? 99 : local5;
-    if (k5 === 0) drawDesign(u);
-    else if (k5 === 1 || k5 === 2) drawTimeline(ARRIVE[k5], u);
-    else if (k5 === 3) drawLoopBars(u);
-    else drawNow(u);
-    const html = PARTS5.filter((row) => row[3] === k5).map(([name, value, color]) => color == null
-      ? `<li class="total"><i></i><span>${name}</span><span class="ms">${value}</span></li>`
-      : `<li data-on="true"><i style="background:${color}"></i><span>${name}</span><span class="ms">${value}</span></li>`).join("");
-    const list = document.getElementById("parts5");
-    if (list.innerHTML !== html) list.innerHTML = html;
-    cap5.innerHTML = CAP5[k5];
-    stepno5.textContent = `${k5 + 1} / ${CAP5.length}`;
-    document.getElementById("prev5").disabled = k5 === 0;
-    document.getElementById("next5").disabled = k5 === CAP5.length - 1;
-  }
-  function loop5(ts) {
-    if (last5 != null) local5 += (ts - last5) / 1000;
-    last5 = ts;
-    const hold = k5 === 0 ? 6.0 : k5 <= 2 ? 4.5 : HOLD;      // the design and the timelines take their time
-    if (auto5 && local5 >= hold) {
-      if (k5 < CAP5.length - 1) { k5++; local5 = 0; } else setAuto5(false);
-    }
-    draw5();
-    requestAnimationFrame(loop5);
-  }
-  function go5(step) { k5 = Math.max(0, Math.min(CAP5.length - 1, step)); local5 = 0; draw5(); }
-  function setAuto5(on) {
-    auto5 = on;
-    const b = document.getElementById("auto5");
-    b.setAttribute("aria-pressed", String(on)); b.textContent = on ? "Pause" : "Play";
-  }
-  document.getElementById("prev5").addEventListener("click", () => { setAuto5(false); go5(k5 - 1); });
-  document.getElementById("next5").addEventListener("click", () => { setAuto5(false); go5(k5 + 1); });
-  document.getElementById("auto5").addEventListener("click", () => {
-    if (auto5) { setAuto5(false); return; }
-    if (k5 === CAP5.length - 1) go5(0);
-    setAuto5(true); local5 = 0;
-  });
-
   draw2(0);
   play1(); play2(32);
   go3(0);
   FORWARD_PANELS.forEach((panel) => go4(panel, panel.first));
-  go5(0);
-  if (!reduce) { requestAnimationFrame(loop3); requestAnimationFrame(loop4); requestAnimationFrame(loop5); }
+  if (!reduce) { requestAnimationFrame(loop3); requestAnimationFrame(loop4); }
 })();
 </script>
 </body>

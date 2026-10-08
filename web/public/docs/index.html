@@ -28,7 +28,7 @@
     <li><a href="shallow-convection-model-month.html">Shallow-convection model month</a>: a transformer model in place of the shallow-convection kernel for one online month, against the original Fortran and an earlier MLP; accuracy, speed on CPU and GPU, and the output limits it needed.</li>
     <li><a href="ranks-and-model-cost.html">Ranks and model cost</a>: the same month at 128 to 512 ranks on four A100 nodes; what the model's cost per step and its one-time start-up are made of.</li>
     <li><a href="month-timing-by-process.html">Month timing by process</a>: every process of one 512-rank month, freeCAM with nothing replaced against freeCAM with the GPU model.</li>
-    <li><a href="gpu-forward.html">The GPU forward, step by step</a>: animated, from creating a CUDA context to how libtorch runs one forward, CUDA Graph, compiled fusion, TF32, and why batching a GPU's ranks was slow.</li>
+    <li><a href="gpu-forward.html">The GPU forward, step by step</a>: animated, from creating a CUDA context to how libtorch runs one forward, CUDA Graph, compiled fusion and TF32.</li>
   </ul>
   <p class="note">Configuration: ne16 PI-atm, CAM5 physics, SE dynamics, 512 MPI ranks on NCAR Derecho.</p>
 </main>
