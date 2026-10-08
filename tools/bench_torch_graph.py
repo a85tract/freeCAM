@@ -18,6 +18,14 @@ With ``--tf32`` the process lets cuBLAS multiply float32 matrices on the A100's 
 answer on the first batch is from the float32 TorchScript forward's, over each output column's
 range.  ``--rows`` sets the batch: a rank's columns (27), or a GPU's 32 ranks' (864).
 
+With ``--profile`` the process marks each timed call with an NVTX range and turns the CUDA
+profiler on around the timed calls only, for Nsight Systems run with
+``--capture-range=cudaProfilerApi``; ``profile-summary`` reads the traces (exported as SQLite)
+and says, call by call, how long the call's kernels ran on the GPU, how long the GPU stood idle
+between them, and how long the CPU spent in the CUDA calls that launched them:
+
+    tools/bench_torch_graph.py profile-summary <trace.sqlite>... --mode <mode> --procs <n>
+
 The runner is the library the image links, driven through ctypes as the hook drives it: the
 model loaded by FTorch's own torch_jit_load, the arrays Fortran-ordered float64 in host memory,
 the batch's rows of the anchor dataset.  Each process warms up, waits at a file barrier for the
@@ -178,13 +186,21 @@ def proc(arguments: argparse.Namespace) -> int:
         gap = compare(reference, torch.from_numpy(np.ascontiguousarray(out)))
         record["tf32_gap"] = {key: gap[key] for key in ("scaled_gap_median", "scaled_gap", "columns_over_1e-3", "columns")}
     wait_at(arguments.barrier, arguments.nprocs)
+    if arguments.profile:
+        torch.cuda.profiler.start()                            # Nsight Systems records from here
     times = []
     for k in range(CALLS):
         for a, b in zip(host, all_batches[(k + 9) % len(all_batches)]):
             a[...] = b                                         # the hook gathers each step's batch into the same arrays
+        if arguments.profile:
+            torch.cuda.nvtx.range_push("call")
         start = time.perf_counter()
         call()
         times.append(time.perf_counter() - start)
+        if arguments.profile:
+            torch.cuda.nvtx.range_pop()
+    if arguments.profile:
+        torch.cuda.profiler.stop()
     record.update({"calls": CALLS, "ms_per_forward": float(np.median(times) * 1e3),
                    "ms_per_forward_mean": float(np.mean(times) * 1e3)})
     with open(arguments.out, "a") as handle:
@@ -216,6 +232,67 @@ def summarize(arguments: argparse.Namespace) -> int:
     return 0
 
 
+def _trace_calls(path: Path) -> list[dict[str, float]]:
+    """One row a timed call of an Nsight Systems trace exported as SQLite: its wall time, its
+    kernels' run time on the GPU and the GPU's idle time between them, and the CPU's time in the
+    CUDA calls that launched them (milliseconds)."""
+
+    import sqlite3
+
+    db = sqlite3.connect(str(path))
+    tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    names = dict(db.execute("SELECT id, value FROM StringIds")) if "StringIds" in tables else {}
+    columns = {row[1] for row in db.execute("PRAGMA table_info(NVTX_EVENTS)")}
+    text = "COALESCE(text, (SELECT value FROM StringIds WHERE id = textId))" if "textId" in columns else "text"
+    calls = db.execute(f"SELECT start, end FROM NVTX_EVENTS WHERE {text} = 'call' AND end IS NOT NULL ORDER BY start").fetchall()
+    rows = []
+    for begin, end in calls:
+        kernels = db.execute("SELECT start, end FROM CUPTI_ACTIVITY_KIND_KERNEL WHERE start >= ? AND end <= ? ORDER BY start",
+                             (begin, end)).fetchall()
+        api = db.execute("SELECT start, end, nameId FROM CUPTI_ACTIVITY_KIND_RUNTIME WHERE start >= ? AND end <= ?",
+                         (begin, end)).fetchall() if "CUPTI_ACTIVITY_KIND_RUNTIME" in tables else []
+        copies = db.execute("SELECT start, end FROM CUPTI_ACTIVITY_KIND_MEMCPY WHERE start >= ? AND end <= ?",
+                            (begin, end)).fetchall() if "CUPTI_ACTIVITY_KIND_MEMCPY" in tables else []
+        if not kernels:
+            continue
+        busy = sum(e - s for s, e in kernels)
+        span = kernels[-1][1] - kernels[0][0]
+
+        def api_ms(*words: str) -> float:
+            return sum(e - s for s, e, n in api if any(w in names.get(n, "") for w in words)) / 1e6
+
+        rows.append({
+            "wall_ms": (end - begin) / 1e6, "kernels": len(kernels),
+            "kernel_run_ms": busy / 1e6, "kernel_span_ms": span / 1e6, "idle_between_kernels_ms": (span - busy) / 1e6,
+            "kernel_run_us_each": busy / len(kernels) / 1e3,
+            "idle_us_between_each": (span - busy) / max(len(kernels) - 1, 1) / 1e3,
+            "before_first_kernel_ms": (kernels[0][0] - begin) / 1e6, "after_last_kernel_ms": (end - kernels[-1][1]) / 1e6,
+            "copies_ms": sum(e - s for s, e in copies) / 1e6,
+            "cpu_in_kernel_launches_ms": api_ms("cudaLaunchKernel", "cuLaunchKernel"),
+            "cpu_in_graph_launches_ms": api_ms("cudaGraphLaunch", "cuGraphLaunch"),
+            "cpu_waiting_ms": api_ms("Synchronize", "cudaMemcpy", "cuMemcpy"),
+            "cpu_in_cuda_calls_ms": sum(e - s for s, e, _ in api) / 1e6,
+        })
+    return rows
+
+
+def profile_summary(arguments: argparse.Namespace) -> int:
+    """Each trace's calls after the first few, as medians; the traces side by side."""
+
+    per_trace = []
+    for path in arguments.traces:
+        rows = _trace_calls(path)[3:]
+        if not rows:
+            per_trace.append({"trace": path.name, "calls": 0})
+            continue
+        keys = [key for key in rows[0] if key != "kernels"]
+        entry = {"trace": path.name, "calls": len(rows), "kernels_a_call": int(np.median([r["kernels"] for r in rows]))}
+        entry.update({key: float(np.median([r[key] for r in rows])) for key in keys})
+        per_trace.append(entry)
+    print(json.dumps({"mode": arguments.mode, "processes": arguments.procs, "profiled": per_trace}))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -232,6 +309,11 @@ def main(argv: list[str] | None = None) -> int:
     one.add_argument("--rows", type=int, default=27)
     one.add_argument("--width", type=int, default=1190, help="the packed answer's columns")
     one.add_argument("--tf32", action="store_true", help="float32 matrix products on the tensor cores (TF32)")
+    one.add_argument("--profile", action="store_true", help="NVTX ranges and the CUDA profiler around the timed calls")
+    traced = sub.add_parser("profile-summary")
+    traced.add_argument("traces", type=Path, nargs="+", help="Nsight Systems traces exported as SQLite")
+    traced.add_argument("--mode", required=True)
+    traced.add_argument("--procs", type=int, required=True)
     many = sub.add_parser("summarize")
     many.add_argument("out", type=Path)
     many.add_argument("--mode", required=True)
@@ -241,6 +323,8 @@ def main(argv: list[str] | None = None) -> int:
         if arguments.mode == "compiled" and arguments.package is None:
             raise SystemExit("compiled needs --package")
         return proc(arguments)
+    if arguments.command == "profile-summary":
+        return profile_summary(arguments)
     return summarize(arguments)
 
 

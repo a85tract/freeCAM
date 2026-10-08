@@ -75,3 +75,33 @@ def test_a_tf32_phase_names_its_rows_and_its_largest_gap_from_float32(tmp_path: 
     bench.main(["summarize", str(out), "--mode", "graph", "--procs", "2"])
     summary = json.loads(capsys.readouterr().out)
     assert summary["rows"] == 864 and summary["tf32"] is True and summary["tf32_gap"]["scaled_gap"] == 5e-2
+
+
+def test_a_trace_is_read_call_by_call_into_kernel_time_idle_time_and_launch_time(tmp_path: Path, capsys) -> None:
+    import sqlite3
+
+    import bench_torch_graph as bench
+
+    path = tmp_path / "trace.sqlite"
+    db = sqlite3.connect(str(path))
+    db.execute("CREATE TABLE StringIds (id INTEGER, value TEXT)")
+    db.executemany("INSERT INTO StringIds VALUES (?, ?)", [(1, "call"), (2, "cudaLaunchKernel_v7000"), (3, "cudaStreamSynchronize_v3020")])
+    db.execute("CREATE TABLE NVTX_EVENTS (start INTEGER, end INTEGER, text TEXT, textId INTEGER)")
+    db.execute("CREATE TABLE CUPTI_ACTIVITY_KIND_KERNEL (start INTEGER, end INTEGER)")
+    db.execute("CREATE TABLE CUPTI_ACTIVITY_KIND_RUNTIME (start INTEGER, end INTEGER, nameId INTEGER)")
+    db.execute("CREATE TABLE CUPTI_ACTIVITY_KIND_MEMCPY (start INTEGER, end INTEGER)")
+    for c in range(5):                                  # five calls of 10 ms, each three 1 us kernels 2 us apart
+        t0 = c * 10_000_000
+        db.execute("INSERT INTO NVTX_EVENTS VALUES (?, ?, NULL, 1)", (t0, t0 + 10_000_000))
+        for k in range(3):
+            db.execute("INSERT INTO CUPTI_ACTIVITY_KIND_KERNEL VALUES (?, ?)", (t0 + 1000 + k * 3000, t0 + 2000 + k * 3000))
+            db.execute("INSERT INTO CUPTI_ACTIVITY_KIND_RUNTIME VALUES (?, ?, 2)", (t0 + 100 + k * 500, t0 + 400 + k * 500))
+        db.execute("INSERT INTO CUPTI_ACTIVITY_KIND_RUNTIME VALUES (?, ?, 3)", (t0 + 2000, t0 + 9_000_000))
+    db.commit()
+    rows = bench._trace_calls(path)
+    assert len(rows) == 5 and rows[0]["kernels"] == 3
+    assert rows[0]["kernel_run_us_each"] == pytest.approx(1.0) and rows[0]["idle_us_between_each"] == pytest.approx(2.0)
+    assert rows[0]["cpu_in_kernel_launches_ms"] == pytest.approx(0.0009) and rows[0]["cpu_waiting_ms"] == pytest.approx(8.998)
+    bench.main(["profile-summary", str(path), "--mode", "ordinary", "--procs", "32"])
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["profiled"][0]["calls"] == 2 and summary["profiled"][0]["kernels_a_call"] == 3   # the first three left out
