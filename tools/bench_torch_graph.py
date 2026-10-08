@@ -13,6 +13,11 @@
   compiled  the same runner capturing an AOTInductor package of the model instead
             (tools/compile_torch_model.py): its element-wise work fused.
 
+With ``--tf32`` the process lets cuBLAS multiply float32 matrices on the A100's tensor cores
+(TF32: inputs rounded to a 10-bit mantissa, sums kept in float32), and records how far its
+answer on the first batch is from the float32 TorchScript forward's, over each output column's
+range.  ``--rows`` sets the batch: a rank's columns (27), or a GPU's 32 ranks' (864).
+
 The runner is the library the image links, driven through ctypes as the hook drives it: the
 model loaded by FTorch's own torch_jit_load, the arrays Fortran-ordered float64 in host memory,
 the batch's rows of the anchor dataset.  Each process warms up, waits at a file barrier for the
@@ -125,7 +130,18 @@ def proc(arguments: argparse.Namespace) -> int:
     all_batches = batches(arguments.anchors, names, arguments.rows)
     host = [a.copy(order="F") for a in all_batches[0]]
     out = np.zeros((arguments.rows, arguments.width), dtype=np.float64, order="F")
-    record: dict[str, object] = {"pid": os.getpid(), "mode": arguments.mode, "rows": arguments.rows}
+    record: dict[str, object] = {"pid": os.getpid(), "mode": arguments.mode, "rows": arguments.rows,
+                                 "tf32": bool(arguments.tf32)}
+    reference = None
+    if arguments.tf32:
+        # the float32 answer first, then the tensor cores for everything after (the runner's
+        # libtorch is this process's: the switch is one)
+        device = torch.device("cuda:0")
+        script = torch.jit.load(str(arguments.model), map_location=device).eval()
+        with torch.no_grad():
+            reference = script(*[torch.from_numpy(a).to(device) for a in host]).cpu()
+        del script
+        torch.backends.cuda.matmul.allow_tf32 = True
     if arguments.mode == "ordinary":
         device = torch.device("cuda:0")
         model = torch.jit.load(str(arguments.model), map_location=device).eval()
@@ -153,6 +169,14 @@ def proc(arguments: argparse.Namespace) -> int:
         for a, b in zip(host, all_batches[k % len(all_batches)]):
             a[...] = b
         call()
+    if reference is not None:
+        from compile_torch_model import compare
+
+        for a, b in zip(host, all_batches[0]):
+            a[...] = b
+        call()
+        gap = compare(reference, torch.from_numpy(np.ascontiguousarray(out)))
+        record["tf32_gap"] = {key: gap[key] for key in ("scaled_gap_median", "scaled_gap", "columns_over_1e-3", "columns")}
     wait_at(arguments.barrier, arguments.nprocs)
     times = []
     for k in range(CALLS):
@@ -171,7 +195,9 @@ def proc(arguments: argparse.Namespace) -> int:
 def summarize(arguments: argparse.Namespace) -> int:
     rows = [json.loads(line) for line in arguments.out.read_text().splitlines()] if arguments.out.is_file() else []
     timed = [r for r in rows if "ms_per_forward" in r]
-    summary: dict[str, object] = {"mode": arguments.mode, "processes": arguments.procs, "finished": len(timed),
+    summary: dict[str, object] = {"mode": arguments.mode, "processes": arguments.procs,
+                                  "rows": timed[0]["rows"] if timed else None,
+                                  "tf32": bool(timed and timed[0].get("tf32")), "finished": len(timed),
                                   "refused": [r for r in rows if r.get("status")][:1]}
     if timed:
         per = np.array([r["ms_per_forward"] for r in timed])
@@ -180,6 +206,9 @@ def summarize(arguments: argparse.Namespace) -> int:
         if gaps:
             summary["compiled_gap"] = {"median_largest": max(g["median"] for g in gaps),
                                        "max": max(g["max"] for g in gaps)}
+        tf32 = [r["tf32_gap"] for r in timed if "tf32_gap" in r]
+        if tf32:
+            summary["tf32_gap"] = max(tf32, key=lambda g: g["scaled_gap"])
         captures = [r["capture_seconds"] for r in timed if "capture_seconds" in r]
         if captures:
             summary["capture_seconds_max"] = float(max(captures))
@@ -202,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
     one.add_argument("--kernel", default="compute_uwshcu_inv")
     one.add_argument("--rows", type=int, default=27)
     one.add_argument("--width", type=int, default=1190, help="the packed answer's columns")
+    one.add_argument("--tf32", action="store_true", help="float32 matrix products on the tensor cores (TF32)")
     many = sub.add_parser("summarize")
     many.add_argument("out", type=Path)
     many.add_argument("--mode", required=True)

@@ -64,3 +64,14 @@ def test_the_summary_names_the_slowest_process_and_the_first_refusal(tmp_path: P
     summary = json.loads(capsys.readouterr().out)
     assert summary["finished"] == 1 and summary["ms_per_forward_slowest"] == 10.0
     assert summary["compiled_gap"] == {"median_largest": 1e-5, "max": 4e-5} and summary["refused"][0]["status"] == 8
+
+
+def test_a_tf32_phase_names_its_rows_and_its_largest_gap_from_float32(tmp_path: Path, capsys) -> None:
+    import bench_torch_graph as bench
+
+    out = tmp_path / "graph-1-864-tf32.jsonl"
+    gaps = [{"scaled_gap_median": 1e-6, "scaled_gap": g, "columns_over_1e-3": n, "columns": 1190} for g, n in ((2e-3, 3), (5e-2, 9))]
+    out.write_text("".join(json.dumps({"ms_per_forward": 4.0, "rows": 864, "tf32": True, "tf32_gap": g}) + "\n" for g in gaps))
+    bench.main(["summarize", str(out), "--mode", "graph", "--procs", "2"])
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["rows"] == 864 and summary["tf32"] is True and summary["tf32_gap"]["scaled_gap"] == 5e-2

@@ -23,6 +23,11 @@
 #   PYCAM_MODEL_KERNEL  the kernel slot (default compute_uwshcu_inv)
 #   PYCAM_FTORCH_ROOT   a CUDA FTorch with the graph runner that takes packages (tools/build_torch_graph.sh)
 #   PYCAM_ROWS          the batch: a rank's columns (default 27)
+#   PYCAM_PACKAGE       a package tools/compile_torch_model.py made before (its record beside it):
+#                       used instead of compiling again
+#   PYCAM_PHASES        what to time, mode:processes:rows[:tf32] each (default the three modes at
+#                       1 and 32 processes, PYCAM_ROWS rows; :tf32 lets the matrix products use
+#                       the tensor cores; rows 864 is one forward for a GPU's 32 ranks)
 #   PYCAM_RUN_TAG       names the record (default v4)
 
 set -euo pipefail
@@ -70,9 +75,14 @@ cd "${repo}"
 echo "--- node $(hostname), $(date)"
 nvidia-smi --query-gpu=index,name,compute_mode --format=csv,noheader
 
-echo "--- compile on the first GPU"
-"${python}" tools/compile_torch_model.py "${kernel}" "${PYCAM_MODEL}" "${PYCAM_EAGER}" \
-  "${PYCAM_ANCHORS}" --output "${root}/model.pt2" --device cuda --rows "${rows}"
+if [ -n "${PYCAM_PACKAGE:-}" ]; then
+  echo "--- the package made before: ${PYCAM_PACKAGE##*/}"
+  cp "${PYCAM_PACKAGE}" "${root}/model.pt2" && cp "${PYCAM_PACKAGE}.json" "${root}/model.pt2.json"
+else
+  echo "--- compile on the first GPU"
+  "${python}" tools/compile_torch_model.py "${kernel}" "${PYCAM_MODEL}" "${PYCAM_EAGER}" \
+    "${PYCAM_ANCHORS}" --output "${root}/model.pt2" --device cuda --rows "${rows}"
+fi
 
 # (the table read whole first: an awk that stops early would end nvidia-smi on a broken pipe)
 topo=$(nvidia-smi topo -m)
@@ -83,20 +93,25 @@ for c in $(seq "${lo}" $((lo + 15))); do
   cores16="${cores16:+${cores16},}$(cat /sys/devices/system/cpu/cpu${c}/topology/thread_siblings_list)"
 done
 
-phase() {   # mode nprocs
-  local mode=$1 n=$2 bar=${root}/bar-$1-$2 out=${root}/$1-$2.jsonl
+phase() {   # mode nprocs rows [tf32]
+  local mode=$1 n=$2 r=$3 tf=${4:-}
+  local label=${mode}-${n}-${r}${tf:+-tf32} bar=${root}/bar-${mode}-${n}-${r}${tf:+-tf32}
+  local out=${root}/${label}.jsonl flags=()
+  [ -n "${tf}" ] && flags+=(--tf32)
   rm -rf "${bar}" "${out}"; mkdir -p "${bar}"
   for i in $(seq 1 "${n}"); do
     timeout 900 taskset -c "${cores16}" "${python}" tools/bench_torch_graph.py proc "${mode}" \
       "${PYCAM_MODEL}" "${PYCAM_ANCHORS}" "${bar}" "${n}" "${out}" --package "${root}/model.pt2" \
-      --ftorch-root "${prefix}" --kernel "${kernel}" --rows "${rows}" > "${root}/$1-$2.${i}.log" 2>&1 &
+      --ftorch-root "${prefix}" --kernel "${kernel}" --rows "${r}" ${flags[@]+"${flags[@]}"} > "${root}/${label}.${i}.log" 2>&1 &
   done
   wait
   "${python}" tools/bench_torch_graph.py summarize "${out}" --mode "${mode}" --procs "${n}" | tee -a "${root}/phases.jsonl"
 }
-echo "--- the forward three ways, one process alone, then 32 sharing GPU 0 on its 16 nearest cores"
-for n in 1 32; do
-  for mode in ordinary graph compiled; do phase "${mode}" "${n}"; done
+phases=${PYCAM_PHASES:-"ordinary:1:${rows} graph:1:${rows} compiled:1:${rows} ordinary:32:${rows} graph:32:${rows} compiled:32:${rows}"}
+echo "--- ${phases} (the 32 sharing GPU 0 on its 16 nearest cores)"
+for spec in ${phases}; do
+  IFS=: read -r mode n r tf <<< "${spec}"
+  phase "${mode}" "${n}" "${r}" "${tf}"
 done
 
 "${python}" - "${root}" "${repo}/validation/pi_cam_torch_compiled_bench_${tag}.json" "${PBS_JOBID}" \
@@ -107,9 +122,10 @@ root, record_path, job, commit, label = Path(sys.argv[1]), Path(sys.argv[2]), *s
 compiled = json.loads((root / "model.pt2.json").read_text())
 phases = [json.loads(line) for line in (root / "phases.jsonl").read_text().splitlines()]
 record = {"schema_version": 1,
-          "what": "A hooked kernel's model compiled with AOTInductor, and its batched forward timed on one A100 three "
-                  "ways: the ordinary TorchScript forward, its CUDA graph, and the CUDA graph of the compiled package "
-                  "(the image's runner, as the hook drives it), one process alone and 32 sharing the GPU through MPS",
+          "what": "A hooked kernel's model compiled with AOTInductor, and its batched forward timed on one A100: "
+                  "the ordinary TorchScript forward, its CUDA graph, and the CUDA graph of the compiled package (the "
+                  "image's runner, as the hook drives it), alone or with processes sharing the GPU through MPS, a "
+                  "rank's columns or a GPU's, float32 or TF32 matrix products, as each phase says",
           "pbs_job_id": job, "git_commit": commit, "root": label,
           "compile": compiled, "phases": phases}
 record_path.write_text(json.dumps(record, indent=2) + "\n")
