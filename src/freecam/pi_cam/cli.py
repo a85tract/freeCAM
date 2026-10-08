@@ -987,6 +987,44 @@ def main(argv: list[str] | None = None) -> int:
         help="steps between the timeline's writes to disk (default 100)",
     )
     parser.add_argument(
+        "--state-dir",
+        type=Path,
+        default=None,
+        help=(
+            "record snapshots of physics-state fields into DIR, for `freecam globe DIR`: every rank "
+            "copies its own columns at the end of every --state-every-th step and, at the "
+            "--state-action-steps, after every plan action; off by default. The copies are read-only"
+        ),
+    )
+    parser.add_argument(
+        "--state-fields",
+        default="T,Q,CLDLIQ,CLDICE",
+        help=(
+            "the fields --state-dir records: T, Q, CLDLIQ, CLDICE, U, V, OMEGA, PS, any phys_state.<field>, "
+            "or phys_state.q:<constituent> (default T,Q,CLDLIQ,CLDICE)"
+        ),
+    )
+    parser.add_argument("--state-every", type=int, default=1, metavar="STEPS",
+                        help="steps between --state-dir's step snapshots (default 1, every step)")
+    parser.add_argument(
+        "--state-action-steps",
+        default="",
+        metavar="STEPS",
+        help="steps (from 0; 3,24,40-42 or 12-48/12) at which --state-dir also records the state after every plan action",
+    )
+    parser.add_argument("--state-flush-every", type=int, default=24, metavar="SNAPSHOTS",
+                        help="step snapshots between --state-dir's writes to disk (default 24)")
+    parser.add_argument(
+        "--state-memory",
+        action="store_true",
+        help=(
+            "keep the snapshots in every rank's memory instead of --state-dir (the newest "
+            "--state-keep-steps): what a notebook session's state queries read; nothing is written"
+        ),
+    )
+    parser.add_argument("--state-keep-steps", type=int, default=None, metavar="SNAPSHOTS",
+                        help="with --state-memory: the newest step snapshots each rank keeps (default 1000)")
+    parser.add_argument(
         "--memory-sample-every",
         type=int,
         default=0,
@@ -1078,6 +1116,19 @@ def main(argv: list[str] | None = None) -> int:
             args.timeline_dir, rank=world.Get_rank(), size=world.Get_size(), comm=world,
             flush_every=args.timeline_flush_every, run_label=str(args.run_dir),
         ))
+    if args.state_dir is not None or args.state_memory:
+        from .state_record import KEEP_STEPS, StateRecorder, parse_steps
+
+        try:
+            cam.attach_state_recorder(StateRecorder(
+                None if args.state_memory else args.state_dir, rank=world.Get_rank(), size=world.Get_size(),
+                comm=world, fields=[name for name in args.state_fields.split(",") if name.strip()],
+                every=args.state_every, action_steps=parse_steps(args.state_action_steps),
+                flush_every=args.state_flush_every, run_label=str(args.run_dir),
+                keep_steps=args.state_keep_steps or KEEP_STEPS,
+            ))
+        except ValueError as error:
+            raise SystemExit(f"--state-{'memory' if args.state_memory else 'dir'}: {error}") from None
     created_addresses = {
         name: int(values.ctypes.data) for name, values in cam.pool.items()
     }
@@ -1625,6 +1676,8 @@ def main(argv: list[str] | None = None) -> int:
             "schema_version": 1,
             "run_status": "passed",
             "case": case.config.case_name,
+            # what the state recorder copied (rank 0's count; every rank records the same frames)
+            "state_record": None if cam.state_recorder is None else cam.state_recorder.describe_run(),
             "applied_namelist_overrides": {
                 name: {"previous": old, "value": new}
                 for name, (old, new) in applied_namelist.items()

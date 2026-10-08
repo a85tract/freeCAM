@@ -240,6 +240,10 @@ class FakeDriver:
         self.step = 0
         self.closed = False
         self.initialized = 0
+        self.lengthened: list[int] = []
+
+    def lengthen(self, steps: int) -> None:
+        self.lengthened.append(int(steps))
 
     def initialize(self) -> "FakeDriver":
         self.initialized += 1

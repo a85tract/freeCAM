@@ -72,6 +72,17 @@ def read_layout(text: str) -> dict[str, int]:
     return {name: int(value) for name, value in re.findall(r"\b(\w+_(?:ntasks|rootpe))\s*=\s*(-?\d+)", text)}
 
 
+def read_horizon(text: str) -> int | None:
+    """The coupling steps a ``drv_in`` runs before its components stop (``stop_n`` when
+    ``stop_option`` counts steps); None when it counts the run another way."""
+
+    option = re.search(r"""\bstop_option\s*=\s*["'](\w+)["']""", text)
+    count = re.search(r"\bstop_n\s*=\s*(-?\d+)", text)
+    if option is None or count is None or option.group(1).lower() != "nsteps":
+        return None
+    return int(count.group(1))
+
+
 def lay_out(drv_in: str | Path, ranks: int, *, steps: int | None = None) -> dict[str, int]:
     """Rewrite the ``drv_in`` file for ``ranks`` ranks (and a run of ``steps`` steps); the values set."""
 
@@ -85,7 +96,9 @@ def lay_out(drv_in: str | Path, ranks: int, *, steps: int | None = None) -> dict
 
 def derive_config(source: str | Path, destination: str | Path, *, mpi_size: int | None = None,
                   stop_n: int | None = None) -> Path:
-    """A copy of a case configuration with its rank count or length changed, the rest kept as written."""
+    """A copy of a case configuration with its rank count or length changed, the rest kept as written.
+    The copy names its original (``derived_from``), so its relative paths and the site's settings
+    are found where the original's are, wherever the copy is written."""
 
     text = Path(source).read_text()
     for name, value in (("mpi_size", mpi_size), ("stop_n", stop_n)):
@@ -94,6 +107,8 @@ def derive_config(source: str | Path, destination: str | Path, *, mpi_size: int 
         text, count = re.subn(rf"^{name}: \d+$", f"{name}: {int(value)}", text, flags=re.M)
         if count != 1:
             raise LayoutError(f"{source} holds {count} lines '{name}: N'; a derived configuration sets one")
+    if not re.search(r"^derived_from:", text, flags=re.M):         # a copy of a copy keeps the first original
+        text = text.rstrip("\n") + f"\nderived_from: {Path(source).resolve()}\n"
     target = Path(destination)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(text)

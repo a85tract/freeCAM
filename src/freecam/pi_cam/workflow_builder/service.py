@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import secrets
 import threading
+import time
 import traceback
 from collections import deque
 from dataclasses import dataclass, field
@@ -80,7 +81,7 @@ class WorkflowService:
     """Everything the HTTP layer delegates to; testable without a server."""
 
     def __init__(self, driver: Any, *, root: Path | None = None, token: str | None = None,
-                 generated_dir: Path | None = None) -> None:
+                 generated_dir: Path | None = None, globe: bool = True) -> None:
         self.driver = driver
         self.token = token or secrets.token_urlsafe(24)
         document, entries, snapshot = load_catalog(root=root)
@@ -104,7 +105,13 @@ class WorkflowService:
         self._lock = threading.RLock()
         self._worker: threading.Thread | None = None
         self._generated_dir = generated_dir
+        self._globe_data: Any = None
+        self._globe_source: Any = None
+        self._globe_checked = 0.0
+        self._globe_lock = threading.Lock()
         self.log("info", "workflow builder ready")
+        if globe:
+            self._record_for_globe()
 
     # -- log ------------------------------------------------------------------
 
@@ -138,7 +145,8 @@ class WorkflowService:
         with self._lock:
             return {
                 "mode": "local",
-                "snapshot": self.snapshot,
+                # the default this service was made with: the Driver's case and step count
+                "snapshot": {**self.snapshot, "default_document": self.default.to_payload()},
                 "draft": None if self._draft is None else self._draft.to_payload(),
                 "run": self._run_payload(),
                 "case": self.default.case,
@@ -150,7 +158,138 @@ class WorkflowService:
 
     def _run_payload(self) -> dict[str, Any]:
         self._refresh_run()
-        return self._run.to_payload()
+        return {**self._run.to_payload(), "globe": self.globe_status()}
+
+    # -- the globe ------------------------------------------------------------
+
+    def _record_for_globe(self) -> None:
+        """Have the model keep its state of every step in its ranks' memory, so the page's globe
+        follows the run with nothing written: the page asks the ranks for what it shows, between
+        two steps.  Only before the model starts: a model already running keeps what it was
+        started with.  The caller's own options are kept; a directory, or ``store="files"``, of
+        theirs keeps the files (written every step)."""
+
+        if not hasattr(self.driver, "record_state"):
+            return
+        if self.driver_initialized:
+            if self.driver.record_state is None:
+                self.log("info", "the globe needs state recording, which this model was started without; "
+                                 "Close model and Run again to record it")
+            return
+        from ..facade import _state_options
+        from ..state_record import BUILDER_FIELDS
+
+        options = dict(self.driver.record_state or {})
+        if "store" not in options and options.get("dir") is None:
+            options["store"] = "memory"
+        if options.get("store", "files") == "files":
+            options.setdefault("flush_every", 1)
+        else:
+            options.setdefault("fields", list(BUILDER_FIELDS))
+        self.driver.record_state = _state_options(options)
+
+    def globe_options(self) -> dict[str, Any]:
+        """What the globe keeps, whether it may still change (not once the model runs), and the
+        fields a picker offers."""
+
+        from ..state_record import DEFAULT_FIELDS, KEEP_STEPS, KNOWN_FIELDS
+
+        options = getattr(self.driver, "record_state", None) if hasattr(self.driver, "record_state") else None
+        return {
+            "enabled": options is not None,
+            "editable": options is not None and not self.driver_initialized,
+            "memory": options is not None and options.get("store") == "memory",
+            "fields": list((options or {}).get("fields") or DEFAULT_FIELDS),
+            "every": int((options or {}).get("every", 1)),
+            "action_steps": list((options or {}).get("action_steps", ())),
+            "keep_steps": int((options or {}).get("keep_steps") or KEEP_STEPS),
+            "available": [{"name": spec.name, "label": spec.label, "units": spec.units, "group": spec.group,
+                           "source": spec.field + (f":{spec.constituent}" if spec.constituent is not None else "")}
+                          for spec in KNOWN_FIELDS.values()],
+        }
+
+    def set_globe_options(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Choose what the globe keeps -- ``fields``, ``every``, ``action_steps`` (a list, or text
+        such as ``"24, 30-32"``) -- before the model starts."""
+
+        from ..facade import _state_options
+        from ..state_record import parse_steps
+
+        with self._lock:
+            if not hasattr(self.driver, "record_state") or self.driver.record_state is None:
+                raise ServiceRefused("this page keeps no state for the globe (it was opened with globe=False)")
+            if self.driver_initialized:
+                raise ServiceRefused("the model is running with what it was started with: Close model to choose again")
+            unknown = sorted(set(payload) - {"fields", "every", "action_steps"})
+            if unknown:
+                raise ServiceRefused(f"globe options {unknown} are not fields, every or action_steps")
+            options = dict(self.driver.record_state)
+            if "fields" in payload:
+                fields = [str(name) for name in payload["fields"]]
+                if not fields:
+                    raise ServiceRefused("keep at least one field")
+                options["fields"] = fields
+            if "every" in payload:
+                options["every"] = int(payload["every"])
+            if "action_steps" in payload:
+                steps = payload["action_steps"]
+                try:
+                    options["action_steps"] = list(parse_steps(steps) if isinstance(steps, str) else steps)
+                except ValueError as error:
+                    raise ServiceRefused(f"action steps: {error}") from None
+            try:
+                self.driver.record_state = _state_options(options)
+            except (TypeError, ValueError) as error:
+                raise ServiceRefused(str(error)) from None
+            self.log("info", f"the globe keeps {', '.join(self.driver.record_state['fields'])}")
+        return self.globe_options()
+
+    def globe_status(self) -> dict[str, Any]:
+        options = getattr(self.driver, "record_state", None) if hasattr(self.driver, "record_state") else None
+        if options is not None and options.get("store") == "memory":
+            from ..state_record import KEEP_STEPS
+
+            return {"enabled": True, "dir": None, "memory": True,
+                    "keep_steps": int(options.get("keep_steps") or KEEP_STEPS),
+                    "ready": bool(getattr(self.driver, "state_live", False))}
+        directory = getattr(self.driver, "state_dir", None) if options is not None else None
+        ready = directory is not None and (Path(directory) / "manifest.json").is_file()
+        return {"enabled": options is not None, "dir": None if directory is None else str(directory),
+                "memory": False, "ready": ready}
+
+    def globe_data(self) -> Any:
+        """The recorded state of the run this page started: asked of the running model's ranks
+        (kept in memory), or read from its directory; brought up to date at most every two
+        seconds."""
+
+        from ..state_view import LiveStateData, StateData
+
+        status = self.globe_status()
+        if not status["enabled"]:
+            raise ServiceRefused("this model records no state for the globe (Close model and Run again)")
+        if not status["ready"]:
+            if self._run.state in {"initializing", "queued"}:
+                raise ServiceRefused("the model is starting (its PBS job is queued or its ranks are initializing): "
+                                     "the globe begins with its first step")
+            if status["memory"] and self._run.state == "closed":
+                raise ServiceRefused("the model is closed, and the state it kept in memory with it: Run again")
+            raise ServiceRefused("no step recorded yet: the globe starts with the first Run")
+        # the model this page started: a model closed and started again is another
+        source = getattr(self.driver, "_session", None) if status["memory"] else Path(status["dir"])
+        with self._globe_lock:
+            now = time.monotonic()
+            other = source is not self._globe_source if status["memory"] else source != self._globe_source
+            if self._globe_data is None or other:
+                try:
+                    data = LiveStateData(self.driver.query_state) if status["memory"] else StateData(source)
+                except ValueError as error:          # no step recorded yet
+                    raise ServiceRefused(str(error)) from None
+                self._globe_data, self._globe_source, self._globe_checked = data, source, now
+            elif now - self._globe_checked > 2.0:
+                self._globe_checked = now
+                if self._globe_data.changed():
+                    self._globe_data.reload()
+            return self._globe_data
 
     def run_payload(self) -> dict[str, Any]:
         with self._lock:
@@ -208,6 +347,9 @@ class WorkflowService:
                 raise ServiceRefused("a run is in progress; wait for it or stop it")
             if not self.driver_initialized and not confirm_resources:
                 raise ServiceRefused("the first Run starts the model; confirm the resources to proceed")
+            lengthen = getattr(self.driver, "lengthen", None)
+            if not self.driver_initialized and callable(lengthen):
+                lengthen(int(steps))         # a model set up for the steps this first Run asks
             self._draft = document
             self._run = RunStatus(
                 state="initializing" if not self.driver_initialized else "running",

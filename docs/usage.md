@@ -29,6 +29,27 @@ in the same MPI processes as CAM. The rank-local MCT x2a/a2x arrays are exposed
 as zero-copy NumPy views; there is no shadow atmosphere and no
 Fortran-to-Python callback.
 
+### How long a model runs
+
+The surface components run the steps their `drv_in` names (`stop_n`, in
+steps), write their restart files there and stop; a step after it cannot be
+coupled. The default case's seed is a month, 1488 steps. A `Driver` with a
+longer `nsteps` sets its model up for that many, as the batch jobs do: the
+components' `stop_n` and `restart_n` in the provider's copy of `drv_in`, and
+the configuration's `stop_n` (CAM writes its restart at the end), in a copy
+beside the run that names its original (`derived_from`). A shorter `nsteps`
+leaves the month as it is.
+
+```python
+fc.Driver(case="PI-atm", nsteps=8688, walltime="03:00:00")   # half a year: some 45 minutes at 0.3 s a step
+```
+
+A run that would go past the steps a model was set up for is refused before
+any of it runs, and, when no model has started, before PBS is asked for one;
+the message says how many steps are left. The Workflow Builder's first Run sets
+the model up for the steps it asks for. A long run also needs a `walltime`
+that holds it (two hours by default).
+
 ### Other rank counts
 
 The admitted case runs on 512 MPI ranks. The online case can run on another
@@ -148,6 +169,260 @@ when creating a variable to keep a scratch field out of history, or construct
 the model with `default_history_stream=False` to disable the behaviour. A run
 that defines no Python-owned fields writes exactly the files the original
 model writes.
+
+### The state on a globe
+
+CAM's history files hold fields at the end of an output interval. freeCAM can
+also keep the state as the model steps, and as every process leaves it inside
+a step: it owns the order of the actions, and the state pool is the model's
+own memory. The recorder is off unless asked for:
+
+```bash
+# the rank command line (the online 50-step job's knobs are PYCAM_STATE=1 or memory, PYCAM_STATE_*)
+mpiexec -n 512 python -m freecam.pi_cam.cli ... --state-dir <run>/state \
+    --state-fields T,Q,CLDLIQ,CLDICE --state-every 1 --state-action-steps 24
+```
+
+```python
+fc.Driver(case="PI-atm", record_state=True)      # T, Q, CLDLIQ and CLDICE every step, into <run>/state
+fc.Driver(case="PI-atm", record_state={"fields": ["T", "CLDLIQ"], "every": 6, "action_steps": [24]})
+fc.Driver(case="PI-atm", record_state={"store": "memory", "keep_steps": 1000})   # nothing written (below)
+```
+
+Every rank copies the chosen fields of its own columns (read-only: a float32
+copy of each real column at the end of every `--state-every`-th step); at the
+`--state-action-steps` it also copies the state as the step begins and after
+every plan action, in float64, since what one process changes in one step can
+be smaller than float32 resolves (2e-5 K at 280 K). Every
+`--state-flush-every` snapshots the ranks send theirs to rank 0, which appends
+each snapshot, every column in rank order, to one file per kind (`steps.bin`,
+`actions.bin`): the other ranks never touch the file system for a snapshot,
+and a viewer reads one file a frame, not one per rank.
+
+A field is named by a short name or by where it lives in the state pool. The
+short names, each the pool field it reads at the moment of the snapshot:
+
+| Group | Short names (pool field) |
+| --- | --- |
+| Atmosphere | `T`, `Q`, `CLDLIQ`, `CLDICE`, `NUMLIQ`, `NUMICE` (`phys_state.t`, `phys_state.q:<name>`); `U`, `V`, `OMEGA`; `ZM` (`phys_state.zm`, height above the surface) |
+| Surface | `PS`; `PSL`, `PRECC`, `PRECL`, `PRECSC`, `PRECSL` (in mm/day), `FLDS` (`cam_out.flwds`), `FSNS` (`cam_out.netsw`); `TS`, `TREFHT`, `QREFHT`, `U10`, `SHFLX`, `LHFLX` (`cam_in.shf`, `cam_in.lhf`, upward), `TAUX`, `TAUY` (`cam_in.wsx`, `cam_in.wsy`), `ICEFRAC`, `OCNFRAC`, `SNOWHLND` |
+| Physics tendencies | `DTDT`, `DUDT`, `DVDT` (`phys_tend.*`, per day) |
+
+Any other `<owner>.<field>` of `phys_state`, `cam_in`, `cam_out` and
+`phys_tend` can be named too (2-D or 3-D), and `<owner>.<field>:<constituent>`
+for a field with a constituent axis (`phys_state.q:NUMLIQ`,
+`cam_out.qbot:Q`). The surface fields are what the surface components handed
+the atmosphere (`cam_in`) and what the atmosphere hands them (`cam_out`), as
+the state pool holds them when the snapshot is taken: at the end of a step,
+after the step's export. Physics-buffer fields (cloud fraction, heating rates)
+are not in the state pool and cannot be recorded yet. A 3-D
+field costs 13,826 columns x 30 levels x 4 bytes = 1.7 MB a snapshot at ne16,
+so a month of every step is 2.5 GB a field: record every few steps for long
+runs.
+
+```bash
+freecam globe <run>/state                   # serve the viewer on loopback; it follows a running model
+freecam globe <run>/state --html globe.html --fields T,CLDLIQ --levels 14,20,23 --step-stride 2
+```
+
+The page shows one field at one level on a globe with the continents
+(Natural Earth 1:110m coastlines, public domain), each column painted over the
+part of the sphere nearest to it:
+
+- **Steps**: the slider moves through the recorded steps; *Change* shows what
+  the step changed since the recorded step before.
+- **Processes in a step**: at an action step, the slider moves through the
+  plan actions; *Value* is the state after that action, *Change* what that
+  action alone changed. The strip above the slider is coloured by how much
+  each action changed the field (root-mean-square over every column and
+  level); grey actions do not change it. Each action's box is as wide as its
+  share of the step's time: the driver times every plan action at an action
+  step on every rank (not the copy after it), and the width is the mean over
+  the ranks; the label names the slowest rank's time.
+- A click picks a column: its vertical profile (now and before) and the
+  latitude-pressure section along its meridian, on their own colour scale.
+  Under *Processes in a step* a third panel traces the column through the
+  step (below).
+
+A self-contained page embeds the fields, levels and steps it is given, 8-bit
+over each level's range (a colour map has no more), and each action's change
+8-bit over its own scale; the server reads the recorded values themselves.
+Differences between steps are left to the server: 8-bit steps would difference
+to quantization noise.
+
+The recorder only reads the state, so a run with it on stays bit-for-bit with
+the original: the online 50-step gate recording the four default fields every
+step, written every step as the Workflow Builder records them, and after every
+action at step 24 -- 50 step and 49 action snapshots -- is bit-for-bit with the
+oracle (`validation/pi_cam_exact_cesm_online_state-record-live_50step*.json`,
+job 7712576). Kept in memory instead, as the Workflow Builder keeps them, the
+same four fields of every step are bit-for-bit too
+(`..._state-record-memory_50step*.json`, job 7712854), and cost the model
+next to nothing: 50 steps at 512 ranks advanced in 19.80 s, against 19.63 and
+19.66 s recording nothing and 21.85 s writing the snapshots every step (four
+jobs run back to back). Written every step, rank 0's write of each step holds
+the others back at the next exchange; kept in memory, each rank only copies its
+own columns.
+
+Rank 0 names a step in the manifest only once every rank's part of it is in
+the file, so a page following the run never reads a step that is not all
+there. A rank that fails waits for no other rank: what was written stays, what
+it had not yet sent is dropped, and the run is not marked complete. A
+directory written before this layout (schema 1, one file per rank) is refused;
+record the run again.
+
+#### In the Workflow Builder
+
+The page started by `driver.ui()` or `freecam ui` has a *Globe* tab with the
+same viewer, served by the page's own service under `/globe/` and following
+the run the page started: each step appears as the model takes it, and the
+slider stays on the newest step until it is moved back. *Open in a new tab*
+gives the viewer a window of its own.
+
+For that the page has a model that is not yet running keep `T`, `Q`, `CLDLIQ`,
+`CLDICE`, `U`, `V`, `OMEGA`, `PS`, `TS`, `PRECC`, `PRECL`, `SHFLX` and `LHFLX`
+of every step in its ranks' memory (`record_state={"store": "memory"}`): each
+rank copies its own columns into its own memory (a 3-D field 3 KB a step at 512
+ranks, a surface field 0.1 KB) and nothing is written or sent while the model
+steps. Until the model starts, the tab lists the named fields to keep, by
+group, with the interval and the steps also recorded after every process
+(`GET`/`PUT /api/globe/options`); a running model keeps what it was started
+with. The page asks for what it shows -- one field at one level,
+what each action changed, one column -- and the service asks the ranks between
+two steps (a run of the page's steps one at a time lets a waiting question go
+before the next step): one field of one snapshot is gathered to rank 0, a sum
+over the globe is reduced on the ranks, a column comes from the rank that
+holds it. With *Anomalies* on, the globe asks for the shown step's codes alone,
+and the list over the steps for counts the ranks add up, of the steps recorded
+since it last asked: a frame never changes, so nothing is looked at twice. Each rank keeps the newest `keep_steps` step snapshots (1000) and
+`keep_actions` action snapshots (2000, dropped a whole step at a time); an
+older frame is refused. The state goes with the model: after *Close model*
+there is nothing to show, so a run to look at later records into a directory
+instead.
+
+A `record_state` the caller chose is kept, with its fields, interval and action
+steps; with a directory, or `store="files"`, the run writes its files every
+step and the tab reads them. `driver.ui(globe=False)` or `freecam ui
+--no-globe` leaves the model as it is, and a model already running keeps what
+it was started with.
+
+#### Who changed a column
+
+At an action step the recorder also keeps, beside each action's snapshot, what
+computed that action on this run: the original Fortran, the coupler's
+exchange, output, a Python process, or a Python stage class with the way it
+ran and what stood in each replaced kernel slot (an ML model with its file and
+device, a compiled plugin, the original called through Python, or a Python
+function). The driver reads this from the plan and the installed stages; it
+does not look inside the numbers. In the default step 36 actions read
+"original Fortran", six output, three the state service, two the coupler
+exchange and one the clock. With the shallow-convection stage installed and its
+kernel answered by a TorchScript model on the host, the trace names it:
+
+```
+        ↓ cam_run1.shallow_convection_python   (original Fortran, except compute_uwshcu_inv by an ML model (uwshcu_h256_notr_2cap_sub.pt, cpu), 12.0 ms)
+  T = 294.28 K   Q = 15.332 g/kg   CLDLIQ = 16.077 mg/kg
+      → ΔT +0.122 K   ΔQ -0.125 g/kg   ΔCLDLIQ -3.91 mg/kg
+```
+
+The label says what stood in the slot, not that every call of the step went
+to it: the image's hook counters do (51,200 of the kernel's 53,248 calls in
+that run went to the model; the other 2,048 are four a rank, the same four a
+rank as in a month of 1488 steps, so they do not recur step by step). A trace then follows one column through one
+step, one field set at one level:
+
+```bash
+freecam trace <run>/state --lat -31 --lon -50.6 --step 24 --hpa 925
+freecam trace <run>/state --lat 10 --lon 120 --step 24 --level 20 --fields T,Q --all --json
+```
+
+From a 50-step online run recorded before the owners were kept, so they read
+"not recorded" (`--fields T,Q,CLDLIQ`):
+
+```
+step 24, the column at 31.0°S, 50.6°W (sea), level 27, about 923 hPa
+
+  T = 298.43 K   Q = 13.251 g/kg   CLDLIQ = 0.0000 mg/kg
+
+        ↓ cam_run1.dynamics_to_physics   (not recorded, 4.6 ms)
+  T = 298.27 K   Q = 13.291 g/kg   CLDLIQ = 0.0000 mg/kg
+      → ΔT -0.159 K   ΔQ +0.0394 g/kg   ΔCLDLIQ ≈0 mg/kg
+
+        ↓ cam_run1.deep_convection   (not recorded, 8.8 ms)
+  T = 294.90 K   Q = 14.626 g/kg   CLDLIQ = 0.0695 mg/kg
+      → ΔT -3.36 K   ΔQ +1.34 g/kg   ΔCLDLIQ +0.0695 mg/kg
+
+        ↓ cam_run1.cloud_macro_microphysics   (not recorded, 38.9 ms)
+  T = 294.89 K   Q = 14.631 g/kg   CLDLIQ = 0.0000 mg/kg
+      → ΔT -0.0116 K   ΔQ +0.00479 g/kg   ΔCLDLIQ -0.0695 mg/kg
+
+        ↓ cam_run1.radiation   (not recorded, 46.3 ms)
+  T = 294.94 K   Q = 14.631 g/kg   CLDLIQ = 0.0000 mg/kg
+      → ΔT +0.0437 K   ΔQ 0 g/kg   ΔCLDLIQ 0 mg/kg
+
+(4 more changed this level by less than 0.1% of its largest change; 40 left it unchanged)
+over the step: ΔT -3.49 K   ΔQ +1.38 g/kg   ΔCLDLIQ ≈0 mg/kg
+```
+
+It lists the actions that changed a field at that level by at least 0.1% of
+the largest change any action made there (`--relative`, `--all` for every
+action), with each action's mean time over the ranks, and says how many more
+changed it less and how many left it alone; a change below 1e-12 of the
+column's largest value (round-off, a denormal) counts as none. With no level it takes the level
+where the first field changed most over the step. On the page the same trace
+appears when a column is picked under *Processes in a step*; a row moves the
+globe to that action. A self-contained page traces from the levels it
+embeds, and its changes are 8-bit over each action's largest change on the
+globe: one column's change is then only within half a code of it (the page
+prints the ± beside each), and the errors add up over the step. At one column
+of a 50-step run the page gave -2.60 ± 1.30 mg/kg of liquid for vertical
+diffusion (one code) where the recorded change is -1.51, and +3.42 ± 4.43 over
+the step where it is +4.14; use the served viewer or `freecam trace` for
+numbers.
+
+The trace names the action, not the line of Fortran inside it: a change inside
+`cloud_macro_microphysics` is that whole action's, and a run recorded before
+the owners were kept shows them as not recorded.
+
+#### Finding what went wrong
+
+The viewer also marks anomalies: a column where a recorded field is not finite
+(NaN or Inf), where water or any constituent (`Q`, `CLDLIQ`, `CLDICE`,
+`phys_state.q:<name>`) is negative, or where temperature is outside 100 to
+400 K. The original physics leaves none of these between its actions: at an
+action step of the bit-for-bit gate no recorded value is negative, and the
+default run's check reports nothing. *Anomalies* on the page paints the
+anomalous columns in their kind's colour over the faded field, says for the
+recorded steps where each field first went wrong, and at an action step names
+the first action that made each kind of anomaly, with the columns it made so;
+a band over the process strip marks those actions. Clicking an entry goes to
+the action and picks one of its columns, and the column's trace marks the
+action after which it became anomalous. From the command line:
+
+```bash
+freecam anomalies <run>/state                 # every recorded step and action step
+freecam anomalies <run>/state --step 2 --json
+```
+
+On a 50-step run with a shallow-convection model whose cloud fraction came out
+slightly negative (H2O2 and SO2 recorded as `phys_state.q:H2O2`,
+`phys_state.q:SO2`):
+
+```
+steps: phys_state.q:H2O2 non-finite first at the end of step 2 (13282 columns, every column from step 3)
+action step 1: no action made a column anomalous
+action step 2: phys_state.q:H2O2 became non-finite after cam_run2.chemistry_tendencies_leaf (original Fortran): 5579 columns, e.g. 10 (-28.0, 84.4), 24 (-32.1, 85.9), 26 (11.3, 90.0)
+action steps 3-10: phys_state.q:H2O2 non-finite already as the step begins (up to 13826 columns); no action made a new kind of anomaly
+```
+
+The action named is where a recorded field first went wrong, which is not
+always where the error began: here the chemistry is the original Fortran, and
+the cause was upstream (the model's shallow cloud fraction, which chemistry's
+photolysis raises to the power 1.5). Record the fields the suspect process
+writes -- a cloud fraction, a tendency -- to follow the chain further back.
+A value that is non-finite before and after an action is shown as "still
+non-finite" and does not list the action in a trace. JSON has no NaN, so the
+server and the page carry a non-finite value as null.
 
 ## The workflow
 

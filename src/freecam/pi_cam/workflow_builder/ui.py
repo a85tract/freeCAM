@@ -76,11 +76,11 @@ class WorkflowUI:
 
 
 def launch_ui(driver: Any, *, host: str = "127.0.0.1", port: int | None = None,
-              open_browser: bool = False, block: bool = False) -> WorkflowUI:
+              open_browser: bool = False, block: bool = False, globe: bool = True) -> WorkflowUI:
     """Serve the Workflow Builder for ``driver``; returns at once unless ``block``."""
 
     chosen = port if port else _free_port(host)
-    ui = WorkflowUI(WorkflowService(driver), host, chosen)
+    ui = WorkflowUI(WorkflowService(driver, globe=globe), host, chosen)
     if open_browser:
         threading.Timer(0.5, lambda: webbrowser.open(ui.url)).start()
     return ui.start(block=block)
@@ -93,11 +93,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default="127.0.0.1", help="loopback by default; reach a remote one through SSH port forwarding")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--open", action="store_true", help="open the page in a browser")
+    parser.add_argument("--no-globe", action="store_true",
+                        help="do not record the state every step for the page's Globe tab")
     arguments = parser.parse_args(argv)
     from freecam import Driver
 
     driver = Driver(case=arguments.case, nsteps=arguments.nsteps)
-    ui = WorkflowUI(WorkflowService(driver), arguments.host, arguments.port)
+    ui = WorkflowUI(WorkflowService(driver, globe=not arguments.no_globe), arguments.host, arguments.port)
     print(f"freeCAM Workflow Builder for {arguments.case}: {ui.url}", file=sys.stderr)
     print("The model starts on the first Run; Ctrl+C stops the page (and closes a started model).", file=sys.stderr)
     if arguments.open:

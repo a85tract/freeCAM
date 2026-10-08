@@ -1102,6 +1102,10 @@ class PICAMDriver:
         #: the per-rank action timeline (freecam.pi_cam.timeline.TimelineRecorder), or None;
         #: attach it before initialize with attach_timeline
         self.timeline = None
+        #: snapshots of chosen state fields (freecam.pi_cam.state_record.StateRecorder), or None;
+        #: attach it before initialize with attach_state_recorder
+        self.state_recorder = None
+        self._state_depth = 0
         self.module_parameters = PICAMModuleParameterRegistry(self)
         self.history_streams = PICAMHistoryStreamRegistry(self)
         self.default_history_stream = bool(default_history_stream)
@@ -1165,6 +1169,12 @@ class PICAMDriver:
         return tuple(islice(self._trace, start, None))
 
     @property
+    def steps_taken(self) -> int:
+        """Complete steps run since initialization (which itself couples once)."""
+
+        return self.coupling_step - getattr(self, "_first_coupling_step", 0)
+
+    @property
     def native_step(self) -> int:
         """Python's mirror of CAM's internal time-manager step."""
 
@@ -1196,6 +1206,13 @@ class PICAMDriver:
             timeline.phase("initialize", started)
             timeline.write_columns(self.pool)
             timeline.flush()
+        recorder = getattr(self, "state_recorder", None)
+        if recorder is not None:
+            recorder.describe(self.pool, getattr(self.backend, "_library", None))
+            recorder.flush()
+        #: the coupling step initialization leaves: it couples once itself, so the steps a run
+        #: takes are counted from here (steps_taken)
+        self._first_coupling_step = self.coupling_step
 
     def _initialize(self) -> None:
         if self.lifecycle != PICAMLifecycle.CREATED:
@@ -1395,6 +1412,67 @@ class PICAMDriver:
         return trace
 
     def _execute(self, action: PICAMAction) -> PICAMActionTrace:
+        recorder = getattr(self, "state_recorder", None)
+        if recorder is None or not getattr(self, "_in_step", False) or not recorder.wants_actions(self.coupling_step):
+            return PICAMDriver._execute_timed(self, action)
+        # an action step of the state recorder: the state after every plan action (an
+        # action a Python stage runs inside its own is part of the enclosing one), and how long
+        # the action took on this rank (the copy after it is not counted)
+        depth = getattr(self, "_state_depth", 0)
+        self._state_depth = depth + 1
+        started = time.perf_counter()
+        try:
+            trace = PICAMDriver._execute_timed(self, action)
+        finally:
+            self._state_depth = depth
+        if depth == 0:
+            recorder.after_action(self.coupling_step, action.qualified_name, self.pool,
+                                  seconds=time.perf_counter() - started,
+                                  owner=PICAMDriver._action_owner(self, action))
+        return trace
+
+    #: what computes an action of each native kind, for the state recorder's trace
+    _OWNER_BY_KIND = {"boundary": "coupler", "io": "io", "clock": "clock", "service": "service",
+                      "python_history": "io"}
+
+    def _action_owner(self, action: PICAMAction) -> dict[str, Any]:
+        """Who computed ``action`` this step, for the state recorder: the original Fortran, the
+        coupler exchange, output, a Python process, or a Python stage class with how it ran and
+        what stood in its replaced kernel slots.  Read-only, and never raises: a trace label is not
+        worth a failed step."""
+
+        try:
+            if action.kind != "python_process":
+                return {"by": PICAMDriver._OWNER_BY_KIND.get(action.kind, "fortran")}
+            installed = getattr(getattr(self, "python_processes", None), "installed", {}) or {}
+            record = installed.get(action.name) or installed.get(str(action.name).lower())
+            stage = getattr(getattr(record, "function", None), "__self__", None)
+            execution = getattr(stage, "execution", None)
+            if execution is None:
+                return {"by": "python"}
+            owner: dict[str, Any] = {"by": "python-stage", "mode": getattr(execution, "mode", None)}
+            replacements = getattr(stage, "replacements", None)
+            names = list(replacements()) if callable(replacements) else []
+            kernels = getattr(stage, "kernels", {}) or {}
+            slots = {}
+            for name in names:
+                slot = kernels.get(name)
+                kind = type(slot).__name__
+                if kind == "NativeModel":
+                    slots[name] = {"by": "ml", "file": Path(str(slot.path)).name, "device": getattr(slot, "device", "cpu")}
+                elif kind == "NativePlugin":
+                    slots[name] = {"by": "plugin"}
+                elif kind in ("OriginalKernel", "OriginalAtPause"):
+                    slots[name] = {"by": "fortran-through-python"}
+                else:
+                    slots[name] = {"by": "python"}
+            if slots:
+                owner["kernels"] = slots
+            return owner
+        except Exception:
+            return {"by": "unknown"}
+
+    def _execute_timed(self, action: PICAMAction) -> PICAMActionTrace:
         timeline = getattr(self, "timeline", None)
         if timeline is None:
             return PICAMDriver._execute_counted(self, action)
@@ -2289,19 +2367,42 @@ class PICAMDriver:
         recorder.start()
         self.timeline = recorder
 
+    def attach_state_recorder(self, recorder: Any) -> None:
+        """Snapshot chosen state fields with ``recorder`` (a StateRecorder); it is started here,
+        collectively, and bound to the state pool after initialization."""
+
+        if self.lifecycle != PICAMLifecycle.CREATED:
+            raise PICAMStateError("attach the state recorder before initialize")
+        recorder.start()
+        self.state_recorder = recorder
+
     def step(self) -> tuple[PICAMActionTrace, ...]:
+        horizon = getattr(self.boundary, "steps_horizon", None)
+        if horizon is not None and self.coupling_step - getattr(self, "_first_coupling_step", 0) >= horizon:
+            # the CESM surface components were set up for this many steps after initialization and
+            # stopped there, after writing their restart files: refuse the step on every rank
+            # before any of it runs
+            raise PICAMStateError(
+                f"the CESM surface components run {horizon} steps and this model has taken them; "
+                f"step {horizon + 1} cannot be coupled")
         timeline = self.timeline
-        if timeline is None:
+        recorder = getattr(self, "state_recorder", None)
+        if timeline is None and recorder is None:
             with self.profiler.region("FREECAM:STEP"):
                 return self._step()
         step = self.coupling_step
-        started = timeline.clock()
+        if recorder is not None:
+            recorder.step_start(step, self.pool)
+        started = timeline.clock() if timeline is not None else 0.0
         with self.profiler.region("FREECAM:STEP"):
             result = self._step()
-        timeline.step_done(step, started)
-        if step == 0:
-            # the land fraction exists once the first import has run; gathered once, collectively
-            timeline.write_surface(self.pool)
+        if timeline is not None:
+            timeline.step_done(step, started)
+            if step == 0:
+                # the land fraction exists once the first import has run; gathered once, collectively
+                timeline.write_surface(self.pool)
+        if recorder is not None:
+            recorder.step_done(step, self.pool)
         return result
 
     def _step(self) -> tuple[PICAMActionTrace, ...]:
@@ -2427,6 +2528,8 @@ class PICAMDriver:
             if timeline is not None:
                 timeline.phase("finalize", started)
                 timeline.close()
+            if getattr(self, "state_recorder", None) is not None:
+                self.state_recorder.close()
             self.profiler.stop_total()
             if self.run_dir is not None:
                 self.profiler.write(
@@ -2542,6 +2645,8 @@ class PICAMDriver:
         # is this rank's own is closed; the exception goes on to the caller, which aborts.
         if self.timeline is not None:
             self.timeline.close()
+        if getattr(self, "state_recorder", None) is not None:
+            self.state_recorder.abandon()
 
     def _collective_boundary_call(
         self,

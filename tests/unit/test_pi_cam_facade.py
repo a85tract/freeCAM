@@ -1472,3 +1472,109 @@ def test_a_replayed_boundary_keeps_the_ranks_it_was_captured_on(tmp_path) -> Non
         Driver(case="PI-atm", nsteps=2, repo=paths["repo"], config=paths["config"], scratch=tmp_path / "s",
                reference_case=paths["reference_case"], reference_run=paths["reference_run"],
                boundary=paths["boundary"], session_factory=FakeSession, ntasks=256, exploratory=True)
+
+
+def test_a_run_past_the_surface_components_horizon_is_refused_before_it_starts(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    config = paths["config"]
+    config.write_text(config.read_text() + "boundary_mode: online\n")
+    bootstrap = tmp_path / "bootstrap"
+    bootstrap.mkdir()
+    (bootstrap / "manifest.json").write_text(
+        '{"schema_version":1,"storage":"rank_bootstrap_v1",'
+        '"rank_count":1,"file_pattern":"rank-{rank:04d}.npz"}\n'
+    )
+    np.savez(bootstrap / "rank-0000.npz", x2a_rattr=np.zeros((2, 3)), a2x_rattr=np.zeros((4, 3)))
+
+    class Ending(OnlineBoundaryProvider):
+        steps_horizon = 5           # the CESM components stop after 5 steps, as drv_in's stop_n says
+
+    driver = Driver(
+        case="PI-atm", nsteps=4, repo=paths["repo"], config=config, reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"], boundary=Ending.held(bootstrap),
+        python_executable="/usr/bin/python3", session_factory=FakeSession,
+    )
+    started = len(FakeSession.instances)
+    with pytest.raises(ValueError, match="run 5 steps .* taken 0, so at most 5 more"):
+        driver.run(6)
+    assert len(FakeSession.instances) == started                         # refused before a model was asked for
+    driver.run(4)
+    with pytest.raises(ValueError, match="run 5 steps .* taken 4, so at most 1 more"):
+        driver.run(2)
+    assert FakeSession.instances[-1]._steps == 4                       # nothing ran
+    driver.run(1)
+    with pytest.raises(ValueError, match="can run no more"):
+        driver.advance(1)
+
+
+def test_a_step_past_the_horizon_is_refused_on_every_rank_before_it_runs() -> None:
+    from types import SimpleNamespace
+
+    from freecam.pi_cam.driver import PICAMDriver
+    from freecam.pi_cam.errors import PICAMStateError
+
+    month = SimpleNamespace(steps_horizon=1488)
+    # initialization couples once itself: its counters read 1 before the first step of a run
+    after_month = SimpleNamespace(boundary=month, coupling_step=1489, _first_coupling_step=1, _native_step=1489)
+    assert PICAMDriver.steps_taken.fget(after_month) == 1488
+    with pytest.raises(PICAMStateError, match="run 1488 steps .* step 1489 cannot be coupled"):
+        PICAMDriver.step(after_month)
+    # the month's last step goes on (into the rest of step(), which this stand-in does not have)
+    with pytest.raises(AttributeError, match="timeline"):
+        PICAMDriver.step(SimpleNamespace(boundary=month, coupling_step=1488, _first_coupling_step=1))
+
+
+def test_a_new_model_reads_the_horizon_from_the_seed_run_before_it_starts(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    config = paths["config"]
+    config.write_text(config.read_text() + "boundary_mode: online\n")
+    seed = tmp_path / "seed-run"
+    seed.mkdir()
+    (seed / "drv_in").write_text('&seq_timemgr_inparm\n  stop_option = "nsteps"\n  stop_n = 1488\n/\n')
+    driver = Driver(
+        case="PI-atm", nsteps=100, repo=paths["repo"], config=config, reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"], python_executable="/usr/bin/python3", session_factory=FakeSession,
+    )
+    driver._online_seed_run = seed
+    started = len(FakeSession.instances)
+    with pytest.raises(ValueError, match="run 1488 steps .* taken 0, so at most 1488 more"):
+        driver.run(2000)                                                 # longer than the model was set up for
+    assert len(FakeSession.instances) == started                         # no model asked for
+
+
+def test_a_model_longer_than_the_seed_sets_its_components_and_cam_for_its_length(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    config = paths["config"]
+    config.write_text(config.read_text().replace("stop_n: 5", "stop_n: 1488") + "boundary_mode: online\n")
+    library = tmp_path / "libpycesm_support.so"
+    library.write_bytes(b"test library")
+    seed = tmp_path / "cesm-seed"
+    seed.mkdir()
+    month = '&seq_timemgr_inparm\n  restart_n = 1488\n  stop_n = 1488\n  stop_option = "nsteps"\n/\n'
+    (seed / "drv_in").write_text(month)
+    (seed / "SEMapping.nc").write_bytes(b"mapping")
+
+    def driver(nsteps):
+        return Driver(case="PI-atm", nsteps=nsteps, repo=paths["repo"], config=config, scratch=tmp_path / "scratch",
+                      reference_case=paths["reference_case"], reference_run=paths["reference_run"],
+                      online_library=library, online_seed_run=seed, python_executable="/usr/bin/python3",
+                      session_factory=FakeSession)
+
+    long = driver(1000)
+    long.lengthen(2976)                                                  # the page's first Run: two months
+    assert long.nsteps == 2976 and long._steps_horizon() == 2976
+    _ = long.cam.state
+    drv_in = (long.boundary.run_dir / "drv_in").read_text()
+    assert "stop_n = 2976" in drv_in and "restart_n = 2976" in drv_in and 'stop_option = "nsteps"' in drv_in
+    assert long.boundary.steps_horizon == 2976
+    assert "stop_n: 2976" in Path(long.config_path).read_text()          # CAM's own end (its restart) moves too
+    assert (seed / "drv_in").read_text() == month                        # the seed is left as it is
+    long.lengthen(5000)                                                  # a started model keeps its length
+    assert long.nsteps == 2976
+    long.close()
+
+    short = driver(120)
+    _ = short.cam.state
+    assert (short.boundary.run_dir / "drv_in").read_text() == month      # a month's components, as before
+    assert short.boundary.steps_horizon == 1488 and Path(short.config_path) == config.resolve()
+    short.close()

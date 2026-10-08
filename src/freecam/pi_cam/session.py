@@ -1638,6 +1638,7 @@ class PICAMNotebookSession:
         trace_limit: int | None = DEFAULT_TRACE_LIMIT,
         timeline_dir: str | Path | None = None,
         timeline_flush_every: int = 100,
+        state_options: Mapping[str, Any] | None = None,
     ) -> None:
         if isinstance(config, PICAMConfig):
             raise TypeError("PICAMNotebookSession currently requires a YAML config path")
@@ -1671,6 +1672,10 @@ class PICAMNotebookSession:
         #: where the rank workers record their action timeline (freecam timeline DIR), or None
         self.timeline_dir = None if timeline_dir is None else Path(timeline_dir)
         self.timeline_flush_every = int(timeline_flush_every)
+        #: the rank workers' state recorder: {"dir", "fields", "every", "action_steps",
+        #: "flush_every"} for files (freecam globe DIR), {"store": "memory", "keep_steps",
+        #: "keep_actions", ...} for snapshots kept in the ranks' memory (state_query); or None
+        self.state_options = None if state_options is None else dict(state_options)
         self.startup_timeout = float(startup_timeout)
         self.request_timeout = float(request_timeout)
         self.log_path = Path(log_path or self.run_dir / "pi_cam_notebook_worker.log").resolve()
@@ -1695,6 +1700,10 @@ class PICAMNotebookSession:
         self._pbs_script: Path | None = None
         self._status: dict[str, Any] = {}
         self._request_lock = threading.RLock()
+        # state queries (the globe) go before the next step: a run waits for them at a step boundary
+        self._query_turn = threading.Condition()
+        self._queries_waiting = 0
+        self._ready = False
         self._step_plots: list[Any] = []
         self.fields = _SessionFieldCollection(self)
         self.physics = _SessionPhysicsCollection(self)
@@ -1706,6 +1715,13 @@ class PICAMNotebookSession:
     @property
     def running(self) -> bool:
         return self._connection is not None
+
+    @property
+    def ready(self) -> bool:
+        """The ranks have started and answer commands (``running`` is already true while they
+        start up)."""
+
+        return self._ready and self._connection is not None
 
     @property
     def job_id(self) -> str | None:
@@ -1759,6 +1775,7 @@ class PICAMNotebookSession:
                 )
             self._connection = self._accept(listener)
             self._status = dict(self._unwrap(self._receive(self.startup_timeout)))
+            self._ready = True
         except BaseException:
             self._abort()
             raise
@@ -1804,6 +1821,19 @@ class PICAMNotebookSession:
         if self.timeline_dir is not None:
             command.extend(["--timeline-dir", str(self.timeline_dir),
                             "--timeline-flush-every", str(self.timeline_flush_every)])
+        if self.state_options is not None:
+            options = self.state_options
+            if options.get("store") == "memory":
+                command.append("--state-memory")
+                for key in ("keep_steps", "keep_actions"):
+                    if options.get(key) is not None:
+                        command.extend([f"--state-{key.replace('_', '-')}", str(int(options[key]))])
+            else:
+                command.extend(["--state-dir", str(options["dir"])])
+            command.extend(["--state-fields", ",".join(options.get("fields") or ("T", "Q", "CLDLIQ", "CLDICE")),
+                            "--state-every", str(int(options.get("every", 1))),
+                            "--state-action-steps", ",".join(str(int(s)) for s in options.get("action_steps", ())),
+                            "--state-flush-every", str(int(options.get("flush_every", 24)))])
         return command
 
     def _boundary_arguments(self) -> list[str]:
@@ -1829,6 +1859,7 @@ class PICAMNotebookSession:
         # complete CAM/CESM coupling steps before replying.
         timeout = max(self.request_timeout, 15.0 * int(count))
         command = {"op": "step", "count": int(count)}
+        self._wait_for_queries()
         response = (
             self._request(command)
             if timeout == self.request_timeout
@@ -1836,6 +1867,28 @@ class PICAMNotebookSession:
         )
         self._status = dict(response)
         return dict(self._status)
+
+    def state_query(self, request: Mapping[str, Any]) -> Any:
+        """Ask the ranks' state recorder (kept in memory) for what a viewer shows; see
+        :meth:`freecam.pi_cam.state_record.StateRecorder.query`.  During a run it is answered
+        between two steps: the next step waits for it."""
+
+        if not self.ready:
+            raise PICAMNotebookError("the model is still starting: no state to ask for yet")
+        with self._query_turn:
+            self._queries_waiting += 1
+        try:
+            return self._request({"op": "state_query", "request": dict(request)})
+        finally:
+            with self._query_turn:
+                self._queries_waiting -= 1
+                self._query_turn.notify_all()
+
+    def _wait_for_queries(self) -> None:
+        # a lock is not fair: a run taking the next step at once could keep a query waiting for
+        # the whole run, so the step lets the queries already asked go first
+        with self._query_turn:
+            self._query_turn.wait_for(lambda: self._queries_waiting == 0, timeout=self.request_timeout)
 
     def advance(self, steps: int = 1) -> Mapping[str, Any]:
         """Advance complete CAM steps while keeping ``step`` compatible."""
@@ -2623,6 +2676,7 @@ class PICAMNotebookSession:
         if self._log_handle is not None:
             self._log_handle.close()
         self._connection = None
+        self._ready = False
         self._process = None
         self._job_id = None
         self._log_handle = None

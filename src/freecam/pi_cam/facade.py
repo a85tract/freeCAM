@@ -391,6 +391,48 @@ class Physics:
         return handle
 
 
+def _state_options(state: bool | str | Path | Mapping[str, Any]) -> dict[str, Any] | None:
+    """``Driver(record_state=...)`` -> the recorder's options, or None when it is off; checked here, before
+    any job starts, so a misnamed option fails in the notebook and not on 512 ranks."""
+
+    if state is False or state is None:
+        return None
+    if state is True:
+        return {"dir": None}
+    if isinstance(state, (str, Path)):
+        return {"dir": Path(state).expanduser()}
+    if not isinstance(state, Mapping):
+        raise TypeError("state must be False, True, a directory, or a mapping of recorder options")
+    known = {"dir", "fields", "every", "action_steps", "flush_every", "store", "keep_steps", "keep_actions"}
+    unknown = sorted(set(state) - known)
+    if unknown:
+        raise ValueError(f"state options {unknown} are not {', '.join(sorted(known))}")
+    from .state_record import field_spec
+
+    options = dict(state)
+    store = options.get("store", "files")
+    if store not in ("files", "memory"):
+        raise ValueError(f"state store is files or memory, not {store!r}")
+    if store == "memory" and options.get("dir") is not None:
+        raise ValueError("a state kept in memory has no directory")
+    for key in ("keep_steps", "keep_actions"):
+        if options.get(key) is not None:
+            if store != "memory":
+                raise ValueError(f"state {key} bounds the snapshots kept in memory (store='memory')")
+            if int(options[key]) < 1:
+                raise ValueError(f"state {key} must be at least 1")
+    if options.get("dir") is not None:
+        options["dir"] = Path(options["dir"]).expanduser()
+    if "fields" in options:
+        options["fields"] = [field_spec(name).name for name in options["fields"]]
+    if int(options.get("every", 1)) < 1:
+        raise ValueError("state every must be at least 1")
+    if int(options.get("flush_every", 24)) < 1:
+        raise ValueError("state flush_every must be at least 1")
+    options["action_steps"] = sorted({int(step) for step in options.get("action_steps", ())})
+    return options
+
+
 def _invoke_physics_callback(
     callback: Callable[..., Any],
     state: Any,
@@ -1709,6 +1751,7 @@ class Driver:
         ntasks: int | None = None,
         exploratory: bool = False,
         build: Any = None,
+        record_state: bool | str | Path | Mapping[str, Any] = False,
     ) -> None:
         if int(nsteps) < 1:
             raise ValueError("nsteps must be positive")
@@ -1889,6 +1932,12 @@ class Driver:
         #: record every rank's action timeline: False (off, the default), True (into the run
         #: directory's ``timeline``), or a directory; view it with ``freecam timeline DIR``
         self.timeline = timeline if isinstance(timeline, bool) else Path(timeline).expanduser()
+        #: record snapshots of state fields for the globe viewer (``freecam globe DIR``): False
+        #: (off, the default), True (T, Q, CLDLIQ and CLDICE every step, into the run directory's
+        #: ``state``), a directory, or options {"dir", "fields", "every", "action_steps",
+        #: "flush_every"}; {"store": "memory", "keep_steps", "keep_actions", ...} keeps them in the
+        #: ranks' memory instead, for :meth:`query_state` (the Workflow Builder's globe)
+        self.record_state = _state_options(record_state)
         # Do not resolve the final ``.venv/bin/python`` symlink: Python uses
         # that invocation path to select the virtual environment's site-packages.
         self.python_executable = Path(
@@ -2051,7 +2100,23 @@ class Driver:
             raise ValueError("steps must be positive")
         session = self._live_session()
         self.processes.sync()
+        self._check_horizon(session.status, int(steps))
         return session.advance(steps=int(steps))
+
+    def _check_horizon(self, status: Mapping[str, Any], steps: int) -> None:
+        """Refuse a run past the steps the CESM surface components were set up for: they stop
+        there, having written their restart files, and a step after it cannot be coupled."""
+
+        horizon = self._steps_horizon()
+        if horizon is None:
+            return
+        # the steps run since initialization (which couples once itself, so the counters are one ahead)
+        taken = int(status.get("steps_taken", status.get("step", 0)))
+        if taken + int(steps) > int(horizon):
+            left = max(horizon - taken, 0)
+            raise ValueError(
+                f"this model's surface components run {horizon} steps and stop there; it has taken {taken}, "
+                + (f"so at most {left} more can run" if left else "so it can run no more: Close model and start a new one"))
 
     def execute(
         self,
@@ -2079,12 +2144,16 @@ class Driver:
     ) -> RunResult:
         if isinstance(steps, bool) or int(steps) < 1:
             raise ValueError("steps must be a positive integer")
+        if self._session is None:
+            # before the PBS job is asked for: a model not yet started has taken no step
+            self._check_horizon({"steps_taken": 0}, int(steps))
         if not self._execution_lock.acquire(blocking=False):
             raise RuntimeError("this model already has a run in progress")
         try:
             session = self._live_session()
             self.processes.sync()
             starting_status = dict(session.status)
+            self._check_horizon(starting_status, int(steps))
             start_step = int(starting_status.get("step", 0))
             first = int(starting_status["actions"])
             stepwise = (
@@ -2251,17 +2320,20 @@ class Driver:
             self._session.close()
             self._session = None
 
-    def ui(self, *, host: str = "127.0.0.1", port: int | None = None, open_browser: bool = False) -> Any:
+    def ui(self, *, host: str = "127.0.0.1", port: int | None = None, open_browser: bool = False,
+           globe: bool = True) -> Any:
         """Serve the Workflow Builder page for this model and return its handle.
 
         Only the page starts: no PBS, no MPI.  The handle's ``url`` carries the
         session token; ``close()`` stops the page and leaves the model as it
-        is.  The model itself starts on the first Run the page asks for.
+        is.  The model itself starts on the first Run the page asks for.  With
+        ``globe`` (the default) a model not yet started keeps its state of every
+        step in its ranks' memory for the page's Globe tab (``record_state``).
         """
 
         from .workflow_builder.ui import launch_ui
 
-        return launch_ui(self, host=host, port=port, open_browser=open_browser)
+        return launch_ui(self, host=host, port=port, open_browser=open_browser, globe=globe)
 
     def __enter__(self) -> "Driver":
         return self
@@ -2279,20 +2351,56 @@ class Driver:
             return None if self.run_dir is None else self.run_dir / "timeline"
         return Path(self.timeline).resolve()
 
+    @property
+    def state_dir(self) -> Path | None:
+        """Where the rank workers record their state snapshots, or None when it is off."""
+
+        if self.record_state is None or self.record_state.get("store") == "memory":
+            return None
+        if self.record_state.get("dir") is None:
+            return None if self.run_dir is None else self.run_dir / "state"
+        return Path(self.record_state["dir"]).resolve()
+
+    @property
+    def state_live(self) -> bool:
+        """The model is up and keeps its state snapshots in memory: :meth:`query_state` answers."""
+
+        session = self._session
+        return (self.record_state is not None and self.record_state.get("store") == "memory"
+                and session is not None and bool(getattr(session, "ready", False)))
+
+    def query_state(self, request: Mapping[str, Any]) -> Any:
+        """Ask the running model for some of the state snapshots its ranks keep in memory
+        (``record_state={"store": "memory"}``): what the Workflow Builder's globe shows.  During
+        a run it is answered between two steps."""
+
+        if not self.state_live:
+            raise RuntimeError("no model keeping its state in memory is running")
+        return self._session.state_query(request)
+
     def _live_session(self) -> PICAMNotebookSession:
         if self._session is None:
             run_dir = self._prepare_run_dir()
-            if self._derived_ranks is not None:
+            # a run longer than the configuration's: CAM's own end (its restart at the end) moves with it
+            length = self._planned_steps()
+            longer = length if length is not None and length > int(self.config.stop_n) else None
+            if self._derived_ranks is not None or longer is not None:
                 # the session launches as many ranks as its configuration says
                 from .layout import derive_config
 
                 self.config_path = derive_config(
-                    self.config_path, run_dir.parent / "config.yaml", mpi_size=self._derived_ranks
+                    self.config_path, run_dir.parent / "config.yaml", mpi_size=self._derived_ranks, stop_n=longer
                 ).resolve()
                 self._derived_ranks = None
             boundary = self._prepare_online_boundary(run_dir)
             timeline_options = {} if self.timeline is False else {
                 "timeline_dir": (Path(run_dir) / "timeline") if self.timeline is True else Path(self.timeline).resolve()}
+            if self.record_state is not None and self.record_state.get("store") == "memory":
+                timeline_options["state_options"] = dict(self.record_state)
+            elif self.record_state is not None:
+                directory = self.record_state.get("dir")
+                timeline_options["state_options"] = {
+                    **self.record_state, "dir": Path(run_dir) / "state" if directory is None else Path(directory).resolve()}
             session = self._session_factory(
                 self.config_path,
                 boundary=boundary,
@@ -2349,6 +2457,38 @@ class Driver:
             / "libpycesm_external_atm.so"
         ).resolve()
 
+    def _steps_horizon(self) -> int | None:
+        """How many steps the CESM surface components run: their provider's, or, before the model
+        starts, what it will be set up for; None for a boundary without an end."""
+
+        if self.boundary is not None or self.config.boundary_mode != "online":
+            return getattr(self.boundary, "steps_horizon", None)
+        return self._planned_steps()
+
+    def _seed_horizon(self) -> int | None:
+        from .layout import read_horizon
+
+        drv_in = self._resolve_online_seed_run() / "drv_in"
+        return read_horizon(drv_in.read_text()) if drv_in.is_file() else None
+
+    def _planned_steps(self) -> int | None:
+        """The steps the CESM components of a model this Driver starts are set up for: the seed
+        run's, or ``nsteps`` when longer (as the batch jobs lengthen it); None when the boundary
+        is not the CESM provider prepared here."""
+
+        if self.boundary is not None or self.config.boundary_mode != "online":
+            return None
+        seed = self._seed_horizon()
+        return None if seed is None else max(seed, int(self.nsteps))
+
+    def lengthen(self, steps: int) -> None:
+        """Before the model starts, set it up to run at least ``steps`` steps: the online case's
+        CESM components then run that long (what the Workflow Builder's first Run asks for).  A
+        started model keeps the length it was started with."""
+
+        if self._session is None and self.config.boundary_mode == "online":
+            self.nsteps = max(int(self.nsteps), int(steps))
+
     def _resolve_online_seed_run(self) -> Path:
         from .. import site
 
@@ -2374,12 +2514,14 @@ class Driver:
         self._check_pairing(library)
         seed_run = self._resolve_online_seed_run()
         provider_run = run_dir.parent / "cesm-provider-run"
+        seed, length = self._seed_horizon(), self._planned_steps()
         self.boundary = CESMOnlineBoundaryProvider.from_seed_run(
             library=library,
             seed_run=seed_run,
             run_dir=provider_run,
             oracle=self._online_oracle,
             **({} if self._chosen_ranks is None else {"ranks": self._chosen_ranks}),
+            **({"steps": length} if seed is not None and length is not None and length > seed else {}),
         )
         return self.boundary
 

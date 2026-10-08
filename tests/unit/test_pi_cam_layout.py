@@ -76,7 +76,44 @@ def test_a_derived_configuration_changes_only_what_it_is_asked(tmp_path: Path) -
 
     derived = derive_config(source, tmp_path / "out/config.yaml", mpi_size=256)
 
-    assert derived.read_text() == "case_name: x\nmpi_size: 256\nstop_n: 50\npcols: 16\n"
+    assert derived.read_text() == ("case_name: x\nmpi_size: 256\nstop_n: 50\npcols: 16\n"
+                                   f"derived_from: {source.resolve()}\n")      # and names its original
     (tmp_path / "bare.yaml").write_text("case_name: x\n")
     with pytest.raises(LayoutError, match="mpi_size"):
         derive_config(tmp_path / "bare.yaml", tmp_path / "again.yaml", mpi_size=128)
+
+
+def test_the_steps_the_surface_components_run_are_read_from_drv_in(tmp_path: Path) -> None:
+    from freecam.pi_cam.layout import read_horizon
+
+    month = 'stop_option = "nsteps"\n  stop_n = 1488\n  restart_n = 1488\n'
+    assert read_horizon(month) == 1488
+    assert read_horizon("stop_option = 'ndays'\n stop_n = 31\n") is None        # counted another way
+    assert read_horizon("stop_n = 1488\n") is None
+    run = tmp_path / "provider-run"
+    run.mkdir()
+    (run / "drv_in").write_text("&seq_timemgr_inparm\n  " + month + "/\n")
+    provider = CESMOnlineBoundaryProvider.__new__(CESMOnlineBoundaryProvider)
+    provider.run_dir = run
+    assert provider.steps_horizon == 1488
+
+
+def test_a_derived_configuration_finds_its_paths_where_its_original_does(tmp_path: Path) -> None:
+    from freecam.pi_cam.config import PICAMConfig
+
+    repo = tmp_path / "repo"
+    (repo / "configs").mkdir(parents=True)
+    (repo / "build").mkdir()
+    (repo / "build" / "manifest.json").write_text("{}")
+    source = repo / "configs" / "case.yaml"
+    source.write_text("case_name: test\nsource_root: external/src\nmpi_size: 512\nstop_n: 1488\n"
+                      "native_manifest: build/manifest.json\n")
+    run = tmp_path / "scratch" / "run" / "config.yaml"                 # written beside a run, far from the repo
+    derive_config(source, run, stop_n=2976)
+    twice = derive_config(run, run.parent / "config-256.yaml", mpi_size=256)
+    for path, stop_n, ranks in ((run, 2976, 512), (twice, 2976, 256)):
+        config = PICAMConfig.from_yaml(path)
+        assert (config.stop_n, config.mpi_size) == (stop_n, ranks)
+        assert config.native_manifest == repo / "build" / "manifest.json"
+        assert config.source_root == repo / "external" / "src"
+    assert twice.read_text().count("derived_from:") == 1 and str(source.resolve()) in twice.read_text()

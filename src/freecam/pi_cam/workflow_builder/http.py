@@ -10,7 +10,7 @@ from typing import Any, Callable
 from urllib.parse import urlsplit
 
 from fastapi import Body, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .codegen import STATIC
@@ -22,8 +22,10 @@ def build_app(service: WorkflowService, *, static_dir: Path | None = None) -> Fa
     app = FastAPI(title="freeCAM Workflow Builder", version=VERSION, docs_url=None, redoc_url=None)
     static = static_dir or STATIC
 
-    def authorised(request: Request) -> None:
+    def authorised(request: Request, *, query_token: bool = False) -> None:
         token = request.headers.get("x-freecam-token")
+        if token is None and query_token:
+            token = request.query_params.get("token")       # the globe opened in a tab of its own
         if token != service.token:
             raise HTTPException(status_code=401, detail="missing or wrong session token")
         origin = request.headers.get("origin")
@@ -84,6 +86,32 @@ def build_app(service: WorkflowService, *, static_dir: Path | None = None) -> Fa
     def events(request: Request, since: int = 0) -> Any:
         authorised(request)
         return {"events": service.events(since), "run": service.run_payload()}
+
+    @app.get("/api/globe/options")
+    def globe_options(request: Request) -> Any:
+        authorised(request)
+        return service.globe_options()
+
+    @app.put("/api/globe/options")
+    def set_globe_options(request: Request, body: dict = Body(...)) -> Any:
+        authorised(request)
+        return guarded(lambda: service.set_globe_options(body))
+
+    @app.get("/globe/")
+    def globe_page() -> Any:
+        from ..state_view import _page
+
+        return HTMLResponse(_page(), headers={"Cache-Control": "no-store"})
+
+    @app.get("/globe/api/{name}")
+    def globe_api(name: str, request: Request) -> Any:
+        authorised(request, query_token=True)
+        from ..state_view import respond
+
+        data = guarded(service.globe_data)
+        query = {key: value for key, value in request.query_params.items() if key != "token"}
+        status, body, content_type = respond(data, f"/api/{name}", query)
+        return Response(body, status_code=int(status), media_type=content_type, headers={"Cache-Control": "no-store"})
 
     index = static / "index.html"
     if index.is_file():
