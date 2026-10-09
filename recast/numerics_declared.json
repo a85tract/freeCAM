@@ -1,0 +1,169 @@
+{
+  "declared": [
+    {
+      "file": "src/physics/cam/physpkg.F90",
+      "statement": "pycesm_ac_obklen = huge(1._r8)",
+      "reason": "initial value of the Obukhov length the after-coupler actions carry from one step to the next; the patch's own storage, not a CAM variable"
+    },
+    {
+      "file": "src/physics/cam/pycam_aero_kernels.F90",
+      "statement": "rndst(i,k,3) = 0.5_r8*dgnumwet_coarse(i,k)",
+      "reason": "copy of microp_aero.F90:662 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_hooks.F90",
+      "statement": "capture_seconds = real(graph_ticks(hook), c_double) / real(rate, c_double)",
+      "reason": "wall-clock time: clock ticks over the clock rate, reported in the run record; not model state"
+    },
+    {
+      "file": "src/physics/cam/pycam_hooks.F90",
+      "statement": "model_seconds = real(model_ticks(hook), c_double) / real(rate, c_double)",
+      "reason": "wall-clock time: clock ticks over the clock rate, reported in the run record; not model state"
+    },
+    {
+      "file": "src/physics/cam/pycam_hooks.F90",
+      "statement": "forward_seconds = real(forward_ticks(hook), c_double) / real(rate, c_double)",
+      "reason": "wall-clock time: clock ticks over the clock rate, reported in the run record; not model state"
+    },
+    {
+      "file": "src/physics/cam/pycam_hooks.F90",
+      "statement": "call_seconds = real(hook_ticks(hook), c_double) / real(rate, c_double)",
+      "reason": "wall-clock time: clock ticks over the clock rate, reported in the run record; not model state"
+    },
+    {
+      "file": "src/physics/cam/pycam_hooks.F90",
+      "statement": "first_seconds = real(first_ticks(hook), c_double) / real(rate, c_double)",
+      "reason": "wall-clock time: clock ticks over the clock rate, reported in the run record; not model state"
+    },
+    {
+      "file": "src/physics/cam/pycam_hooks.F90",
+      "statement": "warm_seconds = real(warm_ticks(hook), c_double) / real(rate, c_double)",
+      "reason": "wall-clock time: clock ticks over the clock rate, reported in the run record; not model state"
+    },
+    {
+      "file": "src/physics/cam/pycam_hooks.F90",
+      "statement": "original_seconds = real(original_ticks(hook), c_double) / real(rate, c_double)",
+      "reason": "wall-clock time: clock ticks over the clock rate, reported in the run record; not model state"
+    },
+    {
+      "file": "src/physics/cam/pycam_hooks.F90",
+      "statement": "seconds = real(batch_ticks(hook), c_double) / real(rate, c_double)",
+      "reason": "wall-clock time: clock ticks over the clock rate, reported in the run record; not model state"
+    },
+    {
+      "file": "src/physics/cam/pycam_macro_kernels.F90",
+      "statement": "dum1 = ( 268.15_r8 - t(i,k) ) / 30._r8",
+      "reason": "copy of macrop_driver.F90:723 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_macro_kernels.F90",
+      "statement": "ptend_q(i,k,ixcldliq) = dlf(i,k) * ( 1._r8 - dum1 )",
+      "reason": "copy of macrop_driver.F90:730 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_macro_kernels.F90",
+      "statement": "ptend_q(i,k,ixnumliq) = 3._r8 * ( max(0._r8, ( dlf(i,k) - dlf2(i,k) )) * ( 1._r8 - dum1 ) ) / &",
+      "reason": "copy of macrop_driver.F90:733 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_macro_kernels.F90",
+      "statement": "ptend_q(i,k,ixnumice) = 3._r8 * ( max(0._r8, ( dlf(i,k) - dlf2(i,k) )) *  dum1 ) / &",
+      "reason": "copy of macrop_driver.F90:738 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_macro_kernels.F90",
+      "statement": "ptend_q(i,k,iatype_liq(m)) = wtdlf(i,k,m) * (1._r8 - dum1)",
+      "reason": "copy of macrop_driver.F90:765 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_micro_handles.F90",
+      "statement": "frame_deltatin = real(dtime/num_steps, c_double)",
+      "reason": "the substep length micro_mg_cam passes to its kernels (dtime/num_steps, micro_mg_cam.F90:2093), converted for the Python frame"
+    },
+    {
+      "file": "src/physics/cam/pycam_micro_kernels.F90",
+      "statement": "min(q(i,k,ixcldliq) / max(mincld,ast(i,k)),0.005_r8) &",
+      "reason": "copy of micro_mg_cam.F90:1730 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_micro_kernels.F90",
+      "statement": "min(q(i,k,ixcldice) / max(mincld,ast(i,k)),0.005_r8) &",
+      "reason": "copy of micro_mg_cam.F90:1733 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_micro_kernels.F90",
+      "statement": "icimrst(i,k)   = min( q_loc(i,k,ixcldice) / max(mincld,icecldf(i,k)),0.005_r8 )",
+      "reason": "copy of micro_mg_cam.F90:2356 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_micro_kernels.F90",
+      "statement": "icwmrst(i,k)   = min( q_loc(i,k,ixcldliq) / max(mincld,liqcldf(i,k)),0.005_r8 )",
+      "reason": "copy of micro_mg_cam.F90:2357 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_micro_kernels.F90",
+      "statement": "pmid_loc(i,k) / (287.15_r8*t_loc(i,k))",
+      "reason": "copy of micro_mg_cam.F90:2359 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_micro_kernels.F90",
+      "statement": "iciwpst(i,k)   = min(q_loc(i,k,ixcldice)/max(mincld,ast(i,k)),0.005_r8) * pdel_loc(i,k) / gravit",
+      "reason": "copy of micro_mg_cam.F90:2364 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_micro_kernels.F90",
+      "statement": "iclwpst(i,k)   = min(q_loc(i,k,ixcldliq)/max(mincld,ast(i,k)),0.005_r8) * pdel_loc(i,k) / gravit",
+      "reason": "copy of micro_mg_cam.F90:2365 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_micro_kernels.F90",
+      "statement": "( q_loc(i,k,ixcldliq) .lt. 1.e-10_r8 ) ) then",
+      "reason": "copy of micro_mg_cam.F90:2374 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_mm_handles.F90",
+      "statement": "call physics_ptend_scale(mm_ptend(lchnk), 1._r8/cld_macmic_num_steps, ncol)",
+      "reason": "copy of physpkg.F90:2229 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_mm_handles.F90",
+      "statement": "call physics_ptend_scale(mm_ptend_aero(lchnk), 1._r8/cld_macmic_num_steps, ncol)",
+      "reason": "copy of physpkg.F90:2340 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_mm_handles.F90",
+      "statement": "call physics_ptend_scale(mm_ptend(lchnk), 1._r8/num_steps, ncol)",
+      "reason": "copy of micro_mg_cam.F90:2252 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_rad_kernels.F90",
+      "statement": "tint(i,pverp) = sqrt(sqrt(lwup(i)/stebol))",
+      "reason": "copy of radiation.F90:1007 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_rad_kernels.F90",
+      "statement": "lwupcgs(i) = lwup(i)*1000._r8",
+      "reason": "copy of radiation.F90:895 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_rad_kernels.F90",
+      "statement": "ftem(i,k) = (qrs(i,k) + qrl(i,k))/cpair * (1.e5_r8/pmid(i,k))**cappa",
+      "reason": "copy of radiation.F90:1013 with its variables renamed to the stage's own arguments"
+    },
+    {
+      "file": "src/physics/cam/pycam_rad_process.F90",
+      "statement": "seconds = real(ticks, c_double) / real(rate, c_double)",
+      "reason": "wall-clock time: clock ticks over the clock rate, reported in the run record; not model state"
+    },
+    {
+      "file": "src/physics/cam/pycam_rad_process.F90",
+      "statement": "first_seconds = real(first_ticks, c_double) / real(rate, c_double)",
+      "reason": "wall-clock time: clock ticks over the clock rate, reported in the run record; not model state"
+    },
+    {
+      "file": "src/physics/cam/pycam_zmdeep_zm.F90",
+      "statement": "sc_3 = real(.5_r8*ztodt, c_double)",
+      "reason": "the half step zm_conv_tend passes to zm_convr (.5_r8*ztodt, zm_conv_intr.F90:570), converted for the boundary"
+    }
+  ]
+}

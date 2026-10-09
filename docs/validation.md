@@ -89,6 +89,33 @@ compile-time options: the build's own original is its oracle, and the build
 counts as validated only when its online 50-step comparison is bit-for-bit
 (the record is written under the build's root).
 
+### Through RecastEngine's refactor recipe
+
+The same carve-out and the same gate can be walked by RecastEngine's
+`refactor-todo` recipe, which records each verdict in its own evidence format.
+[`recast/carve.json`](../recast/carve.json) describes the carve-out as data:
+the pinned external, the control patches and support sources in the order
+`tools/apply_pi_cam_source_patches.py` applies them, and where the prepared
+tree records what went into it. It is written by
+`tools/export_recast_carve.py` (`--check` says whether it is current), and
+[`recast/numerics_declared.json`](../recast/numerics_declared.json) lists the
+floating-point statements of the support sources that are neither copies of a
+CAM line nor kind conversions, each with its reason. The recipe's gates are
+then:
+
+- `static.no-numerics-moved`: no arithmetic line of the pinned CAM is altered
+  by a patch, and every floating-point line added is a copy of a CAM line, a
+  conversion, or declared;
+- `pinned-run`: the original 50-step run, reused and never overwritten;
+- `fullmodel.bitwise`: an image built from the candidate's tree into the run's
+  own workspace, then the exact online 50-step gate against the original run,
+  failed unless the prepared tree records exactly the candidate's patches and
+  sources before and after.
+
+`tools/recast_run_config.py --output <file>` resolves the site's account and
+paths the way the jobs do and writes the configuration for
+`recast run refactor-todo . --config <file>`; it is not committed.
+
 ## Performance
 
 The cost of the Python control layer, and of running a stage as a Python
