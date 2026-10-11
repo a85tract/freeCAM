@@ -107,7 +107,10 @@ in [kernel_replacement_returns.md](kernel_replacement_returns.md); the online
 months with a model in a kernel's place, on the host and on the GPUs
 (`validation/pi_cam_online_model_1month_*.json`); and the rank sweep, 128 to
 512 ranks over five days and a month
-(`validation/pi_cam_online_model_{240,1488}step_*rank_*.json`).
+(`validation/pi_cam_online_model_{240,1488}step_*rank_*.json`); and two half
+years (8688 steps, 512 ranks) on the GPUs, the model's forward first as
+it was and then with every optimization
+(`validation/pi_cam_online_model_8688step_512rank_*.json`).
 The numbers are not repeated here so that they cannot go stale in two places.
 
 ## Limits
