@@ -46,7 +46,7 @@ def site(repo: Path) -> dict[str, str]:
     return values
 
 
-def build(repo: Path, workspace: Path, manifest: str) -> dict:
+def build(repo: Path, workspace: Path, manifest: str, ftorch_root: str | None = None) -> dict:
     values = site(repo)
     sys.path.insert(0, str(repo / "tools"))
     import prepare_pi_cam_source as prepare
@@ -73,6 +73,7 @@ def build(repo: Path, workspace: Path, manifest: str) -> dict:
                         "env": {
                             "FREECAM_IMAGE_ROOT": "{workspace}/image",
                             "FREECAM_DIRECT_KERNELS": "{workspace}/direct_kernels_promoted.yaml",
+                            **({"FREECAM_FTORCH_ROOT": ftorch_root} if ftorch_root else {}),
                         },
                         "timeout_s": 4 * 3600,
                     },
@@ -106,13 +107,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="where the engine works (default: a new directory under the scratch area)")
     parser.add_argument("--manifest", default="recast/carve.json",
                         help="the carve manifest, relative to the repo or absolute")
+    parser.add_argument("--ftorch-root",
+                        help="the FTorch the image links (default the build job's, build/ftorch); it "
+                             "must carry the graph runner the hooks call")
     arguments = parser.parse_args(argv)
     repo = arguments.repo.resolve()
     workspace = arguments.workspace or (
         Path(site(repo)["FREECAM_SCRATCH"]) / "freeCAM" / "recast"
         / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     )
-    config = build(repo, workspace, arguments.manifest)
+    config = build(repo, workspace, arguments.manifest, arguments.ftorch_root)
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
     arguments.output.write_text(json.dumps(config, indent=2) + "\n")
     print(arguments.output)

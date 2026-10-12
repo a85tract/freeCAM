@@ -59,5 +59,8 @@ def test_the_run_configuration_builds_the_candidates_image_then_runs_the_gate(
     assert build["env"]["FREECAM_IMAGE_ROOT"] == "{workspace}/image"
     assert run["env"]["PYCAM_NATIVE_MANIFEST"] == "{workspace}/image/native_cam_manifest.json"
     assert run["env"]["FREECAM_REFERENCE_RUN"] == "{reference}"
+    assert "FREECAM_FTORCH_ROOT" not in build["env"]
+    pinned = recast_run_config.build(REPO, tmp_path / "ws", "recast/carve.json", "build/ftorch-x")
+    assert pinned["stages"]["fullmodel.bitwise"]["job"][0]["env"]["FREECAM_FTORCH_ROOT"] == "build/ftorch-x"
     for job in (build, run):
         assert (REPO / job["argv"][0]).is_file()
