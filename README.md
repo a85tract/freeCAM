@@ -18,8 +18,9 @@ original.
 
 ## Features
 
-- **An editable step.** A step is an ordered list of processes: switch one
-  off, move it, run it alone, or add physics written in Python, without
+- **An editable step.** A step is an ordered list of processes; any of them,
+  the dynamical core included, can be switched off, moved, run alone or
+  replaced by Python, and new physics written in Python can join it, without
   rebuilding CAM.
 - **Process and kernel slots.** Answer a whole process (radiation, the cloud
   macro/microphysics stage) or one kernel inside it (`compute_uwshcu_inv`,

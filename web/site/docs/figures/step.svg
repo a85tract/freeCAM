@@ -107,7 +107,7 @@
 <line x1="963" y1="52" x2="991" y2="52" marker-end="url(#b)"/>
 <path d="M1070 455 V477 H70 V457" fill="none" marker-end="url(#b)"/>
 </g>
-<text x="300" y="495" text-anchor="start" fill="#3b4752" font-size="12">the next step: every 30 model minutes, Python runs the list again, one process at a time</text>
+<text x="506" y="495" text-anchor="start" fill="#3b4752" font-size="11.5">every 30 model minutes, Python runs the list again</text>
 <rect x="14" y="485" width="22" height="13" rx="3" fill="#f6f8fa" stroke="#aab4bb" stroke-dasharray="3 3"/>
 <text x="42" y="496" fill="#5b6670" font-size="11">not active in this configuration</text>
 <circle cx="1018" cy="491" r="8.5" fill="#6b4fa0"/><text x="1018" y="494.8" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff">n</text>
@@ -119,11 +119,12 @@
 <text x="30" y="600" font-size="12">512 ranks</text>
 <rect x="180" y="521" width="360" height="108" rx="10" fill="#e6eef6" stroke="#2f5d8a"/>
 <text x="196" y="545" font-size="13" font-weight="700" fill="#24496c">Any process</text>
-<text x="196" y="566" font-size="12">every process in the list can be switched off,</text>
-<text x="196" y="583" font-size="12">moved, run on its own, or replaced by physics</text>
-<text x="196" y="600" font-size="12">written in Python; only the control and output</text>
-<text x="196" y="617" font-size="12">actions are fixed</text>
+<text x="196" y="566" font-size="12">every process in the list, the dynamical core</text>
+<text x="196" y="583" font-size="12">included, can be switched off, moved, run on its</text>
+<text x="196" y="600" font-size="12">own, or replaced by Python; only the coupler</text>
+<text x="196" y="617" font-size="12">exchange, the clock and the output are fixed</text>
 <line x1="271" y1="455" x2="271" y2="521" stroke="#2f5d8a" stroke-width="1.4" stroke-dasharray="4 3"/>
+<line x1="486" y1="455" x2="486" y2="521" stroke="#2f5d8a" stroke-width="1.4" stroke-dasharray="4 3"/>
 <rect x="716" y="521" width="214" height="108" rx="10" fill="#efe9f7" stroke="#6b4fa0"/>
 <text x="732" y="545" font-size="13" font-weight="700" fill="#4b3577">Whole-process slot</text>
 <text x="732" y="566" font-size="12">radiation and cloud</text>
