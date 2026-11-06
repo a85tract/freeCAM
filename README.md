@@ -12,21 +12,12 @@ surface components and coupler running live beside CAM. Other rank counts run
 online as explorations, and other compile-time options (today `pcols`) are
 rebuilt end to end by `fc.build` and gated against their own original.
 
-```text
-Python / Jupyter
-    |
-    |  Driver, workflow, clock, state
-    v
-N persistent MPI Python ranks (512 by default)
-    |
-    +-- CAM numerical kernels ---------> original iCESM Fortran, as a shared library
-    |
-    +-- online coupling provider ------> CLM-SP, CICE%PRES, DOCN%DOM, RTM
-                                        and the CESM mapping and flux kernels
-```
+![A Jupyter notebook submits one 512-rank MPI job on Derecho and sends it commands; every rank runs freeCAM's Python driver over its own NumPy state, and the original iCESM Fortran computes every number](web/site/docs/figures/architecture.svg)
 
-Each MPI rank owns its local NumPy arrays; Python chooses which operation
-runs next, and Fortran performs it.
+A notebook starts one MPI job and keeps talking to it. Each MPI rank owns its
+local NumPy arrays; Python chooses which operation runs next, and Fortran
+performs it. The surface components (CLM-SP, CICE%PRES, DOCN%DOM, RTM) and
+the CESM coupler run live beside CAM.
 
 ## Features
 
@@ -55,6 +46,8 @@ runs next, and Fortran performs it.
   original, and `fc.Driver(build=b)` runs it. `fc.Driver(ntasks=N,
   exploratory=True)` runs the online case on N ranks (at least 128), laying
   the surface components out for them.
+
+![One model step is an ordered list of processes; the list can be edited, a whole process or one kernel inside it can be answered by a network, and with nothing replaced the run is bit-for-bit the original](web/site/docs/figures/step.svg)
 
 ## Installation
 
@@ -109,11 +102,40 @@ by default 512 MPI ranks on four Derecho nodes (`ntasks=N` takes N/128
 nodes, rounded up) -- through PBS, charged to `FREECAM_ACCOUNT`. Leaving the
 `with` block, or calling `driver.close()`, releases them.
 
+## Examples
+
+Read the running model from a notebook
+([try_pi_cam.ipynb](examples/try_pi_cam.ipynb)):
+
+```python
+driver.cam.state.plot(rank=0, variables=('T', 'u', 'v', 'q', 'omega', 'pmid'))
+```
+
+![Rank 0's mean profiles of temperature, both winds, water vapour, vertical velocity and pressure, read live from the model](web/site/docs/figures/notebook-profiles.png)
+
+Put a trained network in a kernel's place and compare it with the original
+Fortran on one column ([kernel_surrogate.ipynb](examples/kernel_surrogate.ipynb)):
+
+```python
+from freecam.physics.macrophysics import Macrophysics
+from freecam.physics.surrogate import load_surrogate
+
+stage = Macrophysics()
+stage.kernels['mmacro_pcond'] = load_surrogate(MODEL)  # the network in the slot
+answer = stage.mmacro_pcond(column)                     # one column in, one out
+```
+
+![Cloud fraction, liquid and ice stratus on one column: the original Fortran's mmacro_pcond against the trained network in its slot](web/site/docs/figures/kernel-surrogate.png)
+
+Edit the step in the browser: `driver.ui()` opens the Workflow Builder on
+the running model, and generates the freeCAM code for what it shows.
+
+![The Workflow Builder: the process library, the step's processes in order with their switches, and the checks](web/site/docs/figures/workflow-builder.png)
+
 ## Documentation and examples
 
 The project site, https://a85tract.github.io/freeCAM/, opens on the
-documentation pages: the architecture and the GPU model's pages, with links
-to the Workflow Builder preview and the implementation progress.
+documentation: the figures above and the GPU model's pages.
 
 Using freeCAM:
 
