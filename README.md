@@ -114,9 +114,15 @@ A run recorded to disk (`record_state=True`) opens later with
 
 ![The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian](web/site/docs/figures/globe.png)
 
+Step by step, over one model day of the same run: the air over land warms in
+daylight and cools at night, by 5 to 7 K over the Sahara and the Kalahari,
+while over the ocean it changes by less than 1 K.
+
+<p align="center"><img src="web/site/docs/figures/globe-steps.gif" width="520" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></p>
+
 Inside one step the viewer shows what each process alone did to the state;
-here the seven processes that change the temperature at step 24 of a
-512-rank online run:
+here the seven processes that change the temperature at step 24 of the same
+run:
 
 <p align="center"><img src="web/site/docs/figures/globe-processes.gif" width="560" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></p>
 
