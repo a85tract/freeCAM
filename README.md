@@ -1,60 +1,51 @@
 # freeCAM
 
-freeCAM runs the CAM atmosphere component of iCESM1.3.1 under a Python
-control layer. Python owns the model workflow, the clock, the coupling
-decisions and the rank-local state; the original Fortran remains the numerical
-source of truth and is called through generated C-interoperable adapters. There
-is no shadow model and no Fortran-to-Python callback path.
+freeCAM runs the CAM atmosphere of iCESM1.3.1 step by step from Python. A
+notebook drives the model on NCAR Derecho: Python decides which process runs
+next, reads and writes the model state as NumPy arrays, and can put Python code
+or a trained network in place of a process or a single kernel. The original
+Fortran computes every number, so with nothing replaced a run is bit-for-bit
+the original model.
 
-The supported scientific configuration is the `ne16` PI-atm case with CAM5
-physics, SE dynamics and 512 MPI ranks on NCAR Derecho, with the original CESM
-surface components and coupler running live beside CAM. Other rank counts run
-online as explorations, and other compile-time options (today `pcols`) are
-rebuilt end to end by `fc.build` and gated against their own original.
+The supported configuration is the `ne16` PI-atm case: CAM5 physics, SE
+dynamics, 512 MPI ranks, with the CESM land, sea-ice, ocean and river
+components (CLM-SP, CICE%PRES, DOCN%DOM, RTM) and the coupler running live
+beside CAM. Other rank counts run as explorations, and other compile-time
+options (today `pcols`) are rebuilt by `fc.build` and checked against their own
+original.
 
 ![A Jupyter notebook submits one 512-rank MPI job on Derecho and sends it commands; every rank runs freeCAM's Python driver over its own NumPy state, and the original iCESM Fortran computes every number](web/site/docs/figures/architecture.svg)
 
-A notebook starts one MPI job and keeps talking to it. Each MPI rank owns its
-local NumPy arrays; Python chooses which operation runs next, and Fortran
-performs it. The surface components (CLM-SP, CICE%PRES, DOCN%DOM, RTM) and
-the CESM coupler run live beside CAM.
-
 ## Features
 
-- **One persistent model.** Constructing a `Driver` starts nothing; the first
-  live operation launches one MPI session that every later call reuses, from a
-  script or a Jupyter notebook.
-- **An editable workflow.** The step is an ordered list of processes that can
-  be enabled, disabled, reordered, run on their own, or joined by Python
-  physics without rebuilding CAM.
-- **Observable, writable state.** Every CAM field is a distributed NumPy
-  array with rank-local zero-copy views, global statistics and in-place
-  mutation; Python-defined fields join CAM's own history files.
-- **Live parameters.** Namelist tunables are validated against the pinned
-  source before launch, and an audited subset can be changed while the model
-  runs.
-- **Schemes as functions.** A physics routine can be called on a single
-  column as `y = f(x, p)`, with no model session, and sampled into datasets.
-- **A workflow page.** `driver.ui()` serves a browser editor for the step
-  that generates the freeCAM code it describes and runs it on the model; the
-  same page is published as a preview that edits without running, with the
-  science of every process -- what it represents, its equations, its
-  literature.
-- **Builds and rank counts.** `fc.build(pcols=32)` rebuilds the CESM cases,
-  the original's run, the native image and the coupler library for other
-  compile-time options and runs the online gate against that build's own
-  original, and `fc.Driver(build=b)` runs it. `fc.Driver(ntasks=N,
-  exploratory=True)` runs the online case on N ranks (at least 128), laying
-  the surface components out for them.
+- **An editable step.** A step is an ordered list of processes: switch one
+  off, move it, run it alone, or add physics written in Python, without
+  rebuilding CAM.
+- **Process and kernel slots.** Answer a whole process (radiation, the cloud
+  macro/microphysics stage) or one kernel inside it (`compute_uwshcu_inv`,
+  `mmacro_pcond`) with Python, a replay or a trained network; the
+  shallow-convection network runs on the CPU or the GPU.
+- **Live state.** Every CAM field is a distributed NumPy array: rank-local
+  zero-copy views, global statistics, in-place edits, and Python fields
+  written into CAM's own history files.
+- **Schemes as functions.** Call a physics routine on one column as
+  `y = f(x, p)`, with no model running, and sample it into training data.
+- **Checked against the original.** The default path is bit-for-bit the
+  original iCESM in 512-rank online gates; the records are under
+  [validation/](validation/).
+- **One persistent model.** The first live call starts one MPI job; every
+  later notebook cell reuses it. `driver.ui()` opens a browser editor for the
+  step, and `fc.build(pcols=32)` or `fc.Driver(ntasks=N, exploratory=True)`
+  change the build or the rank count.
 
 ![One model step is an ordered list of processes; the list can be edited, a whole process or one kernel inside it can be answered by a network, and with nothing replaced the run is bit-for-bit the original](web/site/docs/figures/step.svg)
 
 ## Installation
 
 freeCAM is installed from source. The Python package alone runs the unit
-tests; the model itself also needs the pinned iCESM source, a native image
-built from a configured CESM case, and the case's input data on Derecho. See
-[docs/installation.md](docs/installation.md) for the complete recipe.
+tests; the model also needs the pinned iCESM source, a native image built from
+a configured CESM case, and the case's input data on Derecho
+([docs/installation.md](docs/installation.md) has the full recipe).
 
 ```bash
 git clone git@github.com:a85tract/freeCAM.git
@@ -65,13 +56,12 @@ uv run python tools/prepare_pi_cam_source.py --check   # check out the pinned ex
 ```
 
 Take the interpreter from the system or a conda environment rather than
-letting `uv` download one: the native image is mapped at a fixed address, and
-a CPython linked at a fixed low address can grow its heap into it. Pass the
-interpreter explicitly, for example `uv sync -p /path/to/python3.13 ...`.
+letting `uv` download one (`uv sync -p /path/to/python3.13 ...`): the native
+image is mapped at a fixed address, and a CPython linked at a fixed low address
+can grow its heap into it.
 
-The site is described once, in `site.env` at the repository root; the
-allocation is the only required entry. The preflight reports what the checkout
-resolves to and what it still lacks:
+The site is described once, in `site.env`; the allocation is the only required
+entry, and the preflight reports what is still missing:
 
 ```bash
 cp site.env.example site.env     # then set FREECAM_ACCOUNT
@@ -83,8 +73,7 @@ uv run python -m freecam.site
 ```python
 import freecam as fc
 
-# Nothing starts here: the run directory is prepared and the MPI session
-# launched by the first live operation, driver.initialize().
+# Nothing starts here: the MPI job is launched by driver.initialize().
 with fc.Driver(case="PI-atm", nsteps=2) as driver:
     driver.initialize()
 
@@ -93,14 +82,12 @@ with fc.Driver(case="PI-atm", nsteps=2) as driver:
     print(temperature.get(rank=0).shape)      # rank 0's own array
 
     result = driver.run(progress=True)        # the two steps declared above
-    print(result)
     print(driver.cam.history.latest())        # the history file CAM wrote
 ```
 
-The first `initialize()` requests the compute resources the case needs --
-by default 512 MPI ranks on four Derecho nodes (`ntasks=N` takes N/128
-nodes, rounded up) -- through PBS, charged to `FREECAM_ACCOUNT`. Leaving the
-`with` block, or calling `driver.close()`, releases them.
+`initialize()` requests 512 MPI ranks on four Derecho nodes through PBS,
+charged to `FREECAM_ACCOUNT` (`ntasks=N` takes N/128 nodes, rounded up).
+Leaving the `with` block, or `driver.close()`, releases them.
 
 ## Examples
 
@@ -122,95 +109,50 @@ from freecam.physics.surrogate import load_surrogate
 
 stage = Macrophysics()
 stage.kernels['mmacro_pcond'] = load_surrogate(MODEL)  # the network in the slot
-answer = stage.mmacro_pcond(column)                     # one column in, one out
+answer = stage.mmacro_pcond(column)                    # one column in, one out
 ```
 
 ![Cloud fraction, liquid and ice stratus on one column: the original Fortran's mmacro_pcond against the trained network in its slot](web/site/docs/figures/kernel-surrogate.png)
 
-Edit the step in the browser: `driver.ui()` opens the Workflow Builder on
-the running model, and generates the freeCAM code for what it shows.
+Edit the step in the browser: `driver.ui()` opens the Workflow Builder on the
+running model and generates the freeCAM code for what it shows.
 
 ![The Workflow Builder: the process library, the step's processes in order with their switches, and the checks](web/site/docs/figures/workflow-builder.png)
 
-## Documentation and examples
+## Documentation
 
-The project site, https://a85tract.github.io/freeCAM/, opens on the
-documentation: the figures above and the GPU model's pages.
-
-Using freeCAM:
-
-- [docs/installation.md](docs/installation.md): site configuration, the
-  interpreter requirement, external data, reusing an existing installation,
-  building the native image, and rebuilding the CESM cases from the
-  repository's recipe.
-- [docs/usage.md](docs/usage.md): the model, other rank counts and builds,
-  state, the workflow, Python processes, replacing a process or a kernel,
-  parameters, timing reports, the Workflow Builder, and the single-column
-  function and dataset interfaces.
-- Notebooks under [examples/](examples/):
-  [try_pi_cam.ipynb](examples/try_pi_cam.ipynb) is the maintained
-  walkthrough and [run_freecam.ipynb](examples/run_freecam.ipynb) a run end
-  to end; [replace_process.ipynb](examples/replace_process.ipynb) and
-  [replace_kernel.ipynb](examples/replace_kernel.ipynb) replace a whole
-  process and one kernel inside it;
-  [macro_microphysics.ipynb](examples/macro_microphysics.ipynb),
-  [physics_function.ipynb](examples/physics_function.ipynb) and
-  [kernel_surrogate.ipynb](examples/kernel_surrogate.ipynb) cover one stage
-  as a Python class, a scheme as a function, and a trained kernel in a
-  scheme's place; [generate_training_data.ipynb](examples/generate_training_data.ipynb)
-  and [generate_compute_uwshcu_inv_training_data.ipynb](examples/generate_compute_uwshcu_inv_training_data.ipynb)
-  generate training data for `mmacro_pcond` and for the shallow cumulus
-  kernel from real columns, answered by the original Fortran.
-- The Workflow Builder preview at https://a85tract.github.io/freeCAM/builder/:
-  the page without a model behind it; how to use it is in
-  [docs/usage.md](docs/usage.md#the-workflow-builder).
-
-Evidence:
-
-- [docs/validation.md](docs/validation.md): what bit-for-bit means here, the
-  gates that have been run, and where their records live.
-- [validation/performance_overhead.md](validation/performance_overhead.md):
-  the measured time and memory cost of the Python control layer.
-- [docs/kernel_replacement_returns.md](docs/kernel_replacement_returns.md):
-  what each kernel costs over a month, and what replacing it can return.
-- Implementation progress at https://a85tract.github.io/freeCAM/progress/:
-  which processes and kernels are callable, replaceable, and verified, built
-  by the Pages workflow from the records committed on `main` (see
-  [docs/progress_dashboard.md](docs/progress_dashboard.md)).
-
-How the replacement interface is built:
-
-- [docs/physics_kernel_decoupling.md](docs/physics_kernel_decoupling.md):
-  the kernel slots, where the image stops (segment runners and hooks), the
-  ways of answering a slot and what each costs, the process slots, and what
-  the first surrogates taught.
-- [docs/contracts.md](docs/contracts.md): every kernel and block contract,
-  generated from the code.
-- [docs/kernel_api_closure.md](docs/kernel_api_closure.md): every procedure
-  the configured physics step can reach, as the list still to open.
-- [docs/plans/](docs/plans/): the task plans, kept as the record of what was
-  decided, each with its status.
+- [Installation](docs/installation.md): the site file, the native image, the
+  input data, rebuilding the CESM cases.
+- [Usage](docs/usage.md): the model, state, the workflow, replacing a process
+  or a kernel, parameters, the Workflow Builder.
+- [Examples](examples/): start with `try_pi_cam.ipynb`; `replace_process`,
+  `replace_kernel` and `kernel_surrogate` put Python or a network in CAM's
+  place.
+- [Validation](docs/validation.md): what bit-for-bit means here and the gates
+  behind it; [performance_overhead.md](validation/performance_overhead.md):
+  what the Python layer costs.
+- [How the slots are built](docs/physics_kernel_decoupling.md): kernel and
+  process slots, and what answering each one costs.
+- The site, https://a85tract.github.io/freeCAM/: these figures and the pages
+  on a trained network in the shallow-convection kernel's slot, on CPU and
+  GPU.
 
 ## Development
 
 ```bash
-uv sync --extra notebook --extra test
-uv run pytest -q                    # the local unit suite; no MPI, no model
-uv run freecam --help
+uv run pytest -q                    # the unit suite; no MPI, no model
 git diff --check
 ```
 
 The unit suite checks the control layer against fakes and runs anywhere. The
 scientific gates run under PBS on Derecho with 512 ranks and compare CAM's
-output with the original model byte for byte; they are submitted with
-`validation/jobs/submit.sh`, which supplies the allocation from `site.env`.
-Any change to the numerical runtime needs a gate before it is merged, and its
-record belongs under `validation/`. [AGENTS.md](AGENTS.md) holds the
-repository guidelines.
+output with the original byte for byte (`validation/jobs/submit.sh`); a change
+to the numerical runtime needs one before it is merged.
+[AGENTS.md](AGENTS.md) holds the repository guidelines.
 
 ## License
 
 freeCAM is licensed under the Apache License, Version 2.0
-([LICENSE.txt](LICENSE.txt)). The repository builds against iCESM/CESM source
-and other third-party material whose terms are collected in
-[LICENSES/](LICENSES/) and summarised in [NOTICE](NOTICE).
+([LICENSE.txt](LICENSE.txt)). It builds against iCESM/CESM source and other
+third-party material whose terms are collected in [LICENSES/](LICENSES/) and
+summarised in [NOTICE](NOTICE).
