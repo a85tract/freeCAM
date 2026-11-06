@@ -64,14 +64,13 @@ code { font-family: var(--mono); font-size: 0.88em; }
 
 /* hero */
 .hero { padding: 64px 0 48px; }
-.hero .wrap { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 48px; align-items: center; }
+.hero .wrap { display: grid; }
 .hero-text { display: grid; gap: 20px; }
-.lede { font-size: 18px; color: var(--ink-2); max-width: 34em; }
+.lede { font-size: 18px; color: var(--ink-2); max-width: 46em; }
 .links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
 .links a { text-decoration: none; font-size: 14px; font-weight: 500; padding: 7px 14px; border: 1px solid var(--rule); border-radius: 999px; color: var(--ink); background: var(--panel); }
 .links a.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .links a:hover { border-color: var(--accent); }
-.hero-media { justify-self: center; width: 100%; max-width: 460px; }
 
 /* media frames */
 .frame { background: #fff; border: 1px solid var(--rule); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
@@ -134,10 +133,6 @@ footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rul
         <a href="https://github.com/a85tract/freeCAM/blob/main/docs/validation.md">Validation</a>
       </nav>
     </div>
-    <div class="hero-media">
-      <div class="frame"><img src="figures/globe-processes.gif" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></div>
-      <p class="note">Inside one step of a 512-rank online run: the temperature as the step begins, then what each process that changes it did on its own. Python runs the step, so the state can be read after every process.</p>
-    </div>
   </div>
 </header>
 
@@ -179,16 +174,24 @@ footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rul
     </div>
 
     <div class="feature portrait">
-      <div class="feature-media"><div class="frame"><img src="figures/globe-steps.gif" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></div></div>
+      <div class="feature-media"><div class="frame"><img src="figures/globe-processes.gif" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></div></div>
       <div class="feature-text">
-        <h3>Follow the run on a globe</h3>
-        <p>The Workflow Builder's Globe tab shows each step as the model takes it, and can step through the processes of one step, as at the top of this page. Here one model day of the same run, at the lowest model level: the air over land swings 5 to 7 K between day and night, over the ocean less than 1 K.</p>
+        <h3>Inside one step, a process at a time</h3>
+        <p>Because Python runs the step, the state can be read after every process. Here the temperature at 848 hPa as step 24 begins, then what each of the seven processes that change it did on its own, in the order the step runs them.</p>
 <pre>ui = fc.Driver(case="PI-atm", nsteps=48).ui()
 ui.url   # open it, press Run, then the Globe tab</pre>
       </div>
     </div>
 
-    <div class="feature flip">
+    <div class="feature portrait flip">
+      <div class="feature-media"><div class="frame"><img src="figures/globe-steps.gif" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></div></div>
+      <div class="feature-text">
+        <h3>Follow the run on a globe</h3>
+        <p>The Workflow Builder's Globe tab shows each step as the model takes it, and can step through the processes of one step, as above. Here one model day of the same run, at the lowest model level: the air over land swings 5 to 7 K between day and night, over the ocean less than 1 K.</p>
+      </div>
+    </div>
+
+    <div class="feature">
       <div class="feature-media"><div class="frame"><img src="figures/globe.png" alt="The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian"></div></div>
       <div class="feature-text">
         <h3>Pick a column on the globe</h3>
@@ -197,7 +200,7 @@ ui.url   # open it, press Run, then the Globe tab</pre>
       </div>
     </div>
 
-    <div class="feature">
+    <div class="feature flip">
       <div class="feature-media"><div class="frame"><img src="figures/notebook-profiles.png" alt="Rank 0's mean profiles of temperature, both winds, water vapour, vertical velocity and pressure, read live from the model"></div></div>
       <div class="feature-text">
         <h3>Read the live state</h3>
@@ -208,7 +211,7 @@ driver.cam.state.plot(rank=0,
       </div>
     </div>
 
-    <div class="feature flip">
+    <div class="feature">
       <div class="feature-media"><div class="frame"><img src="figures/kernel-surrogate.png" alt="Cloud fraction, liquid and ice stratus on one column: the original Fortran against a trained network"></div></div>
       <div class="feature-text">
         <h3>A trained network in a kernel's place</h3>
