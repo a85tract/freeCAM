@@ -139,11 +139,11 @@ footer { font-size: 13px; color: var(--ink-3); border-top: 1px solid var(--rule)
     </div>
     <div class="example">
       <h3>Watch the state on a globe</h3>
-<pre>fc.Driver(case="PI-atm", record_state=True)   # keep T, Q, CLDLIQ, CLDICE every step
-# then, in a shell: freecam globe &lt;run&gt;/state</pre>
+<pre>ui = fc.Driver(case="PI-atm", nsteps=48).ui()
+ui.url        # open it and press Run; the Globe tab shows each step as it comes</pre>
       <figure>
         <img src="figures/globe.png" alt="The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian">
-        <figcaption>Temperature at 848 hPa from a 512-rank online run; a click picks a column and draws its profile and the section along its meridian. The slider steps through the run, or through the processes of one step (<code>docs/usage.md</code>, <em>The state on a globe</em>).</figcaption>
+        <figcaption>Temperature at 848 hPa from a 512-rank online run; a click picks a column and draws its profile and the section along its meridian. The slider steps through the run, or through the processes of one step. A run recorded to disk (<code>record_state=True</code>) opens later with <code>freecam globe &lt;run&gt;/state</code>.</figcaption>
       </figure>
       <figure class="anim">
         <img src="figures/globe-processes.gif" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation">

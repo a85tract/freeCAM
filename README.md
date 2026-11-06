@@ -100,17 +100,17 @@ driver.cam.state.plot(rank=0, variables=('T', 'u', 'v', 'q', 'omega', 'pmid'))
 
 ![Rank 0's mean profiles of temperature, both winds, water vapour, vertical velocity and pressure, read live from the model](web/site/docs/figures/notebook-profiles.png)
 
-Watch the state on a globe, step by step or process by process
-([docs/usage.md](docs/usage.md#the-state-on-a-globe)); `driver.ui()` has the
-same viewer in its *Globe* tab:
+Watch the state on a globe, step by step or process by process: the Workflow
+Builder's *Globe* tab follows the run it starts
+([docs/usage.md](docs/usage.md#in-the-workflow-builder)):
 
 ```python
-fc.Driver(case="PI-atm", record_state=True)   # keep T, Q, CLDLIQ, CLDICE every step
+ui = fc.Driver(case="PI-atm", nsteps=48).ui()
+ui.url        # open it and press Run; the Globe tab shows each step as it comes
 ```
 
-```bash
-freecam globe <run>/state                     # a field on the globe, a column, a section
-```
+A run recorded to disk (`record_state=True`) opens later with
+`freecam globe <run>/state`.
 
 ![The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian](web/site/docs/figures/globe.png)
 
@@ -134,8 +134,9 @@ answer = stage.mmacro_pcond(column)                    # one column in, one out
 
 ![Cloud fraction, liquid and ice stratus on one column: the original Fortran's mmacro_pcond against the trained network in its slot](web/site/docs/figures/kernel-surrogate.png)
 
-Edit the step in the browser: `driver.ui()` opens the Workflow Builder on the
-running model and generates the freeCAM code for what it shows.
+Edit the step in the browser: the Workflow Builder (`fc.Driver(...).ui()`)
+adds, removes, moves and replaces processes, runs the model with them, and
+generates the freeCAM code for what it shows.
 
 ![The Workflow Builder: the process library, the step's processes in order with their switches, and the checks](web/site/docs/figures/workflow-builder.png)
 
