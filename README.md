@@ -100,6 +100,26 @@ driver.cam.state.plot(rank=0, variables=('T', 'u', 'v', 'q', 'omega', 'pmid'))
 
 ![Rank 0's mean profiles of temperature, both winds, water vapour, vertical velocity and pressure, read live from the model](web/site/docs/figures/notebook-profiles.png)
 
+Watch the state on a globe, step by step or process by process
+([docs/usage.md](docs/usage.md#the-state-on-a-globe)); `driver.ui()` has the
+same viewer in its *Globe* tab:
+
+```python
+fc.Driver(case="PI-atm", record_state=True)   # keep T, Q, CLDLIQ, CLDICE every step
+```
+
+```bash
+freecam globe <run>/state                     # a field on the globe, a column, a section
+```
+
+![The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian](web/site/docs/figures/globe.png)
+
+Inside one step the viewer shows what each process alone did to the state;
+here the seven processes that change the temperature at step 24 of a
+512-rank online run:
+
+<p align="center"><img src="web/site/docs/figures/globe-processes.gif" width="560" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></p>
+
 Put a trained network in a kernel's place and compare it with the original
 Fortran on one column ([kernel_surrogate.ipynb](examples/kernel_surrogate.ipynb)):
 
