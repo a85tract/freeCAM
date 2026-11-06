@@ -135,8 +135,8 @@ footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rul
       </nav>
     </div>
     <div class="hero-media">
-      <div class="frame"><img src="figures/globe-steps.gif" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></div>
-      <p class="note">One model day of a 512-rank online run: the air over land swings 5 to 7 K between day and night, over the ocean less than 1 K.</p>
+      <div class="frame"><img src="figures/globe-processes.gif" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></div>
+      <p class="note">Inside one step of a 512-rank online run: the temperature as the step begins, then what each process that changes it did on its own. Python runs the step, so the state can be read after every process.</p>
     </div>
   </div>
 </header>
@@ -179,10 +179,10 @@ footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rul
     </div>
 
     <div class="feature portrait">
-      <div class="feature-media"><div class="frame"><img src="figures/globe-processes.gif" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></div></div>
+      <div class="feature-media"><div class="frame"><img src="figures/globe-steps.gif" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></div></div>
       <div class="feature-text">
-        <h3>Inside one step, a process at a time</h3>
-        <p>Because Python runs the step, the state can be kept after every process. Here the temperature at 848 hPa as step 24 begins, then what each of the seven processes that change it did on its own, in the order the step runs them.</p>
+        <h3>Follow the run on a globe</h3>
+        <p>The Workflow Builder's Globe tab shows each step as the model takes it, and can step through the processes of one step, as at the top of this page. Here one model day of the same run, at the lowest model level: the air over land swings 5 to 7 K between day and night, over the ocean less than 1 K.</p>
 <pre>ui = fc.Driver(case="PI-atm", nsteps=48).ui()
 ui.url   # open it, press Run, then the Globe tab</pre>
       </div>
