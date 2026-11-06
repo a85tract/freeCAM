@@ -1,99 +1,100 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 600" role="img" aria-label="A Jupyter notebook submits one PBS job of 512 MPI ranks on Derecho and then sends it commands; rank 0 broadcasts each command, every rank runs freeCAM's Python driver over its own NumPy state, and the original iCESM Fortran computes every number.">
-  <defs>
-    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" fill="#3b4752"/>
-    </marker>
-  </defs>
-  <rect x="1" y="1" width="1158" height="598" rx="14" fill="#ffffff" stroke="#d8dee3"/>
-  <g font-family="Helvetica, Arial, sans-serif" fill="#1f2933">
-
-    <!-- the notebook -->
-    <rect x="28" y="72" width="300" height="300" rx="10" fill="#f6f8fa" stroke="#9aa7b1"/>
-    <rect x="28" y="72" width="300" height="54" rx="10" fill="#e6eef6" stroke="#9aa7b1"/>
-    <rect x="29" y="112" width="298" height="14" fill="#e6eef6"/>
-    <text x="48" y="98" font-size="16" font-weight="700">Jupyter notebook</text>
-    <text x="48" y="117" font-size="12" fill="#5b6670">your Python session, on a login node</text>
-    <g font-family="Menlo, Consolas, monospace" font-size="12.5">
-      <text x="48" y="156">import freecam as fc</text>
-      <text x="48" y="180">d = fc.Driver(case="PI-atm")</text>
-      <text x="48" y="204">d.initialize()  <tspan fill="#5b6670"># the job starts</tspan></text>
-      <text x="48" y="228">d.cam.state.T.stats()</text>
-      <text x="48" y="252">d.run(nsteps=48)</text>
-      <text x="48" y="276">rad = d.processes["radiation"]</text>
-      <text x="48" y="300">rad.process = my_network</text>
-      <text x="48" y="324">d.run(nsteps=48)</text>
-    </g>
-    <text x="48" y="356" font-size="12" fill="#5b6670">Every line acts on the running model.</text>
-
-    <!-- arrows between the notebook and the job -->
-    <line x1="328" y1="104" x2="450" y2="104" stroke="#3b4752" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
-    <text x="389" y="92" font-size="12" text-anchor="middle" font-weight="700">qsub, once</text>
-    <text x="389" y="124" font-size="11" text-anchor="middle" fill="#5b6670">4 nodes, 512 ranks</text>
-    <line x1="328" y1="214" x2="474" y2="214" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
-    <text x="401" y="204" font-size="12" text-anchor="middle">each command</text>
-    <line x1="474" y1="250" x2="328" y2="250" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
-    <text x="401" y="270" font-size="12" text-anchor="middle">stats, plots,</text>
-    <text x="401" y="286" font-size="12" text-anchor="middle">traces back</text>
-
-    <!-- the job -->
-    <rect x="452" y="40" width="684" height="472" rx="12" fill="none" stroke="#7d8a95" stroke-width="1.4" stroke-dasharray="7 5"/>
-    <text x="474" y="66" font-size="16" font-weight="700">Derecho compute nodes</text>
-    <text x="680" y="66" font-size="12" fill="#5b6670">one MPI job, kept alive between commands</text>
-
-    <!-- rank 0 -->
-    <rect x="474" y="86" width="410" height="404" rx="10" fill="#fbfcfd" stroke="#9aa7b1"/>
-    <text x="494" y="112" font-size="14" font-weight="700">MPI rank 0 <tspan font-weight="400" fill="#5b6670">(each of the 512 is the same)</tspan></text>
-
-    <g font-size="12">
-      <rect x="494" y="126" width="370" height="54" rx="8" fill="#e6eef6" stroke="#2f5d8a"/>
-      <text x="510" y="149" font-size="14" font-weight="700" fill="#24496c">Session worker</text>
-      <text x="510" y="168" fill="#3b4752">receives the command, runs it on this rank</text>
-
-      <rect x="494" y="190" width="370" height="54" rx="8" fill="#e6eef6" stroke="#2f5d8a"/>
-      <text x="510" y="213" font-size="14" font-weight="700" fill="#24496c">Driver</text>
-      <text x="510" y="232" fill="#3b4752">the step as an ordered plan, the clock, a trace</text>
-
-      <rect x="494" y="254" width="370" height="54" rx="8" fill="#e6eef6" stroke="#2f5d8a"/>
-      <text x="510" y="277" font-size="14" font-weight="700" fill="#24496c">StatePool</text>
-      <text x="510" y="296" fill="#3b4752">the model state as NumPy arrays; Fortran points into them</text>
-
-      <rect x="494" y="342" width="370" height="54" rx="8" fill="#f6ead6" stroke="#8a5a12"/>
-      <text x="510" y="365" font-size="14" font-weight="700" fill="#6b450c">CAM atmosphere</text>
-      <text x="510" y="384" fill="#3b4752">original iCESM Fortran, called through adapters</text>
-
-      <rect x="494" y="406" width="370" height="54" rx="8" fill="#f6ead6" stroke="#8a5a12"/>
-      <text x="510" y="429" font-size="14" font-weight="700" fill="#6b450c">Surface models and coupler</text>
-      <text x="510" y="448" fill="#3b4752">land, sea ice, ocean, rivers: original CESM, live</text>
-    </g>
-    <line x1="679" y1="308" x2="679" y2="340" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
-    <text x="692" y="322" font-size="12" font-weight="700">Python decides what runs,</text>
-    <text x="692" y="337" font-size="12" font-weight="700">Fortran computes it</text>
-
-    <!-- the other ranks -->
-    <rect x="964" y="150" width="150" height="250" rx="10" fill="#fbfcfd" stroke="#b6c0c8"/>
-    <rect x="952" y="138" width="150" height="250" rx="10" fill="#fbfcfd" stroke="#b6c0c8"/>
-    <rect x="940" y="126" width="150" height="250" rx="10" fill="#fbfcfd" stroke="#9aa7b1"/>
-    <text x="1015" y="152" font-size="13" font-weight="700" text-anchor="middle">ranks 1 … 511</text>
-    <rect x="956" y="166" width="118" height="22" rx="5" fill="#e6eef6" stroke="#2f5d8a"/>
-    <rect x="956" y="194" width="118" height="22" rx="5" fill="#e6eef6" stroke="#2f5d8a"/>
-    <rect x="956" y="222" width="118" height="22" rx="5" fill="#e6eef6" stroke="#2f5d8a"/>
-    <rect x="956" y="260" width="118" height="22" rx="5" fill="#f6ead6" stroke="#8a5a12"/>
-    <rect x="956" y="288" width="118" height="22" rx="5" fill="#f6ead6" stroke="#8a5a12"/>
-    <text x="1015" y="336" font-size="12" text-anchor="middle" fill="#5b6670">each with its own</text>
-    <text x="1015" y="352" font-size="12" text-anchor="middle" fill="#5b6670">part of the globe</text>
-
-    <line x1="884" y1="200" x2="938" y2="200" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
-    <text x="911" y="190" font-size="11" text-anchor="middle">MPI</text>
-    <line x1="938" y1="232" x2="884" y2="232" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
-    <text x="911" y="250" font-size="11" text-anchor="middle">results</text>
-
-    <text x="474" y="538" font-size="13" font-weight="700">The fields never leave their rank.</text>
-    <text x="474" y="558" font-size="13" fill="#3b4752">The notebook gets only what it asks for: a statistic, a column, a plot.</text>
-
-    <!-- legend -->
-    <rect x="28" y="530" width="16" height="16" rx="3" fill="#e6eef6" stroke="#2f5d8a"/>
-    <text x="52" y="543" font-size="12">freeCAM (Python): control and state</text>
-    <rect x="28" y="556" width="16" height="16" rx="3" fill="#f6ead6" stroke="#8a5a12"/>
-    <text x="52" y="569" font-size="12">original Fortran: every number</text>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 830" role="img" aria-label="freeCAM in layers: notebooks, scripts, the Workflow Builder, batch jobs and viewers drive a Python control layer on every MPI rank, which holds the step as a plan, the state as NumPy arrays, the parameters, the process classes with their slots and the boundary; generated adapters call the original iCESM Fortran, built from the pinned source and checked bit-for-bit against the original.">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#3b4752"/></marker></defs>
+<rect x="1" y="1" width="1158" height="828" rx="14" fill="#ffffff" stroke="#d8dee3"/>
+<g font-family="Helvetica, Arial, sans-serif" fill="#1f2933" font-size="12">
+<rect x="20" y="20" width="1120" height="104" rx="12" fill="none" stroke="#7d8a95" stroke-width="1.3"/>
+<text x="36" y="44" font-size="14" font-weight="700" fill="#7d8a95">Ways in</text>
+<rect x="36" y="52" width="208" height="58" rx="8" fill="#ffffff" stroke="#9aa7b1"/>
+<text x="48" y="73" font-size="13.5" font-weight="700" fill="#1f2933">Notebook or script</text>
+<text x="48" y="91" fill="#3b4752" font-family="Menlo, Consolas, monospace" font-size="11.5">fc.Driver(case=&quot;PI-atm&quot;)</text>
+<rect x="256" y="52" width="208" height="58" rx="8" fill="#ffffff" stroke="#9aa7b1"/>
+<text x="268" y="73" font-size="13.5" font-weight="700" fill="#1f2933">Workflow Builder</text>
+<text x="268" y="91" fill="#3b4752">edit the step in a browser</text>
+<rect x="476" y="52" width="208" height="58" rx="8" fill="#ffffff" stroke="#9aa7b1"/>
+<text x="488" y="73" font-size="13.5" font-weight="700" fill="#1f2933">Batch jobs</text>
+<text x="488" y="91" fill="#3b4752">PBS, the rank command line</text>
+<rect x="696" y="52" width="208" height="58" rx="8" fill="#ffffff" stroke="#9aa7b1"/>
+<text x="708" y="73" font-size="13.5" font-weight="700" fill="#1f2933">Viewers</text>
+<text x="708" y="91" fill="#3b4752">globe, action timeline</text>
+<rect x="916" y="52" width="208" height="58" rx="8" fill="#ffffff" stroke="#9aa7b1"/>
+<text x="928" y="73" font-size="13.5" font-weight="700" fill="#1f2933">Schemes as functions</text>
+<text x="928" y="91" fill="#3b4752">one scheme, one column</text>
+<rect x="20" y="160" width="860" height="296" rx="12" fill="none" stroke="#2f5d8a" stroke-width="1.3"/>
+<text x="36" y="184" font-size="14" font-weight="700" fill="#2f5d8a">freeCAM control layer: Python, on every MPI rank</text>
+<rect x="36" y="194" width="270" height="76" rx="8" fill="#e6eef6" stroke="#2f5d8a"/>
+<text x="48" y="215" font-size="13.5" font-weight="700" fill="#24496c">Driver</text>
+<text x="48" y="233" fill="#3b4752">the step as an ordered plan of</text>
+<text x="48" y="249" fill="#3b4752">processes; the clock; a trace</text>
+<rect x="320" y="194" width="270" height="76" rx="8" fill="#e6eef6" stroke="#2f5d8a"/>
+<text x="332" y="215" font-size="13.5" font-weight="700" fill="#24496c">StatePool</text>
+<text x="332" y="233" fill="#3b4752">the model state as NumPy arrays;</text>
+<text x="332" y="249" fill="#3b4752">Fortran points into them</text>
+<rect x="604" y="194" width="260" height="76" rx="8" fill="#e6eef6" stroke="#2f5d8a"/>
+<text x="616" y="215" font-size="13.5" font-weight="700" fill="#24496c">Parameters</text>
+<text x="616" y="233" fill="#3b4752">namelist checked against the</text>
+<text x="616" y="249" fill="#3b4752">source; live runtime tunables</text>
+<rect x="36" y="284" width="410" height="156" rx="8" fill="#e6eef6" stroke="#2f5d8a"/>
+<text x="48" y="305" font-size="13.5" font-weight="700" fill="#24496c">Process classes</text>
+<text x="48" y="323" fill="#3b4752">23 physics processes, each a Python class with</text>
+<text x="48" y="339" fill="#3b4752">slots: the whole process (radiation, the cloud</text>
+<text x="48" y="355" fill="#3b4752">stage) or one kernel inside it (11 processes).</text>
+<text x="48" y="371" fill="#3b4752">Any process can also be switched off, moved</text>
+<text x="48" y="387" fill="#3b4752">or replaced by physics written in Python.</text>
+<rect x="460" y="284" width="404" height="76" rx="8" fill="#e6eef6" stroke="#2f5d8a"/>
+<text x="472" y="305" font-size="13.5" font-weight="700" fill="#24496c">Boundary</text>
+<text x="472" y="323" fill="#3b4752">online CESM coupling (live surface models),</text>
+<text x="472" y="339" fill="#3b4752">or a replay of captured boundary data</text>
+<rect x="460" y="372" width="404" height="68" rx="8" fill="#efe9f7" stroke="#6b4fa0"/>
+<text x="472" y="393" font-size="13.5" font-weight="700" fill="#4b3577">What can answer a slot</text>
+<text x="472" y="411" fill="#3b4752">a Python function, a compiled plugin, a replay,</text>
+<text x="472" y="427" fill="#3b4752">a trained network on CPU or GPU</text>
+<line x1="446" y1="406" x2="458" y2="406" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="20" y="492" width="1120" height="176" rx="12" fill="none" stroke="#8a5a12" stroke-width="1.3"/>
+<text x="36" y="516" font-size="14" font-weight="700" fill="#8a5a12">Native layer: the original Fortran, its numerics unchanged</text>
+<rect x="36" y="526" width="236" height="126" rx="8" fill="#ffffff" stroke="#8a5a12"/>
+<text x="48" y="547" font-size="13.5" font-weight="700" fill="#6b450c">Generated adapters</text>
+<text x="48" y="565" fill="#3b4752">C-interoperable calls:</text>
+<text x="48" y="581" fill="#3b4752">pointers, shapes, scalars,</text>
+<text x="48" y="597" fill="#3b4752">communicators; no</text>
+<text x="48" y="613" fill="#3b4752">arithmetic of their own</text>
+<rect x="296" y="526" width="276" height="126" rx="8" fill="#f6ead6" stroke="#8a5a12"/>
+<text x="308" y="547" font-size="13.5" font-weight="700" fill="#6b450c">CAM image</text>
+<text x="308" y="565" fill="#3b4752">iCESM1.3.1 CAM: CAM5 physics,</text>
+<text x="308" y="581" fill="#3b4752">SE dynamics, from the original&#x27;s</text>
+<text x="308" y="597" fill="#3b4752">own objects; pauses at kernels</text>
+<text x="308" y="613" fill="#3b4752">for the slots</text>
+<rect x="588" y="526" width="276" height="126" rx="8" fill="#f6ead6" stroke="#8a5a12"/>
+<text x="600" y="547" font-size="13.5" font-weight="700" fill="#6b450c">Surface and coupler library</text>
+<text x="600" y="565" fill="#3b4752">land (CLM), sea ice (CICE),</text>
+<text x="600" y="581" fill="#3b4752">ocean (DOCN), rivers (RTM) and</text>
+<text x="600" y="597" fill="#3b4752">the CESM coupler, all live</text>
+<line x1="272" y1="589" x2="294" y2="589" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="896" y="526" width="228" height="126" rx="8" fill="#f6ead6" stroke="#8a5a12"/>
+<text x="908" y="547" font-size="13.5" font-weight="700" fill="#6b450c">Standalone images</text>
+<text x="908" y="565" fill="#3b4752">one scheme linked from</text>
+<text x="908" y="581" fill="#3b4752">the original&#x27;s objects,</text>
+<text x="908" y="597" fill="#3b4752">called on one column</text>
+<line x1="450" y1="124" x2="450" y2="158" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="460.0" y="145.0" font-size="12" fill="#3b4752">one persistent MPI job (512 ranks)</text>
+<line x1="250" y1="456" x2="250" y2="490" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="260.0" y="477.0" font-size="12" fill="#3b4752">Python decides what runs</text>
+<line x1="560" y1="490" x2="560" y2="458" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="570.0" y="478.0" font-size="12" fill="#3b4752">Fortran computes every number</text>
+<line x1="1010" y1="110" x2="1010" y2="524" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="1022" y="300" font-size="12" fill="#3b4752">a worker process,</text>
+<text x="1022" y="316" font-size="12" fill="#3b4752">no MPI job</text>
+<rect x="20" y="712" width="552" height="96" rx="8" fill="#ffffff" stroke="#7d8a95"/>
+<text x="32" y="733" font-size="13.5" font-weight="700" fill="#1f2933">Build (fc.build)</text>
+<text x="32" y="751" fill="#3b4752">pinned iCESM1.3.1 source + control patches (no arithmetic moved)</text>
+<text x="32" y="767" fill="#3b4752">→ CESM cases → CAM image and coupler library, for each</text>
+<text x="32" y="783" fill="#3b4752">compile-time option</text>
+<rect x="588" y="712" width="552" height="96" rx="8" fill="#dcefec" stroke="#0d7a72"/>
+<text x="600" y="733" font-size="13.5" font-weight="700" fill="#0a5f59">Verification</text>
+<text x="600" y="751" fill="#3b4752">with nothing replaced, CAM&#x27;s output is bit-for-bit the original</text>
+<text x="600" y="767" fill="#3b4752">iCESM in 512-rank online gates; the records are under</text>
+<text x="600" y="783" fill="#3b4752">validation/</text>
+<line x1="296" y1="710" x2="296" y2="670" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="306.0" y="694.0" font-size="12" fill="#3b4752">builds</text>
+<line x1="864" y1="670" x2="864" y2="710" stroke="#0d7a72" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="874.0" y="694.0" font-size="12" fill="#0d7a72">checked against the original</text>
+</g></svg>

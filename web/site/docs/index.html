@@ -151,9 +151,9 @@ footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rul
   <section>
     <div class="section-head">
       <h2>How it runs</h2>
-      <p>The notebook starts one MPI job and keeps talking to it. Each rank holds its part of the globe as NumPy arrays; the fields stay there, and the notebook gets back only what it asks for.</p>
+      <p>Every way in drives the same Python control layer, which runs on every MPI rank and decides what runs next. Below it the original Fortran computes every number, built from the pinned iCESM source and checked bit-for-bit against the original.</p>
     </div>
-    <a class="frame" href="figures/architecture.svg" style="display:block"><img src="figures/architecture.svg" alt="A Jupyter notebook submits one 512-rank MPI job on Derecho and sends it commands; every rank runs freeCAM's Python driver over its own NumPy state, and the original iCESM Fortran computes every number"></a>
+    <a class="frame" href="figures/architecture.svg" style="display:block"><img src="figures/architecture.svg" alt="freeCAM in layers: notebooks, scripts, the Workflow Builder, batch jobs and viewers drive a Python control layer on every MPI rank; generated adapters call the original iCESM Fortran, built from the pinned source and checked bit-for-bit against the original"></a>
   </section>
 
   <section>
@@ -162,6 +162,14 @@ footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rul
       <p>Python runs the step's processes one at a time, every 30 model minutes, and any of them can be switched off, moved or replaced by Python. Radiation and the cloud stage can also be answered whole by a network, and eleven processes have kernel slots. With nothing replaced, the run is the original.</p>
     </div>
     <a class="frame" href="figures/step.svg" style="display:block"><img src="figures/step.svg" alt="One model step is an ordered list of processes; the list can be edited, a whole process or one kernel inside it can be answered by a network, and with nothing replaced the run is bit-for-bit the original"></a>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Running from a Jupyter notebook</h2>
+      <p>A notebook is one way in. Its first live call submits one MPI job and keeps talking to it; each rank holds its part of the globe as NumPy arrays, the fields stay there, and the notebook gets back only what it asks for.</p>
+    </div>
+    <a class="frame" href="figures/notebook-hpc.svg" style="display:block"><img src="figures/notebook-hpc.svg" alt="A Jupyter notebook submits one 512-rank MPI job on Derecho and sends it commands; every rank runs freeCAM's Python driver over its own NumPy state, and the original iCESM Fortran computes every number"></a>
   </section>
 
   <section>

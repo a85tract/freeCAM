@@ -14,7 +14,7 @@ beside CAM. Other rank counts run as explorations, and other compile-time
 options (today `pcols`) are rebuilt by `fc.build` and checked against their own
 original.
 
-![A Jupyter notebook submits one 512-rank MPI job on Derecho and sends it commands; every rank runs freeCAM's Python driver over its own NumPy state, and the original iCESM Fortran computes every number](web/site/docs/figures/architecture.svg)
+![freeCAM in layers: notebooks, scripts, the Workflow Builder, batch jobs and viewers drive a Python control layer on every MPI rank; generated adapters call the original iCESM Fortran, built from the pinned source and checked bit-for-bit against the original](web/site/docs/figures/architecture.svg)
 
 ## Features
 
@@ -88,6 +88,12 @@ with fc.Driver(case="PI-atm", nsteps=2) as driver:
 `initialize()` requests 512 MPI ranks on four Derecho nodes through PBS,
 charged to `FREECAM_ACCOUNT` (`ntasks=N` takes N/128 nodes, rounded up).
 Leaving the `with` block, or `driver.close()`, releases them.
+
+From a notebook the model is one MPI job that stays up between cells; each
+rank keeps its part of the globe, and the notebook gets back only what it
+asks for:
+
+![A Jupyter notebook submits one 512-rank MPI job on Derecho and sends it commands; every rank runs freeCAM's Python driver over its own NumPy state, and the original iCESM Fortran computes every number](web/site/docs/figures/notebook-hpc.svg)
 
 ## Examples
 
