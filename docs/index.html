@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>freeCAM Docs</title>
+<meta name="description" content="CAM from iCESM1.3.1, run step by step from Python: a notebook drives a 512-rank model on NCAR Derecho, and the original Fortran computes every number.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap">
+<style>
+:root {
+  --bg: #f6f7f6;
+  --panel: #ffffff;
+  --ink: #15191b;
+  --ink-2: #4d5559;
+  --ink-3: #737b7f;
+  --rule: #dde2e0;
+  --accent: #2a78d6;
+  --code-bg: #f0f2f1;
+  --shadow: 0 1px 2px rgba(20, 30, 35, 0.04), 0 6px 20px rgba(20, 30, 35, 0.06);
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --serif: "IBM Plex Serif", Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #15181a;
+    --panel: #1d2124;
+    --ink: #eef0f0;
+    --ink-2: #b0b7ba;
+    --ink-3: #868e92;
+    --rule: #2e3438;
+    --accent: #4a93ea;
+    --code-bg: #23282b;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #15181a;
+  --panel: #1d2124;
+  --ink: #eef0f0;
+  --ink-2: #b0b7ba;
+  --ink-3: #868e92;
+  --rule: #2e3438;
+  --accent: #4a93ea;
+  --code-bg: #23282b;
+  --shadow: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.65 var(--sans); }
+a { color: var(--accent); }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+h1, h2 { font-family: var(--serif); font-weight: 700; }
+h1 { font-size: clamp(34px, 4.6vw, 52px); line-height: 1.08; letter-spacing: -0.01em; }
+h2 { font-size: clamp(24px, 2.6vw, 30px); line-height: 1.2; }
+h3 { font-size: 19px; font-weight: 600; line-height: 1.3; }
+p { margin: 0; }
+code { font-family: var(--mono); font-size: 0.88em; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+
+/* hero */
+.hero { padding: 64px 0 48px; }
+.hero .wrap { display: grid; }
+.hero-text { display: grid; gap: 20px; }
+.lede { font-size: 18px; color: var(--ink-2); max-width: 46em; }
+.links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.links a { text-decoration: none; font-size: 14px; font-weight: 500; padding: 7px 14px; border: 1px solid var(--rule); border-radius: 999px; color: var(--ink); background: var(--panel); }
+.links a.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.links a:hover { border-color: var(--accent); }
+
+/* media frames */
+.frame { background: #fff; border: 1px solid var(--rule); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+.frame img { display: block; width: 100%; height: auto; }
+.note { font-size: 13.5px; color: var(--ink-3); margin-top: 10px; }
+
+/* facts */
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.fact { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 20px 22px; box-shadow: var(--shadow); }
+.fact b { display: block; font-family: var(--serif); font-size: 20px; margin-bottom: 6px; }
+.fact span { font-size: 14.5px; color: var(--ink-2); line-height: 1.55; }
+
+/* sections */
+section { padding: 72px 0 0; }
+.section-head { display: grid; gap: 10px; margin-bottom: 24px; max-width: 46em; }
+.section-head p { color: var(--ink-2); }
+
+/* feature rows: media and text side by side, alternating */
+.feature { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 40px; align-items: center; }
+.feature + .feature { margin-top: 56px; }
+.feature.flip .feature-media { order: 2; }
+.feature.portrait { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); }
+.feature.portrait .feature-media { max-width: 440px; justify-self: center; width: 100%; }
+.feature-text { display: grid; gap: 14px; }
+.feature-text p { color: var(--ink-2); }
+pre { margin: 0; padding: 14px 16px; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 10px; overflow-x: auto; font: 13px/1.6 var(--mono); color: var(--ink); }
+.wide-text { display: grid; gap: 14px; max-width: 46em; margin-bottom: 20px; }
+.wide-text p { color: var(--ink-2); }
+.block { margin-top: 56px; }
+.wide-text.block { margin-bottom: 18px; }
+.feature.after-figure { margin-top: 48px; }
+pre.launch { max-width: 760px; }
+
+/* GPU cards */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.card { display: grid; gap: 8px; align-content: start; padding: 20px 22px; background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; text-decoration: none; color: var(--ink); box-shadow: var(--shadow); }
+.card:hover { border-color: var(--accent); }
+.card b { font-size: 16px; color: var(--accent); line-height: 1.35; }
+.card span { font-size: 14px; color: var(--ink-2); line-height: 1.55; }
+
+/* animations, played by hand */
+.player { margin: 0; display: grid; gap: 10px; outline: none; }
+.player .frame img { cursor: pointer; }
+.player:focus-visible .frame { box-shadow: 0 0 0 3px var(--accent); }
+.controls { display: flex; align-items: center; gap: 8px; }
+.controls button { flex: none; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid var(--rule); border-radius: 999px; background: var(--panel); color: var(--ink); cursor: pointer; }
+.controls button:hover { border-color: var(--accent); color: var(--accent); }
+.controls button.play { width: 40px; height: 40px; background: var(--accent); border-color: var(--accent); color: #fff; }
+.controls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.controls button.play svg { fill: currentColor; stroke: none; }
+.controls input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.controls .count { flex: none; min-width: 4.5em; text-align: right; font: 12.5px var(--mono); color: var(--ink-3); }
+
+footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rule); font-size: 13.5px; color: var(--ink-3); }
+
+@media (max-width: 860px) {
+  .hero .wrap, .feature, .feature.portrait { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .feature.flip .feature-media { order: 0; }
+  .facts { grid-template-columns: minmax(0, 1fr); }
+  .hero { padding-top: 40px; }
+  section { padding-top: 56px; }
+}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-text">
+      <div class="eyebrow">iCESM1.3.1 · CAM5 · ne16 · 512 MPI ranks · online-coupled</div>
+      <h1>The CAM atmosphere, run from Python</h1>
+      <p class="lede">freeCAM lets a notebook drive a 512-rank CAM on NCAR Derecho. Python decides which process runs next, reads and writes the model state, and can put Python code or a trained network in place of a process or a single kernel. The original Fortran computes every number.</p>
+      <nav class="links">
+        <a class="primary" href="https://github.com/a85tract/freeCAM">Source on GitHub</a>
+        <a href="https://github.com/a85tract/freeCAM/tree/main/examples">Example notebooks</a>
+        <a href="https://github.com/a85tract/freeCAM/blob/main/docs/installation.md">Installation</a>
+        <a href="https://github.com/a85tract/freeCAM/blob/main/docs/validation.md">Validation</a>
+      </nav>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="facts">
+    <div class="fact"><b>Bit-for-bit</b><span>With nothing replaced, the same output as the original iCESM, checked in 512-rank online gates.</span></div>
+    <div class="fact"><b>One persistent job</b><span>Started by the first live call and reused by every later notebook cell.</span></div>
+    <div class="fact"><b>Process and kernel slots</b><span>Python, a replay or a trained network in CAM's place; one already runs on A100 GPUs.</span></div>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <h2>How it runs</h2>
+      <p>Every way in drives the same Python control layer, which runs on every MPI rank and decides what runs next. Below it the original Fortran computes every number, built from the pinned iCESM source and checked bit-for-bit against the original.</p>
+    </div>
+    <a class="frame" href="figures/architecture.svg" style="display:block"><img src="figures/architecture.svg" alt="freeCAM in layers: notebooks, scripts, the Workflow Builder, batch jobs and viewers drive a Python control layer on every MPI rank; generated adapters call the original iCESM Fortran, built from the pinned source and checked bit-for-bit against the original"></a>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>One step, and what you can change</h2>
+      <p>Python runs the step's processes one at a time, every 30 model minutes, and any of them, the dynamical core included, can be switched off, moved or replaced by Python; only the coupler exchange, the clock and the output are fixed. Radiation and the cloud stage can also be answered whole by a network, and eleven processes have kernel slots. With nothing replaced, the run is the original.</p>
+    </div>
+    <a class="frame" href="figures/step.svg" style="display:block"><img src="figures/step.svg" alt="One model step is an ordered list of processes; the list can be edited, a whole process or one kernel inside it can be answered by a network, and with nothing replaced the run is bit-for-bit the original"></a>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Running from a Jupyter notebook</h2>
+      <p>A notebook is one way in. Its first live call submits one MPI job and keeps talking to it; each rank holds its part of the globe as NumPy arrays, the fields stay there, and the notebook gets back only what it asks for.</p>
+    </div>
+    <a class="frame" href="figures/notebook-hpc.svg" style="display:block"><img src="figures/notebook-hpc.svg" alt="A Jupyter notebook submits one 512-rank MPI job on Derecho and sends it commands; every rank runs freeCAM's Python driver over its own NumPy state, and the original iCESM Fortran computes every number"></a>
+
+    <div class="feature after-figure">
+      <div class="feature-media"><div class="frame"><img src="figures/notebook-profiles.png" alt="Rank 0's mean profiles of temperature, both winds, water vapour, vertical velocity and pressure, read live from the model"></div></div>
+      <div class="feature-text">
+        <h3>Read the live state</h3>
+        <p>Every CAM field is a distributed NumPy array: statistics over all ranks, one rank's own columns, or a plot, without stopping the model.</p>
+<pre>driver.cam.state.T.stats(rank="global")
+driver.cam.state.plot(rank=0,
+    variables=('T', 'u', 'v', 'q', 'omega', 'pmid'))</pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The Workflow Builder and its globe</h2>
+      <p>A page in the browser on the same model: edit the step and generate its freeCAM code, run it, and watch the state on a globe. It starts from Python; the ranks keep each step's state in memory for the globe.</p>
+    </div>
+<pre class="launch">import freecam as fc
+
+driver = fc.Driver(case="PI-atm", nsteps=1488,          # one model month
+                   record_state={"store": "memory", "keep_steps": 1500})
+ui = driver.ui(port=8793)
+print(ui.url)   # open it; Run starts the model, the Globe tab follows it</pre>
+    <p class="note">From a shell, <code>uv run python -i -c '...'</code> keeps the page up. Without <code>record_state</code>, <code>ui()</code> still keeps the state in memory, for the last 1000 steps.</p>
+
+    <div class="wide-text block">
+      <h3>Reorder the step, and get the code</h3>
+      <p>Every process can be moved, switched off, removed or replaced. A change that leaves the validated default is marked experimental, and Generate writes the step as freeCAM code: a complete program, a notebook, or the setup for a running driver.</p>
+    </div>
+    <figure class="player" data-src="figures/workflow-builder/" data-count="9" data-durations="2200,1000,2400,1000,1700,900,1000,2400,4000" tabindex="0" aria-label="Animation, 9 frames; arrow keys step through it"><div class="frame"><img src="figures/workflow-builder/00.webp" width="1100" height="621" alt="The Workflow Builder: shallow convection is moved ahead of deep convection, the check asks for Experimental, and Generate writes the code, in which shallow_convection now comes before deep_convection"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="8" value="0" step="1" aria-label="Frame"><span class="count">1 / 9</span></div></figure>
+
+    <div class="feature portrait block">
+      <div class="feature-media"><figure class="player" data-src="figures/globe-processes/" data-count="8" data-durations="2200,1600,1600,1600,1600,1600,1600,1600" tabindex="0" aria-label="Animation, 8 frames; arrow keys step through it"><div class="frame"><img src="figures/globe-processes/00.webp" width="620" height="700" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="7" value="0" step="1" aria-label="Frame"><span class="count">1 / 8</span></div></figure></div>
+      <div class="feature-text">
+        <h3>Inside one step, a process at a time</h3>
+        <p>Because Python runs the step, the Globe tab can show the state after every process. Here the temperature at 848 hPa as step 24 begins, then what each of the seven processes that change it did on its own, in the order the step runs them.</p>
+      </div>
+    </div>
+
+    <div class="feature portrait flip">
+      <div class="feature-media"><figure class="player" data-src="figures/globe-steps/" data-count="50" data-durations="160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,1400" tabindex="0" aria-label="Animation, 50 frames; arrow keys step through it"><div class="frame"><img src="figures/globe-steps/00.webp" width="560" height="639" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="49" value="0" step="1" aria-label="Frame"><span class="count">1 / 50</span></div></figure></div>
+      <div class="feature-text">
+        <h3>Follow the run step by step</h3>
+        <p>The globe shows each step as the model takes it. Here one model day of the same run, at the lowest model level: the air over land swings 5 to 7 K between day and night, over the ocean less than 1 K.</p>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-media"><div class="frame"><img src="figures/globe.png" alt="The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian"></div></div>
+      <div class="feature-text">
+        <h3>Pick a column</h3>
+        <p>A click draws the column's profile and the latitude-pressure section along its meridian; the slider moves through the steps, or through the processes of one step.</p>
+        <p class="note">A run recorded to disk (<code>record_state=True</code>) opens later with <code>freecam globe &lt;run&gt;/state</code>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>A trained network in a kernel slot</h2>
+      <p>A network answers the shallow-convection kernel, <code>compute_uwshcu_inv</code>, inside the coupled model, on CPU and on A100 GPUs.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-media"><div class="frame"><img src="figures/shallow-network-halfyear.png" alt="Half-year mean total precipitation from the original Fortran and from the run with a network in compute_uwshcu_inv, and their zonal means: the patterns agree, global means 3.05 and 3.06 mm/day"></div></div>
+      <div class="feature-text">
+        <h3>Half a model year with the network</h3>
+        <p>A distilled network took the place of <code>compute_uwshcu_inv</code> for half a model year at 512 ranks, with land, sea ice, ocean and rivers running live. Its mean precipitation keeps the original's pattern (correlation 0.95) and global mean (3.05 and 3.06 mm/day); low cloud is 2.7% more and cloud liquid water 5% more. On CPU the half year took 1.19 times as long as the original Fortran.</p>
+<pre>shallow = driver.processes["shallow_convection"]
+shallow.kernels["compute_uwshcu_inv"] = fc.NativeModel("uwshcu.pt")
+driver.advance(8688)   # half a model year</pre>
+      </div>
+    </div>
+    <div class="cards block">
+      <a class="card" href="shallow-convection-model-month.html"><b>Shallow-convection model month</b><span>Accuracy and speed against the original Fortran and an earlier MLP, and the output limits the model needed.</span></a>
+      <a class="card" href="ranks-and-model-cost.html"><b>Ranks and model cost</b><span>The same month at 128 to 512 ranks on four A100 nodes: the cost per step and the one-time start-up.</span></a>
+      <a class="card" href="month-timing-by-process.html"><b>Month timing by process</b><span>Every process of one 512-rank month with nothing replaced, bit-for-bit with the original.</span></a>
+      <a class="card" href="gpu-forward.html"><b>The GPU forward, step by step</b><span>Animated: from creating a CUDA context to CUDA Graph, compiled fusion and TF32.</span></a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">Configuration: iCESM1.3.1 PI-atm, ne16, CAM5 physics, SE dynamics, 512 MPI ranks on NCAR Derecho. Source and documentation: <a href="https://github.com/a85tract/freeCAM">github.com/a85tract/freeCAM</a>.</div>
+</footer>
+<script>
+// Each animation waits on its first frame: step through it, drag the slider, or press play.
+(() => {
+  const PLAY = '<svg viewBox="0 0 16 16"><path d="M5 3 L13 8 L5 13 Z"/></svg>';
+  const PAUSE = '<svg viewBox="0 0 16 16"><path d="M4 3 H7 V13 H4 Z M9 3 H12 V13 H9 Z"/></svg>';
+  document.querySelectorAll('.player').forEach((player) => {
+    const base = player.dataset.src;
+    const count = Number(player.dataset.count);
+    const durations = player.dataset.durations.split(',').map(Number);
+    const img = player.querySelector('img');
+    const range = player.querySelector('input');
+    const label = player.querySelector('.count');
+    const play = player.querySelector('[data-act=play]');
+    const name = (k) => `${base}${String(k).padStart(2, '0')}.webp`;
+    const cache = [];
+    let at = 0;
+    let timer = null;
+    const preload = () => { for (let k = 0; k < count; k += 1) if (!cache[k]) { cache[k] = new Image(); cache[k].src = name(k); } };
+    const show = (k) => {
+      at = Math.max(0, Math.min(count - 1, k));
+      img.src = name(at);
+      range.value = at;
+      label.textContent = `${at + 1} / ${count}`;
+    };
+    const stop = () => {
+      clearTimeout(timer);
+      timer = null;
+      play.innerHTML = PLAY;
+      play.setAttribute('aria-label', 'Play');
+    };
+    const tick = () => {
+      show(at + 1);
+      if (at >= count - 1) stop(); else timer = setTimeout(tick, durations[at]);
+    };
+    const start = () => {
+      preload();
+      if (at >= count - 1) show(0);
+      play.innerHTML = PAUSE;
+      play.setAttribute('aria-label', 'Pause');
+      timer = setTimeout(tick, durations[at]);
+    };
+    const toggle = () => (timer ? stop() : start());
+    const step = (by) => { stop(); preload(); show(at + by); };
+    play.innerHTML = PLAY;
+    play.addEventListener('click', toggle);
+    img.addEventListener('click', toggle);
+    player.querySelector('[data-act=prev]').addEventListener('click', () => step(-1));
+    player.querySelector('[data-act=next]').addEventListener('click', () => step(1));
+    range.addEventListener('input', () => { stop(); preload(); show(Number(range.value)); });
+    player.addEventListener('keydown', (event) => {
+      if (event.target === range) return;
+      if (event.key === 'ArrowLeft') { step(-1); event.preventDefault(); }
+      if (event.key === 'ArrowRight') { step(1); event.preventDefault(); }
+      if (event.key === ' ' && event.target === player) { toggle(); event.preventDefault(); }
+    });
+    if ('IntersectionObserver' in window) {
+      const seen = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) { preload(); seen.disconnect(); }
+      }, { rootMargin: '400px' });
+      seen.observe(player);
+    }
+  });
+})();
+</script>
+</body>
+</html>
