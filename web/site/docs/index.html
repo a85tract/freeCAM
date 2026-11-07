@@ -99,6 +99,10 @@ section { padding: 72px 0 0; }
 pre { margin: 0; padding: 14px 16px; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 10px; overflow-x: auto; font: 13px/1.6 var(--mono); color: var(--ink); }
 .wide-text { display: grid; gap: 14px; max-width: 46em; margin-bottom: 20px; }
 .wide-text p { color: var(--ink-2); }
+.block { margin-top: 56px; }
+.wide-text.block { margin-bottom: 18px; }
+.feature.after-figure { margin-top: 48px; }
+pre.launch { max-width: 760px; }
 
 /* GPU cards */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
@@ -165,42 +169,8 @@ footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rul
       <p>A notebook is one way in. Its first live call submits one MPI job and keeps talking to it; each rank holds its part of the globe as NumPy arrays, the fields stay there, and the notebook gets back only what it asks for.</p>
     </div>
     <a class="frame" href="figures/notebook-hpc.svg" style="display:block"><img src="figures/notebook-hpc.svg" alt="A Jupyter notebook submits one 512-rank MPI job on Derecho and sends it commands; every rank runs freeCAM's Python driver over its own NumPy state, and the original iCESM Fortran computes every number"></a>
-  </section>
 
-  <section>
-    <div class="section-head">
-      <h2>What you see from a notebook</h2>
-      <p>Everything below comes from the running model, through the same objects a notebook uses.</p>
-    </div>
-
-    <div class="feature portrait">
-      <div class="feature-media"><div class="frame"><img src="figures/globe-processes.gif" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></div></div>
-      <div class="feature-text">
-        <h3>Inside one step, a process at a time</h3>
-        <p>Because Python runs the step, the state can be read after every process. Here the temperature at 848 hPa as step 24 begins, then what each of the seven processes that change it did on its own, in the order the step runs them.</p>
-<pre>ui = fc.Driver(case="PI-atm", nsteps=48).ui()
-ui.url   # open it, press Run, then the Globe tab</pre>
-      </div>
-    </div>
-
-    <div class="feature portrait flip">
-      <div class="feature-media"><div class="frame"><img src="figures/globe-steps.gif" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></div></div>
-      <div class="feature-text">
-        <h3>Follow the run on a globe</h3>
-        <p>The Workflow Builder's Globe tab shows each step as the model takes it, and can step through the processes of one step, as above. Here one model day of the same run, at the lowest model level: the air over land swings 5 to 7 K between day and night, over the ocean less than 1 K.</p>
-      </div>
-    </div>
-
-    <div class="feature">
-      <div class="feature-media"><div class="frame"><img src="figures/globe.png" alt="The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian"></div></div>
-      <div class="feature-text">
-        <h3>Pick a column on the globe</h3>
-        <p>The viewer follows the run as it steps. A click draws the column's profile and the latitude-pressure section along its meridian; the slider moves through the steps, or through the processes of one step.</p>
-        <p class="note">A run recorded to disk (<code>record_state=True</code>) opens later with <code>freecam globe &lt;run&gt;/state</code>.</p>
-      </div>
-    </div>
-
-    <div class="feature flip">
+    <div class="feature after-figure">
       <div class="feature-media"><div class="frame"><img src="figures/notebook-profiles.png" alt="Rank 0's mean profiles of temperature, both winds, water vapour, vertical velocity and pressure, read live from the model"></div></div>
       <div class="feature-text">
         <h3>Read the live state</h3>
@@ -210,25 +180,69 @@ driver.cam.state.plot(rank=0,
     variables=('T', 'u', 'v', 'q', 'omega', 'pmid'))</pre>
       </div>
     </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The Workflow Builder and its globe</h2>
+      <p>A page in the browser on the same model: edit the step and generate its freeCAM code, run it, and watch the state on a globe. It starts from Python; the ranks keep each step's state in memory for the globe.</p>
+    </div>
+<pre class="launch">import freecam as fc
+
+driver = fc.Driver(case="PI-atm", nsteps=1488,          # one model month
+                   record_state={"store": "memory", "keep_steps": 1500})
+ui = driver.ui(port=8793)
+print(ui.url)   # open it; Run starts the model, the Globe tab follows it</pre>
+    <p class="note">From a shell, <code>uv run python -i -c '...'</code> keeps the page up. Without <code>record_state</code>, <code>ui()</code> still keeps the state in memory, for the last 1000 steps.</p>
+
+    <div class="wide-text block">
+      <h3>Reorder the step, and get the code</h3>
+      <p>Every process can be moved, switched off, removed or replaced. A change that leaves the validated default is marked experimental, and Generate writes the step as freeCAM code: a complete program, a notebook, or the setup for a running driver.</p>
+    </div>
+    <div class="frame"><img src="figures/workflow-builder.gif" alt="The Workflow Builder: shallow convection is moved ahead of deep convection, the check asks for Experimental, and Generate writes the code, in which shallow_convection now comes before deep_convection"></div>
+
+    <div class="feature portrait block">
+      <div class="feature-media"><div class="frame"><img src="figures/globe-processes.gif" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></div></div>
+      <div class="feature-text">
+        <h3>Inside one step, a process at a time</h3>
+        <p>Because Python runs the step, the Globe tab can show the state after every process. Here the temperature at 848 hPa as step 24 begins, then what each of the seven processes that change it did on its own, in the order the step runs them.</p>
+      </div>
+    </div>
+
+    <div class="feature portrait flip">
+      <div class="feature-media"><div class="frame"><img src="figures/globe-steps.gif" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></div></div>
+      <div class="feature-text">
+        <h3>Follow the run step by step</h3>
+        <p>The globe shows each step as the model takes it. Here one model day of the same run, at the lowest model level: the air over land swings 5 to 7 K between day and night, over the ocean less than 1 K.</p>
+      </div>
+    </div>
 
     <div class="feature">
-      <div class="feature-media"><div class="frame"><img src="figures/kernel-surrogate.png" alt="Cloud fraction, liquid and ice stratus on one column: the original Fortran against a trained network"></div></div>
+      <div class="feature-media"><div class="frame"><img src="figures/globe.png" alt="The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian"></div></div>
       <div class="feature-text">
-        <h3>A trained network in a kernel's place</h3>
-        <p>A kernel slot takes any callable with the kernel's inputs and outputs. Here a network answers <code>mmacro_pcond</code>, compared with the original Fortran on one column.</p>
-<pre>stage = Macrophysics()
-stage.kernels['mmacro_pcond'] = load_surrogate(MODEL)
-answer = stage.mmacro_pcond(column)</pre>
+        <h3>Pick a column</h3>
+        <p>A click draws the column's profile and the latitude-pressure section along its meridian; the slider moves through the steps, or through the processes of one step.</p>
+        <p class="note">A run recorded to disk (<code>record_state=True</code>) opens later with <code>freecam globe &lt;run&gt;/state</code>.</p>
       </div>
     </div>
   </section>
 
   <section>
     <div class="section-head">
-      <h2>A model in a kernel slot, on the GPU</h2>
-      <p>A transformer answers the shallow-convection kernel, <code>compute_uwshcu_inv</code>, inside the coupled model for a full month, on CPU and on A100 GPUs.</p>
+      <h2>A trained network in a kernel slot</h2>
+      <p>A network answers the shallow-convection kernel, <code>compute_uwshcu_inv</code>, inside the coupled model, on CPU and on A100 GPUs.</p>
     </div>
-    <div class="cards">
+    <div class="feature">
+      <div class="feature-media"><div class="frame"><img src="figures/shallow-network-halfyear.png" alt="Half-year mean total precipitation from the original Fortran and from the run with a network in compute_uwshcu_inv, and their zonal means: the patterns agree, global means 3.05 and 3.06 mm/day"></div></div>
+      <div class="feature-text">
+        <h3>Half a model year with the network</h3>
+        <p>A distilled network took the place of <code>compute_uwshcu_inv</code> for half a model year at 512 ranks, with land, sea ice, ocean and rivers running live. Its mean precipitation keeps the original's pattern (correlation 0.95) and global mean (3.05 and 3.06 mm/day); low cloud is 2.7% more and cloud liquid water 5% more. On CPU the half year took 1.19 times as long as the original Fortran.</p>
+<pre>shallow = driver.processes["shallow_convection"]
+shallow.kernels["compute_uwshcu_inv"] = fc.NativeModel("uwshcu.pt")
+driver.advance(8688)   # half a model year</pre>
+      </div>
+    </div>
+    <div class="cards block">
       <a class="card" href="shallow-convection-model-month.html"><b>Shallow-convection model month</b><span>Accuracy and speed against the original Fortran and an earlier MLP, and the output limits the model needed.</span></a>
       <a class="card" href="ranks-and-model-cost.html"><b>Ranks and model cost</b><span>The same month at 128 to 512 ranks on four A100 nodes: the cost per step and the one-time start-up.</span></a>
       <a class="card" href="month-timing-by-process.html"><b>Month timing by process</b><span>Every process of one 512-rank month with nothing replaced, bit-for-bit with the original.</span></a>

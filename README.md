@@ -107,19 +107,38 @@ driver.cam.state.plot(rank=0, variables=('T', 'u', 'v', 'q', 'omega', 'pmid'))
 
 ![Rank 0's mean profiles of temperature, both winds, water vapour, vertical velocity and pressure, read live from the model](web/site/docs/figures/notebook-profiles.png)
 
-Watch the state on a globe, step by step or process by process: the Workflow
-Builder's *Globe* tab follows the run it starts
-([docs/usage.md](docs/usage.md#in-the-workflow-builder)):
+### The Workflow Builder and its globe
 
-```python
-ui = fc.Driver(case="PI-atm", nsteps=48).ui()
-ui.url        # open it and press Run; the Globe tab shows each step as it comes
+A page in the browser on the same model: it edits the step and generates its
+freeCAM code, runs it, and shows the state on a globe
+([docs/usage.md](docs/usage.md#the-workflow-builder)). Start it from
+Python; the ranks keep each step's state in memory for the globe:
+
+```bash
+uv run python -i -c '
+import freecam as fc
+driver = fc.Driver(case="PI-atm", nsteps=1488,
+                   record_state={"store": "memory", "keep_steps": 1500})
+ui = driver.ui(port=8793)
+print(ui.url)
+'
 ```
 
-A run recorded to disk (`record_state=True`) opens later with
-`freecam globe <run>/state`.
+Open the URL. Without `record_state`, `ui()` still keeps the state in memory,
+for the last 1000 steps.
 
-![The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian](web/site/docs/figures/globe.png)
+Every process can be moved, switched off, removed or replaced. A change that
+leaves the validated default is marked experimental, and Generate writes the
+step as freeCAM code: a complete program, a notebook, or the setup for a
+running driver. Here shallow convection moves ahead of deep convection:
+
+![The Workflow Builder: shallow convection is moved ahead of deep convection, the check asks for Experimental, and Generate writes the code, in which shallow_convection now comes before deep_convection](web/site/docs/figures/workflow-builder.gif)
+
+Run starts the model, and the *Globe* tab follows it. Inside one step it shows
+what each process alone did to the state; here the seven processes that change
+the temperature at step 24:
+
+<p align="center"><img src="web/site/docs/figures/globe-processes.gif" width="560" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></p>
 
 Step by step, over one model day of the same run: the air over land warms in
 daylight and cools at night, by 5 to 7 K over the Sahara and the Kalahari,
@@ -127,31 +146,31 @@ while over the ocean it changes by less than 1 K.
 
 <p align="center"><img src="web/site/docs/figures/globe-steps.gif" width="520" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></p>
 
-Inside one step the viewer shows what each process alone did to the state;
-here the seven processes that change the temperature at step 24 of the same
-run:
+A click picks a column: its profile, and the latitude-pressure section along
+its meridian. A run recorded to disk (`record_state=True`) opens later with
+`freecam globe <run>/state`.
 
-<p align="center"><img src="web/site/docs/figures/globe-processes.gif" width="560" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></p>
+![The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian](web/site/docs/figures/globe.png)
 
-Put a trained network in a kernel's place and compare it with the original
-Fortran on one column ([kernel_surrogate.ipynb](examples/kernel_surrogate.ipynb)):
+### A trained network in a kernel slot
+
+A distilled network took the place of the shallow-convection kernel,
+`compute_uwshcu_inv`, for half a model year at 512 ranks, with land, sea ice,
+ocean and rivers running live
+([docs/usage.md](docs/usage.md#replacing-one-kernel-inside-a-process)):
 
 ```python
-from freecam.physics.macrophysics import Macrophysics
-from freecam.physics.surrogate import load_surrogate
-
-stage = Macrophysics()
-stage.kernels['mmacro_pcond'] = load_surrogate(MODEL)  # the network in the slot
-answer = stage.mmacro_pcond(column)                    # one column in, one out
+shallow = driver.processes["shallow_convection"]
+shallow.kernels["compute_uwshcu_inv"] = fc.NativeModel("uwshcu.pt")   # TorchScript, on the CPU
+driver.advance(8688)                                                  # half a model year
 ```
 
-![Cloud fraction, liquid and ice stratus on one column: the original Fortran's mmacro_pcond against the trained network in its slot](web/site/docs/figures/kernel-surrogate.png)
+Its mean precipitation keeps the original's pattern (correlation 0.95) and
+global mean (3.05 and 3.06 mm/day); low cloud is 2.7% more and cloud liquid
+water 5% more. On CPU the half year took 1.19 times as long as the original
+Fortran.
 
-Edit the step in the browser: the Workflow Builder (`fc.Driver(...).ui()`)
-adds, removes, moves and replaces processes, runs the model with them, and
-generates the freeCAM code for what it shows.
-
-![The Workflow Builder: the process library, the step's processes in order with their switches, and the checks](web/site/docs/figures/workflow-builder.png)
+![Half-year mean total precipitation from the original Fortran and from the run with a network in compute_uwshcu_inv, and their zonal means: the patterns agree, global means 3.05 and 3.06 mm/day](web/site/docs/figures/shallow-network-halfyear.png)
 
 ## Documentation
 
