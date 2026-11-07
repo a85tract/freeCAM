@@ -111,6 +111,19 @@ pre.launch { max-width: 760px; }
 .card b { font-size: 16px; color: var(--accent); line-height: 1.35; }
 .card span { font-size: 14px; color: var(--ink-2); line-height: 1.55; }
 
+/* animations, played by hand */
+.player { margin: 0; display: grid; gap: 10px; outline: none; }
+.player .frame img { cursor: pointer; }
+.player:focus-visible .frame { box-shadow: 0 0 0 3px var(--accent); }
+.controls { display: flex; align-items: center; gap: 8px; }
+.controls button { flex: none; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid var(--rule); border-radius: 999px; background: var(--panel); color: var(--ink); cursor: pointer; }
+.controls button:hover { border-color: var(--accent); color: var(--accent); }
+.controls button.play { width: 40px; height: 40px; background: var(--accent); border-color: var(--accent); color: #fff; }
+.controls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.controls button.play svg { fill: currentColor; stroke: none; }
+.controls input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.controls .count { flex: none; min-width: 4.5em; text-align: right; font: 12.5px var(--mono); color: var(--ink-3); }
+
 footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rule); font-size: 13.5px; color: var(--ink-3); }
 
 @media (max-width: 860px) {
@@ -199,10 +212,10 @@ print(ui.url)   # open it; Run starts the model, the Globe tab follows it</pre>
       <h3>Reorder the step, and get the code</h3>
       <p>Every process can be moved, switched off, removed or replaced. A change that leaves the validated default is marked experimental, and Generate writes the step as freeCAM code: a complete program, a notebook, or the setup for a running driver.</p>
     </div>
-    <div class="frame"><img src="figures/workflow-builder.gif" alt="The Workflow Builder: shallow convection is moved ahead of deep convection, the check asks for Experimental, and Generate writes the code, in which shallow_convection now comes before deep_convection"></div>
+    <figure class="player" data-src="figures/workflow-builder/" data-count="9" data-durations="2200,1000,2400,1000,1700,900,1000,2400,4000" tabindex="0" aria-label="Animation, 9 frames; arrow keys step through it"><div class="frame"><img src="figures/workflow-builder/00.webp" width="1100" height="621" alt="The Workflow Builder: shallow convection is moved ahead of deep convection, the check asks for Experimental, and Generate writes the code, in which shallow_convection now comes before deep_convection"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="8" value="0" step="1" aria-label="Frame"><span class="count">1 / 9</span></div></figure>
 
     <div class="feature portrait block">
-      <div class="feature-media"><div class="frame"><img src="figures/globe-processes.gif" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></div></div>
+      <div class="feature-media"><figure class="player" data-src="figures/globe-processes/" data-count="8" data-durations="2200,1600,1600,1600,1600,1600,1600,1600" tabindex="0" aria-label="Animation, 8 frames; arrow keys step through it"><div class="frame"><img src="figures/globe-processes/00.webp" width="620" height="700" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="7" value="0" step="1" aria-label="Frame"><span class="count">1 / 8</span></div></figure></div>
       <div class="feature-text">
         <h3>Inside one step, a process at a time</h3>
         <p>Because Python runs the step, the Globe tab can show the state after every process. Here the temperature at 848 hPa as step 24 begins, then what each of the seven processes that change it did on its own, in the order the step runs them.</p>
@@ -210,7 +223,7 @@ print(ui.url)   # open it; Run starts the model, the Globe tab follows it</pre>
     </div>
 
     <div class="feature portrait flip">
-      <div class="feature-media"><div class="frame"><img src="figures/globe-steps.gif" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></div></div>
+      <div class="feature-media"><figure class="player" data-src="figures/globe-steps/" data-count="50" data-durations="160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,1400" tabindex="0" aria-label="Animation, 50 frames; arrow keys step through it"><div class="frame"><img src="figures/globe-steps/00.webp" width="560" height="639" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="49" value="0" step="1" aria-label="Frame"><span class="count">1 / 50</span></div></figure></div>
       <div class="feature-text">
         <h3>Follow the run step by step</h3>
         <p>The globe shows each step as the model takes it. Here one model day of the same run, at the lowest model level: the air over land swings 5 to 7 K between day and night, over the ocean less than 1 K.</p>
@@ -254,5 +267,69 @@ driver.advance(8688)   # half a model year</pre>
 <footer>
   <div class="wrap">Configuration: iCESM1.3.1 PI-atm, ne16, CAM5 physics, SE dynamics, 512 MPI ranks on NCAR Derecho. Source and documentation: <a href="https://github.com/a85tract/freeCAM">github.com/a85tract/freeCAM</a>.</div>
 </footer>
+<script>
+// Each animation waits on its first frame: step through it, drag the slider, or press play.
+(() => {
+  const PLAY = '<svg viewBox="0 0 16 16"><path d="M5 3 L13 8 L5 13 Z"/></svg>';
+  const PAUSE = '<svg viewBox="0 0 16 16"><path d="M4 3 H7 V13 H4 Z M9 3 H12 V13 H9 Z"/></svg>';
+  document.querySelectorAll('.player').forEach((player) => {
+    const base = player.dataset.src;
+    const count = Number(player.dataset.count);
+    const durations = player.dataset.durations.split(',').map(Number);
+    const img = player.querySelector('img');
+    const range = player.querySelector('input');
+    const label = player.querySelector('.count');
+    const play = player.querySelector('[data-act=play]');
+    const name = (k) => `${base}${String(k).padStart(2, '0')}.webp`;
+    const cache = [];
+    let at = 0;
+    let timer = null;
+    const preload = () => { for (let k = 0; k < count; k += 1) if (!cache[k]) { cache[k] = new Image(); cache[k].src = name(k); } };
+    const show = (k) => {
+      at = Math.max(0, Math.min(count - 1, k));
+      img.src = name(at);
+      range.value = at;
+      label.textContent = `${at + 1} / ${count}`;
+    };
+    const stop = () => {
+      clearTimeout(timer);
+      timer = null;
+      play.innerHTML = PLAY;
+      play.setAttribute('aria-label', 'Play');
+    };
+    const tick = () => {
+      show(at + 1);
+      if (at >= count - 1) stop(); else timer = setTimeout(tick, durations[at]);
+    };
+    const start = () => {
+      preload();
+      if (at >= count - 1) show(0);
+      play.innerHTML = PAUSE;
+      play.setAttribute('aria-label', 'Pause');
+      timer = setTimeout(tick, durations[at]);
+    };
+    const toggle = () => (timer ? stop() : start());
+    const step = (by) => { stop(); preload(); show(at + by); };
+    play.innerHTML = PLAY;
+    play.addEventListener('click', toggle);
+    img.addEventListener('click', toggle);
+    player.querySelector('[data-act=prev]').addEventListener('click', () => step(-1));
+    player.querySelector('[data-act=next]').addEventListener('click', () => step(1));
+    range.addEventListener('input', () => { stop(); preload(); show(Number(range.value)); });
+    player.addEventListener('keydown', (event) => {
+      if (event.target === range) return;
+      if (event.key === 'ArrowLeft') { step(-1); event.preventDefault(); }
+      if (event.key === 'ArrowRight') { step(1); event.preventDefault(); }
+      if (event.key === ' ' && event.target === player) { toggle(); event.preventDefault(); }
+    });
+    if ('IntersectionObserver' in window) {
+      const seen = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) { preload(); seen.disconnect(); }
+      }, { rootMargin: '400px' });
+      seen.observe(player);
+    }
+  });
+})();
+</script>
 </body>
 </html>
