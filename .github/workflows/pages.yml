@@ -2,7 +2,7 @@ name: Site
 
 # One composite site, published in a single deployment so no part can delete
 # another:
-#   /freeCAM/           the homepage: sends the visitor on to the documentation
+#   /freeCAM/           the homepage: a walk through examples/run_freecam.ipynb
 #   /freeCAM/docs/      the documentation pages (web/site, copied as they are)
 #   /freeCAM/builder/   the Workflow Builder preview
 #   /freeCAM/progress/  the implementation-progress dashboard (a published

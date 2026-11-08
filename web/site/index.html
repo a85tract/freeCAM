@@ -3,11 +3,358 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="0; url=docs/">
-<link rel="canonical" href="docs/">
-<title>freeCAM</title>
+<title>freeCAM Demo</title>
+<meta name="description" content="A walk through examples/run_freecam.ipynb: a Python process inserted into CAM's physics, run on 512 MPI ranks on NCAR Derecho, and the trace that shows it ran.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap">
+<style>
+:root {
+  --bg: #f6f7f6;
+  --panel: #ffffff;
+  --ink: #15191b;
+  --ink-2: #4d5559;
+  --ink-3: #737b7f;
+  --rule: #dde2e0;
+  --accent: #2a78d6;
+  --code-bg: #f0f2f1;
+  --out-bg: #fbfcfb;
+  --ok: #2f8a4f;
+  --hl-com: #737b7f;
+  --hl-str: #2f8a4f;
+  --hl-kw: #9a3fb5;
+  --hl-num: #b5641a;
+  --shadow: 0 1px 2px rgba(20, 30, 35, 0.04), 0 6px 20px rgba(20, 30, 35, 0.06);
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --serif: "IBM Plex Serif", Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #15181a;
+    --panel: #1d2124;
+    --ink: #eef0f0;
+    --ink-2: #b0b7ba;
+    --ink-3: #868e92;
+    --rule: #2e3438;
+    --accent: #4a93ea;
+    --code-bg: #23282b;
+    --out-bg: #191c1e;
+    --ok: #5cbf7e;
+    --hl-com: #868e92;
+    --hl-str: #7fcf98;
+    --hl-kw: #d39ae6;
+    --hl-num: #e6a568;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #15181a;
+  --panel: #1d2124;
+  --ink: #eef0f0;
+  --ink-2: #b0b7ba;
+  --ink-3: #868e92;
+  --rule: #2e3438;
+  --accent: #4a93ea;
+  --code-bg: #23282b;
+  --out-bg: #191c1e;
+  --ok: #5cbf7e;
+  --hl-com: #868e92;
+  --hl-str: #7fcf98;
+  --hl-kw: #d39ae6;
+  --hl-num: #e6a568;
+  --shadow: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.65 var(--sans); }
+a { color: var(--accent); }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+h1, h2 { font-family: var(--serif); font-weight: 700; }
+h1 { font-size: clamp(32px, 4.4vw, 50px); line-height: 1.08; letter-spacing: -0.01em; }
+h2 { font-size: clamp(22px, 2.4vw, 28px); line-height: 1.2; }
+p { margin: 0; }
+code { font-family: var(--mono); font-size: 0.88em; }
+.wrap { max-width: 920px; margin: 0 auto; padding: 0 16px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+
+/* top bar */
+.top { border-bottom: 1px solid var(--rule); background: var(--panel); }
+.top .wrap { display: flex; align-items: center; gap: 20px; min-height: 56px; flex-wrap: wrap; }
+.brand { font-family: var(--serif); font-weight: 700; font-size: 19px; color: var(--ink); text-decoration: none; margin-right: auto; }
+.top nav { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14.5px; }
+.top nav a { color: var(--ink-2); text-decoration: none; }
+.top nav a:hover, .top nav a[aria-current] { color: var(--accent); }
+
+/* hero */
+.hero { padding: 56px 0 8px; display: grid; gap: 18px; }
+.hero, .step, .next { grid-template-columns: minmax(0, 1fr); }
+.lede { font-size: 18px; color: var(--ink-2); max-width: 44em; }
+.links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.links a { text-decoration: none; font-size: 14px; font-weight: 500; padding: 7px 14px; border: 1px solid var(--rule); border-radius: 999px; color: var(--ink); background: var(--panel); }
+.links a.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.links a:hover { border-color: var(--accent); }
+
+/* the result, up front */
+.result { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 36px; }
+.result div { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); }
+.result b { display: block; font-family: var(--mono); font-weight: 500; font-size: 22px; line-height: 1.3; }
+.result span { font-size: 14px; color: var(--ink-2); line-height: 1.5; }
+
+/* notebook steps */
+.step { padding-top: 64px; display: grid; gap: 14px; }
+.step-head { display: flex; align-items: baseline; gap: 14px; }
+.step-num { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 999px; background: var(--accent); color: #fff; font: 500 14px var(--mono); transform: translateY(-3px); }
+.step > p { color: var(--ink-2); max-width: 44em; }
+.cell { margin-top: 6px; background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.cell-label { display: flex; justify-content: space-between; gap: 12px; padding: 7px 14px; border-bottom: 1px solid var(--rule); font: 12px var(--mono); color: var(--ink-3); }
+.cell pre { margin: 0; padding: 14px 16px; overflow-x: auto; font: 13px/1.6 var(--mono); color: var(--ink); tab-size: 4; }
+.cell pre.in { background: var(--code-bg); }
+.cell pre.out { background: var(--out-bg); border-top: 1px solid var(--rule); color: var(--ink-2); }
+.cell pre.out::before { content: "Out"; display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
+.out .ok { color: var(--ok); }
+.out .hi { color: var(--ink); font-weight: 500; }
+.c { color: var(--hl-com); font-style: italic; }
+.s { color: var(--hl-str); }
+.k { color: var(--hl-kw); }
+.n { color: var(--hl-num); }
+
+/* next */
+.next { padding-top: 72px; display: grid; gap: 18px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.card { display: grid; gap: 6px; align-content: start; padding: 18px 20px; background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; text-decoration: none; color: var(--ink); box-shadow: var(--shadow); }
+.card:hover { border-color: var(--accent); }
+.card b { font-size: 15.5px; color: var(--accent); line-height: 1.35; }
+.card span { font-size: 14px; color: var(--ink-2); line-height: 1.55; }
+
+footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rule); font-size: 13.5px; color: var(--ink-3); }
+
+@media (max-width: 720px) {
+  .result { grid-template-columns: minmax(0, 1fr); }
+  .hero { padding-top: 36px; }
+  .step { padding-top: 48px; }
+  .top nav { gap: 14px; }
+}
+</style>
 </head>
 <body>
-<p><a href="docs/">freeCAM documentation</a> · <a href="builder/">Workflow Builder</a> · <a href="progress/">Implementation progress</a></p>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./">freeCAM</a>
+    <nav>
+      <a href="./" aria-current="page">Demo</a>
+      <a href="docs/">Docs</a>
+      <a href="builder/">Workflow Builder</a>
+      <a href="progress/">Progress</a>
+      <a href="https://github.com/a85tract/freeCAM">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <div class="eyebrow">Demo · examples/run_freecam.ipynb · 512 MPI ranks on Derecho</div>
+    <h1>Put a Python process inside CAM, and run it</h1>
+    <p class="lede">This notebook adds ten lines of Python to the physics of the iCESM1.3.1 CAM atmosphere, runs the model for four steps on 512 ranks, and uses the model's own trace to check that the Python code ran. Python controls which processes run, in what order, and what runs alongside them. Every number the original processes compute still comes from the original Fortran. The cells and outputs below are copied from the committed notebook.</p>
+    <nav class="links">
+      <a class="primary" href="https://github.com/a85tract/freeCAM/blob/main/examples/run_freecam.ipynb">Open the notebook</a>
+      <a href="docs/">Read the docs</a>
+      <a href="https://github.com/a85tract/freeCAM/blob/main/docs/installation.md">Install</a>
+    </nav>
+  </div>
+
+  <div class="result" aria-label="What the run produced">
+    <div><b>action 21 of 35</b><span>where the Python process sits in a step, right after dry adjustment</span></div>
+    <div><b>4 of 4 steps</b><span>the trace records it once each step, in phase <code>cam_run1</code></span></div>
+    <div><b>+0.0048 K</b><span>change in global mean temperature over the 4 steps, after the whole model has responded</span></div>
+  </div>
+
+  <section class="step" id="check">
+    <div class="step-head"><span class="step-num">0</span><h2>Check the checkout has what it needs</h2></div>
+    <p>A clone can't bring three things a 512-rank run needs: Derecho itself, the native image (compiled in place from the pinned submodule, so it can't be copied between checkouts), and a configured CESM case with one completed run. This cell reports which ones are present. For anything missing, it names what produces it, before you spend a queue slot finding out. Every path comes from <code>site.env</code>.</p>
+    <div class="cell">
+      <div class="cell-label"><span>In [1]</span><span>python</span></div>
+<pre class="in"><code>import os, sys
+from pathlib import Path
+import numpy as np
+
+REPO = Path.cwd()
+while REPO != REPO.parent and not (REPO / 'pyproject.toml').is_file():
+    REPO = REPO.parent
+sys.path.insert(0, str(REPO / 'src'))
+from freecam import site
+
+where = site.resolved(repo=REPO)
+for name in ('account', 'queue', 'scratch', 'reference case', 'reference run'):
+    print(f'{name:&lt;16}{where[name]}')
+print()
+
+checks = site.preflight(repo=REPO)
+for check in checks:
+    print(f'  {check}')
+absent = [check for check in checks if not check.ok]
+assert not absent, (
+    '\n\nnot ready.  What is missing, and what produces it:\n  '
+    + '\n  '.join(f'{check.name}: {check.produced_by}' for check in absent)
+    + '\n\nSee the README, section "Site configuration".')</code></pre>
+<pre class="out">account         ${FREECAM_ACCOUNT}
+queue           develop
+scratch         ${FREECAM_SCRATCH}
+reference case  ${FREECAM_CASES}/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+reference run   ${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
+
+  <span class="ok">ok</span>      allocation        ${FREECAM_ACCOUNT}
+  <span class="ok">ok</span>      environment       .venv/bin/python
+  <span class="ok">ok</span>      scheduler         qsub on PATH
+  <span class="ok">ok</span>      native image      build/pi_cam_promoted/native_cam_manifest.json
+  <span class="ok">ok</span>      reference case    ${FREECAM_CASES}/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+  <span class="ok">ok</span>      reference run     ${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run</pre>
+    </div>
+  </section>
+
+  <section class="step" id="plan">
+    <div class="step-head"><span class="step-num">1</span><h2>Decide what the model will run</h2></div>
+    <p>No MPI yet. A case is a workflow, and you can inspect and change a workflow before anything starts. Here a Python process goes into the middle of CAM's physics: an ordinary class with a <code>run</code> method that works on the model's own state arrays. <code>preview()</code> compiles the workflow and reads it back without PBS or MPI.</p>
+    <div class="cell">
+      <div class="cell-label"><span>In [2]</span><span>python</span></div>
+<pre class="in"><code>import freecam as fc
+
+STEPS = int(os.environ.get('PYCAM_STEPS', 4))
+
+
+class Cooling(fc.Physics):
+    """A visible tendency, so the run shows whether Python reached the state."""
+
+    name = 'python_cooling'
+
+    def run(self, state, context):
+        state.T -= 1.0e-4 * context.timestep_seconds        # 0.18 K a step
+
+
+def with_cooling(default):
+    workflow = default.copy()
+    workflow.insert_after('dry_adjustment', Cooling())
+    return workflow
+
+
+case = fc.CaseConfig(
+    name='PI-atm-python-cooling',
+    description='PI-atm with one Python tendency inside CAM physics',
+    forcing='1850 fixed preindustrial with the online CESM surface system',
+    make_atm=lambda: fc.FreeCAM(workflow=with_cooling),
+)
+
+# Constructing a Driver starts nothing: preview() compiles the workflow
+# and reads it back, with no PBS and no MPI.
+plan = fc.Driver(case=case, nsteps=STEPS).preview()
+names = [action.name for action in plan]
+print(f'{len(plan)} actions in a step')
+if Cooling.name in names:
+    position = names.index(Cooling.name)
+    print(f'  {Cooling.name} is action {position + 1}, '
+          f'phase {plan[position].phase}, after {names[position - 1]}')
+else:
+    print(f'  {Cooling.name} is not among them')</code></pre>
+<pre class="out">35 actions in a step
+  <span class="hi">python_cooling is action 21, phase cam_run1, after dry_adjustment</span></pre>
+    </div>
+  </section>
+
+  <section class="step" id="run">
+    <div class="step-head"><span class="step-num">2</span><h2>Run it on 512 ranks</h2></div>
+    <p><code>initialize()</code> launches the model. On a Derecho login node, it submits a PBS job for 512 ranks on four nodes and waits for the workers to connect, so the first call takes as long as the queue does. After that the session stays live: <code>run()</code> advances it, and between steps the state is ordinary NumPy.</p>
+    <div class="cell">
+      <div class="cell-label"><span>In [3]</span><span>python</span></div>
+<pre class="in"><code>driver = fc.Driver(case=case, nsteps=STEPS, history_every=1, restart_every='end')
+print(f'account {driver.account} (from {driver.account_source}), '
+      f'queue {driver.queue}, {STEPS} steps')
+
+driver.close()                      # release a model left over from a rerun
+driver.initialize()
+print('run directory:', driver.run_dir)
+
+before = driver.cam.state.T.stats(rank='global')
+result = driver.run(steps=STEPS, progress=True)
+after = driver.cam.state.T.stats(rank='global')
+print(f"\nglobal mean T  {before['mean']:.4f} -> {after['mean']:.4f} K "
+      f"({after['mean'] - before['mean']:+.4f} over {STEPS} steps)")</code></pre>
+<pre class="out">account ${FREECAM_ACCOUNT} (from FREECAM_ACCOUNT in site.env), queue develop, 4 steps
+PI-CAM Notebook worker submitted as 7276799.desched1; waiting for 512 ranks ...
+run directory: ${FREECAM_SCRATCH}/freeCAM/PI-cam/notebook-20260828-115008-83c02fdb/run
+CAM step 1/4 (model step 1, date 10101)
+CAM step 2/4 (model step 2, date 10101)
+CAM step 3/4 (model step 3, date 10101)
+CAM step 4/4 (model step 4, date 10101)
+
+<span class="hi">global mean T  242.8687 -> 242.8735 K (+0.0048 over 4 steps)</span></pre>
+    </div>
+  </section>
+
+  <section class="step" id="trace">
+    <div class="step-head"><span class="step-num">3</span><h2>Check that Python reached the state</h2></div>
+    <p>Don't assume it did. Convection, cloud microphysics, radiation and the dynamical core all run after the inserted tendency and respond to it. So after a few steps, the global mean says nothing either way. The action trace does: it's the model's own record of what ran and in what order, kept by the Python driver as it goes.</p>
+    <div class="cell">
+      <div class="cell-label"><span>In [4]</span><span>python</span></div>
+<pre class="in"><code># close() in a finally: an allocation left held is one nobody else can
+# have, and cpudev allows one per user.
+try:
+    records = result.trace
+    mine = [r for r in records if r.get('name') == Cooling.name]
+    print(f'{result.actions} actions over {STEPS} steps, {len(records)} retained')
+    if mine:
+        print(f'  {Cooling.name} ran {len(mine)} times'
+              f"{' -- once a step, as inserted' if len(mine) == STEPS else ''}")
+        print(f'  first at model step {mine[0]["model_step"]}, '
+              f'phase {mine[0]["phase"]}')
+    else:
+        # Say what the records do carry rather than assert a negative.
+        print(f'  no record named {Cooling.name!r}; a record looks like '
+              f'{dict(records[0]) if records else "(none kept)"}')
+finally:
+    driver.close()
+    print('closed; the allocation is released')</code></pre>
+<pre class="out">196 actions over 4 steps, 196 retained
+  <span class="hi">python_cooling ran 4 times -- once a step, as inserted</span>
+  first at model step 1, phase cam_run1
+closed; the allocation is released</pre>
+    </div>
+  </section>
+
+  <section class="next">
+    <h2>Where to go from here</h2>
+    <div class="cards">
+      <a class="card" href="https://github.com/a85tract/freeCAM/blob/main/examples/replace_process.ipynb"><b>Replace a whole process</b><span>Fill a slot from <code>driver.processes</code> with a replay, a network, or the original again.</span></a>
+      <a class="card" href="https://github.com/a85tract/freeCAM/blob/main/examples/kernel_surrogate.ipynb"><b>Swap a kernel for a network</b><span>Answer one numerical kernel with a trained model, and see what that does to the run.</span></a>
+      <a class="card" href="https://github.com/a85tract/freeCAM/blob/main/examples/physics_function.ipynb"><b>Call a routine as a function</b><span>One column in, that column's outputs back, with the original Fortran doing the arithmetic. No MPI.</span></a>
+      <a class="card" href="builder/"><b>Build a workflow in the browser</b><span>Reorder processes, check the result and generate the code without writing it by hand.</span></a>
+      <a class="card" href="docs/"><b>How it works</b><span>The architecture, one model step, the globe viewer, and a network running on GPUs.</span></a>
+      <a class="card" href="https://github.com/a85tract/freeCAM/blob/main/docs/validation.md"><b>How it's validated</b><span>With nothing replaced, every run is bit-for-bit with the pinned iCESM reference in 512-rank gates.</span></a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">Configuration: iCESM1.3.1 PI-atm, ne16, CAM5 physics, SE dynamics, 512 MPI ranks on NCAR Derecho. Source: <a href="https://github.com/a85tract/freeCAM">github.com/a85tract/freeCAM</a>.</div>
+</footer>
+<script>
+// Colour the Python cells: comments, strings, keywords and numbers.
+(() => {
+  const TOKEN = /(#[^\n]*)|("""[\s\S]*?"""|f?'(?:\\.|[^'\\\n])*'|f?"(?:\\.|[^"\\\n])*")|\b(import|from|as|class|def|return|if|else|in|for|not|try|finally|assert|lambda|while|and|or|None|True|False)\b|\b(\d[\d_]*(?:\.\d+)?(?:e[+-]?\d+)?)\b/g;
+  const esc = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  document.querySelectorAll('pre.in code').forEach((code) => {
+    const source = code.textContent;
+    let html = '';
+    let last = 0;
+    for (const match of source.matchAll(TOKEN)) {
+      const cls = match[1] ? 'c' : match[2] ? 's' : match[3] ? 'k' : 'n';
+      html += esc(source.slice(last, match.index)) + `<span class="${cls}">${esc(match[0])}</span>`;
+      last = match.index + match[0].length;
+    }
+    code.innerHTML = html + esc(source.slice(last));
+  });
+})();
+</script>
 </body>
 </html>
