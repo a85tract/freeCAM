@@ -159,6 +159,10 @@
   table { margin: 0; }
   .diagram { margin: 0; }
   footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rule); font-size: 13.5px; color: var(--ink-3); }
+.pair { display: grid; grid-template-columns: minmax(0, 0.886fr) minmax(0, 0.876fr) minmax(0, 1.6fr); gap: 24px; margin-top: 28px; align-items: start; }
+.pair > * { min-width: 0; }
+.pair .player { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 860px) { .pair { grid-template-columns: minmax(0, 1fr); } }
   /* the roadmap: the page's sections, beside the content */
   .layout { max-width: 1320px; margin: 0 auto; padding: 0 20px; display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 48px; }
   .roadmap-inner { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; padding: 64px 0 24px; }
@@ -243,6 +247,17 @@ print(ui.url)   # open it; Run starts the model, the Globe tab follows it</pre>
     </div>
     <figure class="player" data-src="figures/workflow-builder/" data-count="9" data-durations="2200,1000,2400,1000,1700,900,1000,2400,4000" tabindex="0" aria-label="Animation, 9 frames; arrow keys step through it"><div class="frame"><img src="figures/workflow-builder/00.webp" width="1100" height="621" alt="The Workflow Builder: shallow convection is moved ahead of deep convection, the check asks for Experimental, and Generate writes the code, in which shallow_convection now comes before deep_convection"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="8" value="0" step="1" aria-label="Frame"><span class="count">1 / 9</span></div><figcaption class="caption"><b>Figure 2.</b> Reordering the step in the Workflow Builder. Shallow convection is moved ahead of deep convection, the check marks the change as experimental, and Generate writes the code in the new order.</figcaption></figure>
 
+    <div class="wide-text block">
+      <h3>Watching the state on the globe</h3>
+      <p>Run starts the model, and the Globe tab follows it. Specifically, the Globe tab shows the state in two ways. ➊ Inside one step, it shows what each process alone did to the state. Figure 3 shows the seven processes that change the temperature at step 24. ➋ Step by step, it shows how the state evolves. Figure 4 shows one model day of the same run, in which the air over land warms in daylight and cools at night, by 5 to 7 K over the Sahara and the Kalahari, while over the ocean it changes by less than 1 K. Further, a click on the globe picks a column and shows its profile and the latitude-pressure section along its meridian, as shown in Figure 5. Note that a run recorded to disk with <code>record_state=True</code> can be opened later with <code>freecam globe &lt;run&gt;/state</code>.</p>
+    </div>
+    <div class="pair">
+      <figure class="player" data-src="figures/globe-processes/" data-count="8" data-durations="2200,1600,1600,1600,1600,1600,1600,1600" tabindex="0" aria-label="Animation, 8 frames; arrow keys step through it"><div class="frame"><img src="figures/globe-processes/00.webp" width="620" height="700" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="7" value="0" step="1" aria-label="Frame"><span class="count">1 / 8</span></div><figcaption class="caption"><b>Figure 3.</b> Temperature at 848 hPa at the start of step 24, followed by the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics, and radiation.</figcaption></figure>
+      <figure class="player" data-src="figures/globe-steps/" data-count="50" data-durations="160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,1400" tabindex="0" aria-label="Animation, 50 frames; arrow keys step through it"><div class="frame"><img src="figures/globe-steps/00.webp" width="560" height="639" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="49" value="0" step="1" aria-label="Frame"><span class="count">1 / 50</span></div><figcaption class="caption"><b>Figure 4.</b> Temperature at the lowest model level over 50 steps, i.e., one model day. The land warms by day and cools by night, while the ocean barely changes.</figcaption></figure>
+      <figure class="fig"><div class="frame"><img src="figures/globe.png" alt="The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian"></div><figcaption class="caption"><b>Figure 5.</b> The globe viewer, showing temperature at 848 hPa, the column picked at 23.5°N 12.8°E, and the latitude-pressure section along its meridian.</figcaption></figure>
+    </div>
+
+
   </section>
   <section id="layers" class="overview">
     <div class="section-head">
@@ -326,7 +341,7 @@ print(ui.url)   # open it; Run starts the model, the Globe tab follows it</pre>
         </div>
       </section>
     </div>
-    <figcaption class="caption"><b>Figure 3.</b> One rank of freeCAM, top to bottom: the user's entry points, the Python control layer, the generated adapters, the original iCESM Fortran, and the CESM coupler with the other components.</figcaption>
+    <figcaption class="caption"><b>Figure 6.</b> One rank of freeCAM, top to bottom: the user's entry points, the Python control layer, the generated adapters, the original iCESM Fortran, and the CESM coupler with the other components.</figcaption>
     </figure>
   </section>
   <section id="classes" class="overview">
