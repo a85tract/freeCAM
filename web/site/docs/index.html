@@ -261,7 +261,7 @@ footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rul
   <section id="close-to-the-original-with-a-trained-network">
     <div class="section-head">
       <h2>Close to the original with a trained network</h2>
-      <p>We replaced the shallow-convection kernel, <code>compute_uwshcu_inv</code>, with a trained network inside the coupled model. The network runs on A100 GPUs, with land, sea ice, ocean, and rivers running live on CPU. As shown in Figure 5, its mean precipitation preserves the spatial pattern of the original (correlation 0.95) and its global mean (3.05 and 3.06 mm/day). That said, the network run produced 2.7% more low cloud and 5% more cloud liquid water. On CPU, the half year took 1.19 times as long as the original Fortran.</p>
+      <p>We replaced the shallow-convection kernel, <code>compute_uwshcu_inv</code>, with a trained network inside the coupled model. The network runs on A100 GPUs, with land, sea ice, ocean, and rivers running live on CPU. As shown in Figure 5, its mean precipitation preserves the spatial pattern of the original (correlation 0.95) and its global mean (3.05 and 3.06 mm/day). That said, the network run produced 2.7% more low cloud and 5% more cloud liquid water. On A100 GPUs, the half year took 1.16 times as long as the original Fortran.</p>
     </div>
     <div class="feature net">
       <div class="nb">
