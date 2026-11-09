@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>freeCAM Manual</title>
+<meta name="description" content="How to use freeCAM: reading the live model state from a notebook, and editing and watching the model in the browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap">
+<style>
+  :root {
+    --bg: #f6f7f6; --panel: #ffffff; --ink: #15191b; --ink-2: #4d5559; --ink-3: #737b7f; --rule: #dde2e0;
+    --accent: #2a78d6; --code-bg: #f0f2f1; --shadow: 0 1px 2px rgba(20, 30, 35, 0.04), 0 6px 20px rgba(20, 30, 35, 0.06);
+    --python: #2c5f8a; --python-bg: #e8f0f7; --abi: #8a5a2c; --abi-bg: #f7efe6;
+    --fortran: #3b7a4a; --fortran-bg: #e9f3eb; --cesm: #6b4c8a; --cesm-bg: #efe8f5; --cut: #b8372a;
+    --muted: var(--ink-2); --line: var(--rule);
+    --sans: "IBM Plex Sans", system-ui, sans-serif;
+    --serif: "IBM Plex Serif", Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #15181a; --panel: #1d2124; --ink: #eef0f0; --ink-2: #b0b7ba; --ink-3: #868e92; --rule: #2e3438;
+    --accent: #4a93ea; --code-bg: #23282b; --shadow: none;
+    --python: #7fb2dd; --python-bg: #1c2a38; --abi: #d6a271; --abi-bg: #2e2419;
+    --fortran: #7fc48f; --fortran-bg: #1c2d21; --cesm: #b99bd9; --cesm-bg: #2a2133; --cut: #e0705f;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #15181a; --panel: #1d2124; --ink: #eef0f0; --ink-2: #b0b7ba; --ink-3: #868e92; --rule: #2e3438;
+    --accent: #4a93ea; --code-bg: #23282b; --shadow: none;
+    --python: #7fb2dd; --python-bg: #1c2a38; --abi: #d6a271; --abi-bg: #2e2419;
+    --fortran: #7fc48f; --fortran-bg: #1c2d21; --cesm: #b99bd9; --cesm-bg: #2a2133; --cut: #e0705f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15.5px/1.6 var(--sans); }
+  a { color: var(--accent); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  h1, h2 { font-family: var(--serif); font-weight: 700; text-wrap: balance; }
+  h1 { margin: 0; font-size: clamp(32px, 4.2vw, 46px); line-height: 1.1; letter-spacing: -0.01em; }
+  h2 { font-size: clamp(22px, 2.4vw, 28px); line-height: 1.2; margin: 64px 0 12px; }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  p { max-width: 78ch; }
+  code, pre { font: 13px/1.5 var(--mono); }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 12px 14px; border-radius: 6px; overflow-x: auto; }
+  .hero { padding: 56px 0 8px; display: grid; gap: 16px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  .lede { font-size: 18px; color: var(--muted); max-width: 46em; margin: 0; }
+  .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 36px; }
+  .fact { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 20px 22px; box-shadow: var(--shadow); }
+  .fact b { display: block; font-family: var(--serif); font-size: 20px; margin-bottom: 6px; }
+  .fact span { font-size: 14.5px; color: var(--ink-2); line-height: 1.55; }
+  .overview { padding-top: 64px; }
+  .section-head { display: grid; gap: 10px; margin-bottom: 24px; max-width: 46em; }
+  .section-head h2 { margin: 0; }
+  .section-head p { color: var(--ink-2); margin: 0; }
+  .frame { display: block; background: #fff; border: 1px solid var(--rule); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+  .frame img { display: block; width: 100%; height: auto; }
+  .numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0 8px; }
+  .number { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .number b { display: block; font-family: var(--mono); font-weight: 500; font-size: 24px; letter-spacing: -0.02em; }
+  .number span { color: var(--muted); font-size: 13px; }
+  @media (max-width: 860px) { .facts { grid-template-columns: minmax(0, 1fr); } .hero { padding-top: 40px; } }
+
+  /* the layer diagram */
+  .diagram { display: flex; flex-direction: column; gap: 0; margin: 20px 0; }
+  .layer { border: 1.5px solid; border-radius: 10px; padding: 14px 16px 16px; background: var(--panel); }
+  .layer > .title { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin-bottom: 10px; }
+  .layer > .title b { font-size: 15px; }
+  .layer > .title span { color: var(--muted); font-size: 13px; }
+  .layer.python { border-color: var(--python); background: var(--python-bg); }
+  .layer.abi { border-color: var(--abi); background: var(--abi-bg); }
+  .layer.fortran { border-color: var(--fortran); background: var(--fortran-bg); }
+  .layer.cesm { border-color: var(--cesm); background: var(--cesm-bg); }
+  .layer.user { border-color: var(--line); }
+  .arrow { display: flex; justify-content: center; align-items: center; height: 34px; color: var(--muted); font-size: 12px; gap: 10px; }
+  .arrow::before { content: ""; width: 2px; height: 100%; background: var(--line); position: absolute; }
+  .arrow { position: relative; }
+  .arrow span { background: var(--bg); padding: 0 8px; position: relative; }
+  .boxes { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; }
+  .box b { display: block; margin-bottom: 4px; }
+  .box .path { color: var(--muted); font-size: 12px; display: block; margin-top: 6px; }
+  .box.wide { grid-column: 1 / -1; }
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: stretch; margin-top: 10px; }
+  .flow .or { display: flex; align-items: center; color: var(--muted); font-size: 12px; padding: 0 4px; }
+  .flow .box.whole { border-left: 4px solid var(--fortran); }
+  .flow .box.segmented { border-left: 4px solid var(--cut); }
+  .steps { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+  .steps li { margin: 2px 0; }
+  @media (max-width: 640px) { .flow { grid-template-columns: 1fr; } .flow .or { justify-content: center; } }
+
+  table { border-collapse: collapse; width: 100%; margin: 12px 0 8px; font-size: 13.5px; background: var(--panel); }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .ok { color: var(--fortran); font-weight: 600; }
+  .note { color: var(--muted); font-size: 13px; }
+  ul.rules { padding-left: 20px; max-width: 80ch; }
+  ul.rules li { margin: 6px 0; }
+
+/* site navigation, shared by the docs pages */
+  .topnav { border-bottom: 1px solid var(--rule); background: var(--panel); }
+  .topnav .wrap { display: flex; align-items: center; gap: 8px 20px; min-height: 56px; flex-wrap: wrap; }
+  .topnav .brand { font-family: var(--serif); font-weight: 700; font-size: 19px; color: var(--ink); text-decoration: none; margin-right: auto; }
+  .topnav nav { display: flex; gap: 6px 18px; flex-wrap: wrap; font-size: 14.5px; }
+  .topnav nav a { color: var(--ink-2); text-decoration: none; }
+  .topnav nav a:hover, .topnav nav a[aria-current] { color: var(--accent); }
+
+  /* moved from the overview: feature rows, captions and the animation player */
+  .fig { margin: 0; }
+  .caption { margin-top: 10px; font-size: 14px; line-height: 1.55; color: var(--ink-2); }
+  .player .caption { margin-top: 0; }
+  .caption b { color: var(--ink); font-weight: 600; }
+  .feature { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 40px; align-items: center; }
+  .feature + .feature { margin-top: 56px; }
+  .feature.flip .feature-media { order: 2; }
+  .feature.portrait { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); }
+  .feature.portrait .feature-media { max-width: 440px; justify-self: center; width: 100%; }
+  .feature-text { display: grid; gap: 14px; }
+  .feature-text p { color: var(--ink-2); }
+  .wide-text { display: grid; gap: 14px; max-width: 46em; margin-bottom: 20px; }
+  .wide-text p { color: var(--ink-2); }
+  .block { margin-top: 56px; }
+  .wide-text.block { margin-bottom: 18px; }
+  .feature.after-figure { margin-top: 48px; }
+  pre.launch { max-width: 760px; }
+  .player { margin: 0; display: grid; gap: 10px; outline: none; }
+  .player .frame img { cursor: pointer; }
+  .player:focus-visible .frame { box-shadow: 0 0 0 3px var(--accent); }
+  .controls { display: flex; align-items: center; gap: 8px; }
+  .controls button { flex: none; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid var(--rule); border-radius: 999px; background: var(--panel); color: var(--ink); cursor: pointer; }
+  .controls button:hover { border-color: var(--accent); color: var(--accent); }
+  .controls button.play { width: 40px; height: 40px; background: var(--accent); border-color: var(--accent); color: #fff; }
+  .controls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .controls button.play svg { fill: currentColor; stroke: none; }
+  .controls input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+  .controls .count { flex: none; min-width: 4.5em; text-align: right; font: 12.5px var(--mono); color: var(--ink-3); }
+  .feature-text h3, .wide-text h3 { margin: 0; }
+  .feature-text p, .wide-text p { margin: 0; }
+  .feature.portrait + .feature, .feature + .feature.portrait { margin-top: 56px; }
+  @media (max-width: 860px) { .feature, .feature.portrait { grid-template-columns: minmax(0, 1fr); gap: 24px; } .feature.flip .feature-media { order: 0; } }
+
+  /* in step with the overview page */
+  body { font: 16px/1.65 var(--sans); }
+  .overview { padding-top: 72px; }
+  .section-head { margin-bottom: 24px; }
+  .section-head h2 { margin: 0; }
+  .hero { padding: 64px 0 8px; }
+  .hero-text { display: grid; gap: 20px; }
+  .facts { margin-top: 40px; }
+  .table-caption { margin: 0 0 10px; }
+  table { margin: 0; }
+  .diagram { margin: 0; }
+  footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rule); font-size: 13.5px; color: var(--ink-3); }
+.pair { display: grid; grid-template-columns: minmax(0, 0.886fr) minmax(0, 0.876fr) minmax(0, 1.6fr); gap: 24px; margin-top: 28px; align-items: start; }
+.pair > * { min-width: 0; }
+.pair .player { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 860px) { .pair { grid-template-columns: minmax(0, 1fr); } }
+  /* the roadmap: the page's sections, beside the content */
+  .layout { max-width: 1320px; margin: 0 auto; padding: 0 20px; display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 48px; }
+  .roadmap-inner { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; padding: 64px 0 24px; }
+  .roadmap-title { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 12px; }
+  .roadmap ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--rule); }
+  .roadmap a { display: block; padding: 6px 0 6px 14px; margin-left: -1px; border-left: 2px solid transparent; font-size: 14px; line-height: 1.4; color: var(--ink-2); text-decoration: none; }
+  .roadmap a:hover { color: var(--accent); }
+  .roadmap a[aria-current] { color: var(--accent); border-left-color: var(--accent); font-weight: 500; }
+  html { scroll-behavior: smooth; }
+  section[id], .hero[id] { scroll-margin-top: 16px; }
+  @media (max-width: 1000px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .roadmap-inner { position: static; max-height: none; padding: 28px 0 0; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topnav">
+  <div class="wrap">
+    <a class="brand" href="index.html">freeCAM</a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="manual.html" aria-current="page">Manual</a>
+      <a href="https://github.com/a85tract/freeCAM">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="roadmap" aria-label="Roadmap">
+    <div class="roadmap-inner">
+      <div class="roadmap-title">Roadmap</div>
+      <ol>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#reading-the-live-state">Reading the live state</a></li>
+        <li><a href="#editing-and-watching-the-model-in-the-browser">Editing and watching the model in the browser</a></li>
+        <li><a href="#layers">The layers</a></li>
+        <li><a href="#classes">The classes and their kernels</a></li>
+      </ol>
+    </div>
+  </nav>
+  <div class="content">
+<header class="hero" id="overview">
+  <div class="hero-text">
+  <h1>Manual</h1>
+  <p class="lede">This manual describes how to use freeCAM. Specifically, it covers ➊ reading the live state of a running model from a notebook, ➋ editing and watching the model in the browser with the Workflow Builder, ➌ the layers of one MPI rank and the classes in each, and ➍ the Python classes of the physics processes and the kernels each one can replace.</p>
+  </div>
+</header>
+<main>
+  <section id="reading-the-live-state" class="overview">
+    <div class="section-head">
+      <h2>Reading the live state</h2>
+    </div>
+    <div class="feature">
+      <div class="feature-media"><figure class="fig"><div class="frame"><img src="figures/notebook-profiles.png" alt="Rank 0's mean profiles of temperature, both winds, water vapour, vertical velocity and pressure, read live from the model"></div><figcaption class="caption"><b>Figure 1.</b> Mean profiles of temperature, zonal and meridional wind, water vapor, vertical pressure velocity, and pressure on rank 0, read from the running model.</figcaption></figure></div>
+      <div class="feature-text">
+        <p>Every CAM field is exposed as a distributed NumPy array. Specifically, a notebook can request ➊ statistics over all ranks, ➋ the columns owned by one rank, or ➌ a plot, all without stopping the model. Figure 1 shows rank 0's mean profiles of six fields, read from the running model.</p>
+<pre>driver.cam.state.T.stats(rank="global")
+driver.cam.state.plot(rank=0,
+    variables=('T', 'u', 'v', 'q', 'omega', 'pmid'))</pre>
+      </div>
+    </div>
+  </section>
+  <section id="editing-and-watching-the-model-in-the-browser" class="overview">
+    <div class="section-head">
+      <h2>Editing and watching the model in the browser</h2>
+      <p>The Workflow Builder is a browser page attached to the same model. In it, a user can edit the step, generate the corresponding freeCAM code, run it, and watch the state on a globe. The page is launched from Python, and the ranks keep each step's state in memory so that the globe can display it.</p>
+    </div>
+<pre class="launch">import freecam as fc
+
+driver = fc.Driver(case="PI-atm", nsteps=1488,          # one model month
+                   record_state={"store": "memory", "keep_steps": 1500})
+ui = driver.ui(port=8793)
+print(ui.url)   # open it; Run starts the model, the Globe tab follows it</pre>
+    <p class="note">From a shell, <code>uv run python -i -c '...'</code> keeps the page up. Note that without <code>record_state</code>, <code>ui()</code> still keeps the state of the last 1000 steps in memory.</p>
+
+    <div class="wide-text block">
+      <h3>Reordering the step and generating its code</h3>
+      <p>Every process in the step can be moved, switched off, removed, or replaced. A change that departs from the validated default is marked experimental, since only the default has been checked bit-for-bit against the original. Generate then writes the step as freeCAM code in one of three forms: ➊ a complete program, ➋ a notebook, or ➌ the setup for a running driver.</p>
+    </div>
+    <figure class="player" data-src="figures/workflow-builder/" data-count="9" data-durations="2200,1000,2400,1000,1700,900,1000,2400,4000" tabindex="0" aria-label="Animation, 9 frames; arrow keys step through it"><div class="frame"><img src="figures/workflow-builder/00.webp" width="1100" height="621" alt="The Workflow Builder: shallow convection is moved ahead of deep convection, the check asks for Experimental, and Generate writes the code, in which shallow_convection now comes before deep_convection"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="8" value="0" step="1" aria-label="Frame"><span class="count">1 / 9</span></div><figcaption class="caption"><b>Figure 2.</b> Reordering the step in the Workflow Builder. Shallow convection is moved ahead of deep convection, the check marks the change as experimental, and Generate writes the code in the new order.</figcaption></figure>
+
+    <div class="wide-text block">
+      <h3>Watching the state on the globe</h3>
+      <p>Run starts the model, and the Globe tab follows it. Specifically, the Globe tab shows the state in two ways. ➊ Inside one step, it shows what each process alone did to the state. Figure 3 shows the seven processes that change the temperature at step 24. ➋ Step by step, it shows how the state evolves. Figure 4 shows one model day of the same run, in which the air over land warms in daylight and cools at night, by 5 to 7 K over the Sahara and the Kalahari, while over the ocean it changes by less than 1 K. Further, a click on the globe picks a column and shows its profile and the latitude-pressure section along its meridian, as shown in Figure 5. Note that a run recorded to disk with <code>record_state=True</code> can be opened later with <code>freecam globe &lt;run&gt;/state</code>.</p>
+    </div>
+    <div class="pair">
+      <figure class="player" data-src="figures/globe-processes/" data-count="8" data-durations="2200,1600,1600,1600,1600,1600,1600,1600" tabindex="0" aria-label="Animation, 8 frames; arrow keys step through it"><div class="frame"><img src="figures/globe-processes/00.webp" width="620" height="700" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="7" value="0" step="1" aria-label="Frame"><span class="count">1 / 8</span></div><figcaption class="caption"><b>Figure 3.</b> Temperature at 848 hPa at the start of step 24, followed by the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics, and radiation.</figcaption></figure>
+      <figure class="player" data-src="figures/globe-steps/" data-count="50" data-durations="160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,1400" tabindex="0" aria-label="Animation, 50 frames; arrow keys step through it"><div class="frame"><img src="figures/globe-steps/00.webp" width="560" height="639" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="49" value="0" step="1" aria-label="Frame"><span class="count">1 / 50</span></div><figcaption class="caption"><b>Figure 4.</b> Temperature at the lowest model level over 50 steps, i.e., one model day. The land warms by day and cools by night, while the ocean barely changes.</figcaption></figure>
+      <figure class="fig"><div class="frame"><img src="figures/globe.png" alt="The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian"></div><figcaption class="caption"><b>Figure 5.</b> The globe viewer, showing temperature at 848 hPa, the column picked at 23.5°N 12.8°E, and the latitude-pressure section along its meridian.</figcaption></figure>
+    </div>
+
+
+  </section>
+  <section id="layers" class="overview">
+    <div class="section-head">
+      <h2>The layers</h2>
+      <p>One rank of the model, top to bottom. Control flows down, and only down: the Fortran never calls back into Python. A pause hands control back to Python and waits for a resume.</p>
+    </div>
+
+    <figure class="fig">
+    <div class="diagram">
+      <section class="layer user">
+        <div class="title"><b>User</b><span>notebook, script or command line</span></div>
+        <div class="boxes">
+          <div class="box"><b>Python API</b><code>fc.Driver</code> / <code>fc.FreeCAM</code>: prepares an isolated run directory; the first live operation launches one persistent MPI session.<span class="path">src/freecam/pi_cam/facade.py</span></div>
+          <div class="box"><b>Command line</b><code>--python-stages</code>, <code>--segmented-original-kernels</code>, <code>--disable-actions</code>, <code>--stage-execution</code>.<span class="path">src/freecam/pi_cam/cli.py</span></div>
+          <div class="box"><b>Workflow Builder</b>Edits, checks and generates a workflow in the browser; reads the same runner manifest to say which kernels are bindable and validated.<span class="path">web/, src/freecam/pi_cam/workflow_builder/</span></div>
+        </div>
+      </section>
+
+      <div class="arrow"><span>cloudpickled commands over multiprocessing.connection, one worker per MPI rank</span></div>
+
+      <section class="layer python">
+        <div class="title"><b>Python control layer</b><span>runs on every one of the 512 MPI ranks</span></div>
+        <div class="boxes">
+          <div class="box wide"><b>Workflow: one ordered list of actions per step</b>
+            boundary import &rarr; physics before the coupler (cam_run1) &rarr; dynamics &rarr; physics after the coupler (cam_run2) &rarr; history &rarr; clock &rarr; boundary export. Actions can be enabled, disabled, moved and run; a notebook-defined <code>fc.Physics</code> can be inserted without rebuilding CAM. Installing a stage class disables the original action and puts the class's <code>tend()</code> in its slot.
+            <span class="path">src/freecam/pi_cam/plan.py, runtime_processes.py, model/python_processes.py</span></div>
+          <div class="box"><b>9 pausable classes</b>DryAdjustment, ShallowConvection, DeepConvection, ConvectiveTracerTransport, VerticalDiffusion, GravityWaveDrag, AerosolWetDeposition, AerosolDryDeposition, ChemistryTendencies. Each is a declaration: its action, its runner prefix, its swappable kernels.<span class="path">src/freecam/physics/pausable.py</span></div>
+          <div class="box"><b>Radiation</b>A split stage: the plan stops before <code>radiation_tend</code> and resumes after it; the class runs between the halves over the <code>radt</code> runner.<span class="path">src/freecam/physics/radiation.py</span></div>
+          <div class="box"><b>CloudMacroMicrophysics</b>Stage 7, the first class built, over the <code>stage7</code> runner with <code>mmacro_pcond</code> and <code>micro_mg_tend</code>.<span class="path">src/freecam/physics/cloud_macro_microphysics.py</span></div>
+          <div class="box"><b>EnergyFixer and 11 InertStages</b>Own their actions whole and expose no kernel: the energy fixer because its core allocates its tendency inside the call; the inert eleven because their bodies do nothing in this configuration, proven by one gate with all of them disabled.<span class="path">src/freecam/physics/pausable.py</span></div>
+          <div class="box wide"><b>NativeStage.tend(): two paths, chosen by the kernel slots</b>
+            <div class="flow">
+              <div class="box whole"><b>native-whole</b>No kernel replaced. The class calls its original Fortran action once through <code>run_action()</code>: no runner, no views, no copies. This is the default path and costs about one percent.</div>
+              <div class="or">or</div>
+              <div class="box segmented"><b>segmented</b>Some kernel replaced. <code>SegmentedStage.run()</code> drives the image's runner:
+                <ol class="steps">
+                  <li><code>create</code> once, then <code>start</code> with the replacement mask</li>
+                  <li>on NEEDS_KERNEL: <code>frame</code> gives the paused call's arguments where they live</li>
+                  <li>the model answers the batch, or <code>original</code> runs the very call for a gate</li>
+                  <li>write-back into the live lanes of every output, then <code>resume</code></li>
+                  <li>repeat until DONE, once per chunk this rank owns</li>
+                </ol></div>
+            </div>
+            <span class="path">src/freecam/physics/stage.py, segments.py; src/freecam/pi_cam/segment_runner.py</span></div>
+          <div class="box"><b>StatePool</b>Rank-local NumPy arrays that are zero-copy views of live Fortran state; distributed get, stats and mutation through the facade.<span class="path">src/freecam/pi_cam/state.py</span></div>
+          <div class="box"><b>Kernel coverage ledger</b>Every action's class, kernels, gates and performance evidence, rebuilt from the records and checked for staleness.<span class="path">validation/physics_kernel_decoupling.json, src/freecam/pi_cam/kernel_coverage.py</span></div>
+        </div>
+      </section>
+
+      <div class="arrow"><span>ctypes over a bind(C) ABI: pycam_&lt;prefix&gt;_{create, start, frame, resume, original, error, reset, destroy}_v1</span></div>
+
+      <section class="layer abi">
+        <div class="title"><b>Generated adapters</b><span>convert pointers, shapes, scalars and handles; copy no numerics</span></div>
+        <div class="boxes">
+          <div class="box"><b>Pausable runners</b>One state machine per process. The original driver is hoisted verbatim into a module (its locals become module state), cut into pieces at the kernel call sites; the runner re-expresses the if / do / select skeleton around the pauses and carries out a piece's return, cycle or exit.<span class="path">native/pi_cam/support/pycam_&lt;prefix&gt;_{glue,driver,runner}.F90 (31 modules)</span></div>
+          <div class="box"><b>Specs and generator</b>Ten YAML specs name the pinned source ranges, the pauses, the dummies, carries and options; the generator writes the modules and the frame table, and hashes every range so a moved source fails <code>--check</code>.<span class="path">native/pi_cam/pausable/*.yaml, tools/pi_cam_pausable.py</span></div>
+          <div class="box"><b>Frames</b>The paused call's arguments in the callee's order: address, rank, shape, dtype, intent. Derived types are served component by component; an optional a site omits is an empty slot.<span class="path">native/pi_cam/segment_frames.yaml</span></div>
+          <div class="box"><b>Manifest</b>Which stage has a runner, what its entries are called, which kernels it pauses at, and the gate records that validated each pause.<span class="path">native/pi_cam/segment_runners.yaml</span></div>
+          <div class="box"><b>Hosts and carries</b>Views of phys_state, phys_tend, pbuf, cam_in and cam_out for any stage; views of the locals tphysbc and tphysac carry between actions.<span class="path">pycam_stage_hosts.F90; control patches 0039, 0043</span></div>
+          <div class="box"><b>Module-state patches</b>One <code>public</code> statement each, naming the private variables a hoisted driver reads; the patched module is compiled for its interface only and the oracle's object is linked.<span class="path">control patches 0044 to 0048</span></div>
+        </div>
+      </section>
+
+      <div class="arrow"><span>one fixed-address image, linked from the oracle build's own objects</span></div>
+
+      <section class="layer fortran">
+        <div class="title"><b>Original iCESM1.3.1 Fortran</b><span>the numerical source of truth, byte for byte</span></div>
+        <div class="boxes">
+          <div class="box"><b>physpkg with control patches</b>Action dispatch, stage boundaries and carry accessors added around the original statements; no numerical statement changes.</div>
+          <div class="box"><b>The 17 kernels and everything around them</b>Convection, turbulence, radiation, microphysics, deposition, chemistry, the SE dynamical core: all compiled once in the oracle build and reused unchanged.</div>
+          <div class="box"><b>libfreecam_pi_cam.so</b>The image freeCAM loads; its manifest records every ABI symbol and the SHA-256 of the numerical library.<span class="path">build/pi_cam_promoted/</span></div>
+        </div>
+      </section>
+
+      <div class="arrow"><span>MCT x2a / a2x arrays as zero-copy views</span></div>
+
+      <section class="layer cesm">
+        <div class="title"><b>CESM coupler and the other components</b><span>online boundary provider: live CLM, CICE, DOCN, RTM</span></div>
+        <div class="boxes">
+          <div class="box wide">The default boundary is the real coupled system, run in the same job. An offline provider replays captured boundary datasets for the replay cases.<span class="path">src/freecam/pi_cam/boundary.py</span></div>
+        </div>
+      </section>
+    </div>
+    <figcaption class="caption"><b>Figure 6.</b> One rank of freeCAM, top to bottom: the user's entry points, the Python control layer, the generated adapters, the original iCESM Fortran, and the CESM coupler with the other components.</figcaption>
+    </figure>
+  </section>
+  <section id="classes" class="overview">
+    <div class="section-head">
+      <h2>The classes and their kernels</h2>
+      <p>Every pause has been answered by the original kernel through Python in a 512-rank, 50-step run compared with the pinned iCESM reference with no numerical tolerance. The pause count is per 50 steps; radiation runs every other step, wet deposition pauses for every mode, phase and species.</p>
+    </div>
+    <p class="caption table-caption"><b>Table 1.</b> The Python classes, the runners behind them, and the kernels each one pauses at, with the 50-step gate that validated every pause.</p>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Class</th><th>Action</th><th>Runner</th><th>Kernels (frame slots)</th><th class="num">Pauses / 50 steps</th><th>Gate</th></tr></thead>
+      <tbody>
+        <tr><td>DryAdjustment</td><td>cam_run1.dry_adjustment</td><td><code>dadadj</code></td><td>dadadj (7)</td><td class="num">100</td><td class="ok">bit-for-bit</td></tr>
+        <tr><td>ShallowConvection</td><td>cam_run1.shallow_convection</td><td><code>shcu</code></td><td>compute_uwshcu_inv (54)</td><td class="num">100</td><td class="ok">bit-for-bit</td></tr>
+        <tr><td>DeepConvection</td><td>cam_run1.deep_convection</td><td><code>zmdeep</code></td><td>zm_convr (70), zm_conv_evap (22), momtran (25)</td><td class="num">100 each</td><td class="ok">bit-for-bit</td></tr>
+        <tr><td>ConvectiveTracerTransport</td><td>cam_run1.convective_tracer_transport_leaf</td><td><code>zmtran</code></td><td>convtran (21), transporting with the mass fluxes DeepConvection left in the module's own arrays</td><td class="num">100</td><td class="ok">bit-for-bit</td></tr>
+        <tr><td>CloudMacroMicrophysics</td><td>cam_run1.cloud_macro_microphysics</td><td><code>stage7</code></td><td>mmacro_pcond, micro_mg_tend (from their reviewed contracts)</td><td class="num">100 each</td><td class="ok">bit-for-bit</td></tr>
+        <tr><td>AerosolWetDeposition</td><td>cam_run1.aerosol_wet_deposition_leaf</td><td><code>awet</code></td><td>wetdepa_v2 (32), two call sites</td><td class="num">3000</td><td class="ok">bit-for-bit</td></tr>
+        <tr><td>Radiation</td><td>cam_run1.radiation (split)</td><td><code>radt</code></td><td>rad_rrtmg_sw (58), rad_rrtmg_lw (35)</td><td class="num">50 each</td><td class="ok">bit-for-bit</td></tr>
+        <tr><td>ChemistryTendencies</td><td>cam_run2.chemistry_tendencies_leaf</td><td><code>chem</code></td><td>gas_phase_chemdr (34), the whole gas-phase driver as one kernel</td><td class="num">100</td><td class="ok">bit-for-bit</td></tr>
+        <tr><td>VerticalDiffusion</td><td>cam_run2.vertical_diffusion</td><td><code>vdiff</code></td><td>compute_tms (14), compute_eddy_diff (55), compute_vdiff (42) at two call sites</td><td class="num">100, 100, 200</td><td class="ok">bit-for-bit</td></tr>
+        <tr><td>AerosolDryDeposition</td><td>cam_run2.aerosol_dry_deposition_leaf</td><td><code>adry</code></td><td>modal_aero_depvel_part (13), four call sites</td><td class="num">800</td><td class="ok">bit-for-bit</td></tr>
+        <tr><td>GravityWaveDrag</td><td>cam_run2.gravity_wave_drag</td><td><code>gwd</code></td><td>gw_drag_prof (33), the band and the pressure coordinates served by component</td><td class="num">100</td><td class="ok">bit-for-bit</td></tr>
+        <tr><td>EnergyFixer</td><td>cam_run1.energy_fixer</td><td>none</td><td>no kernel: check_energy_fix allocates its tendency inside the call and reads private module state</td><td class="num">0</td><td>owned whole</td></tr>
+        <tr><td>11 InertStages</td><td>rayleigh_friction, charge_neutrality, qbo_relaxation, ion_drag, sea_salt_rebin, modal_aerosol_preparation, carma (3), tracer and age-of-air tendencies</td><td>none</td><td>no kernel: the bodies do nothing in this configuration</td><td class="num">0</td><td class="ok">disabled at once, bit-for-bit</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="note">One further run installed all eleven classes and paused every one of the 17 kernels in the same 50 steps (5300 pauses): bit-for-bit. The nine numerical actions that are disabled by default are alternate forms of the same work (a parent stage whose leaves run, or a leaf whose stage runs whole) and are owned through them.</p>
+  </section>
+</main>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">freeCAM on <a href="https://github.com/a85tract/freeCAM">GitHub</a>. The full record: <a href="https://github.com/a85tract/freeCAM/blob/main/docs/physics_kernel_decoupling.md">docs/physics_kernel_decoupling.md</a>, <a href="https://github.com/a85tract/freeCAM/blob/main/docs/validation.md">docs/validation.md</a>, <a href="https://github.com/a85tract/freeCAM/blob/main/validation/physics_kernel_decoupling.json">the coverage ledger</a>. Configuration: ne16 PI-atm, CAM5 physics, SE dynamics, 512 MPI ranks on NCAR Derecho.</div>
+</footer>
+<script>
+// Each animation waits on its first frame: step through it, drag the slider, or press play.
+(() => {
+  const PLAY = '<svg viewBox="0 0 16 16"><path d="M5 3 L13 8 L5 13 Z"/></svg>';
+  const PAUSE = '<svg viewBox="0 0 16 16"><path d="M4 3 H7 V13 H4 Z M9 3 H12 V13 H9 Z"/></svg>';
+  document.querySelectorAll('.player').forEach((player) => {
+    const base = player.dataset.src;
+    const count = Number(player.dataset.count);
+    const durations = player.dataset.durations.split(',').map(Number);
+    const img = player.querySelector('img');
+    const range = player.querySelector('input');
+    const label = player.querySelector('.count');
+    const play = player.querySelector('[data-act=play]');
+    const name = (k) => `${base}${String(k).padStart(2, '0')}.webp`;
+    const cache = [];
+    let at = 0;
+    let timer = null;
+    const preload = () => { for (let k = 0; k < count; k += 1) if (!cache[k]) { cache[k] = new Image(); cache[k].src = name(k); } };
+    const show = (k) => {
+      at = Math.max(0, Math.min(count - 1, k));
+      img.src = name(at);
+      range.value = at;
+      label.textContent = `${at + 1} / ${count}`;
+    };
+    const stop = () => {
+      clearTimeout(timer);
+      timer = null;
+      play.innerHTML = PLAY;
+      play.setAttribute('aria-label', 'Play');
+    };
+    const tick = () => {
+      show(at + 1);
+      if (at >= count - 1) stop(); else timer = setTimeout(tick, durations[at]);
+    };
+    const start = () => {
+      preload();
+      if (at >= count - 1) show(0);
+      play.innerHTML = PAUSE;
+      play.setAttribute('aria-label', 'Pause');
+      timer = setTimeout(tick, durations[at]);
+    };
+    const toggle = () => (timer ? stop() : start());
+    const step = (by) => { stop(); preload(); show(at + by); };
+    play.innerHTML = PLAY;
+    play.addEventListener('click', toggle);
+    img.addEventListener('click', toggle);
+    player.querySelector('[data-act=prev]').addEventListener('click', () => step(-1));
+    player.querySelector('[data-act=next]').addEventListener('click', () => step(1));
+    range.addEventListener('input', () => { stop(); preload(); show(Number(range.value)); });
+    player.addEventListener('keydown', (event) => {
+      if (event.target === range) return;
+      if (event.key === 'ArrowLeft') { step(-1); event.preventDefault(); }
+      if (event.key === 'ArrowRight') { step(1); event.preventDefault(); }
+      if (event.key === ' ' && event.target === player) { toggle(); event.preventDefault(); }
+    });
+    if ('IntersectionObserver' in window) {
+      const seen = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) { preload(); seen.disconnect(); }
+      }, { rootMargin: '400px' });
+      seen.observe(player);
+    }
+  });
+})();
+</script>
+<script>
+// The roadmap marks the section being read: the last one whose top has scrolled past a third of the window.
+(() => {
+  const links = [...document.querySelectorAll('.roadmap a')];
+  const targets = links.map((a) => document.querySelector(a.getAttribute('href')));
+  const mark = () => {
+    const line = window.innerHeight / 3;
+    let at = 0;
+    targets.forEach((t, k) => { if (t && t.getBoundingClientRect().top <= line) at = k; });
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) at = targets.length - 1;
+    links.forEach((a, k) => (k === at ? a.setAttribute('aria-current', 'location') : a.removeAttribute('aria-current')));
+  };
+  window.addEventListener('scroll', mark, { passive: true });
+  window.addEventListener('resize', mark);
+  mark();
+})();
+</script>
+</body>
+</html>

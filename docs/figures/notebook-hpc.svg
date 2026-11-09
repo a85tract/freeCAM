@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 420" role="img" aria-label="A Jupyter notebook starts one MPI job of 512 ranks on the NSF NCAR Derecho Supercomputer with initialize() and then sends it commands. On every rank, freeCAM in Python decides what runs and CAM in the original Fortran computes it; the notebook gets back only the results it asks for.">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3b4752"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="1158" height="418" rx="14" fill="#ffffff" stroke="#d8dee3"/>
+  <g font-family="Helvetica, Arial, sans-serif" fill="#1f2933">
+
+    <!-- the notebook -->
+    <rect x="28" y="56" width="320" height="300" rx="10" fill="#f6f8fa" stroke="#9aa7b1"/>
+    <rect x="28" y="56" width="320" height="54" rx="10" fill="#e6eef6" stroke="#9aa7b1"/>
+    <rect x="29" y="96" width="318" height="14" fill="#e6eef6"/>
+    <text x="48" y="82" font-size="16" font-weight="700">Jupyter notebook</text>
+    <text x="48" y="101" font-size="12" fill="#5b6670">your Python session</text>
+    <g font-family="Menlo, Consolas, monospace" font-size="12.5">
+      <text x="48" y="140">import freecam as fc</text>
+      <text x="48" y="164">d = fc.Driver(case="PI-atm")</text>
+      <text x="48" y="188" font-weight="700">d.initialize()</text>
+      <text x="48" y="212">d.run(steps=48)</text>
+      <text x="48" y="236">d.cam.state.T.stats(rank="global")</text>
+      <text x="48" y="260">rad = d.processes["radiation"]</text>
+      <text x="48" y="284">rad.process = my_network</text>
+      <text x="48" y="308">d.run(steps=48)</text>
+    </g>
+    <text x="48" y="340" font-size="12" fill="#5b6670">Every line acts on the running model.</text>
+
+    <!-- arrows between the notebook and the job -->
+    <line x1="348" y1="184" x2="500" y2="184" stroke="#3b4752" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
+    <text x="424" y="172" font-size="13" text-anchor="middle" font-weight="700" font-family="Menlo, Consolas, monospace">initialize()</text>
+    <text x="424" y="202" font-size="11" text-anchor="middle" fill="#5b6670">starts the model once</text>
+    <line x1="348" y1="246" x2="500" y2="246" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
+    <text x="424" y="236" font-size="12" text-anchor="middle">run, read, replace</text>
+    <line x1="500" y1="280" x2="348" y2="280" stroke="#3b4752" stroke-width="1.6" marker-end="url(#a)"/>
+    <text x="424" y="300" font-size="12" text-anchor="middle">results</text>
+
+    <!-- the job -->
+    <rect x="500" y="28" width="632" height="364" rx="12" fill="none" stroke="#7d8a95" stroke-width="1.4" stroke-dasharray="7 5"/>
+    <text x="522" y="58" font-size="16" font-weight="700">NSF NCAR Derecho Supercomputer</text>
+    <text x="1112" y="58" font-size="12" fill="#5b6670" text-anchor="end">one MPI job of 512 ranks, kept alive between cells</text>
+
+    <!-- ranks: each one runs freeCAM over CAM -->
+    <g font-size="12" text-anchor="middle">
+      <g id="rank">
+        <rect x="543" y="84" width="150" height="214" rx="10" fill="#fbfcfd" stroke="#9aa7b1"/>
+        <rect x="557" y="118" width="122" height="76" rx="8" fill="#e6eef6" stroke="#2f5d8a"/>
+        <text x="618" y="146" font-size="14" font-weight="700" fill="#24496c">freeCAM</text>
+        <text x="618" y="164" fill="#3b4752">Python</text>
+        <text x="618" y="180" fill="#3b4752">decides what runs</text>
+        <rect x="557" y="206" width="122" height="76" rx="8" fill="#f6ead6" stroke="#8a5a12"/>
+        <text x="618" y="234" font-size="14" font-weight="700" fill="#6b450c">CAM</text>
+        <text x="618" y="252" fill="#3b4752">original Fortran</text>
+        <text x="618" y="268" fill="#3b4752">computes it</text>
+      </g>
+      <use href="#rank" x="166"/>
+      <use href="#rank" x="398"/>
+      <text x="618" y="106" font-size="13" font-weight="700">rank 0</text>
+      <text x="784" y="106" font-size="13" font-weight="700">rank 1</text>
+      <text x="900" y="196" font-size="22" font-weight="700" fill="#7d8a95">…</text>
+      <text x="1016" y="106" font-size="13" font-weight="700">rank 511</text>
+    </g>
+
+    <text x="816" y="338" font-size="13" text-anchor="middle" font-weight="700">Each rank holds its own part of the globe.</text>
+    <text x="816" y="360" font-size="13" text-anchor="middle" fill="#3b4752">The notebook gets back only what it asks for: a statistic, a column, a plot.</text>
+  </g>
+</svg>

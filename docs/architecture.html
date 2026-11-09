@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>freeCAM Architecture</title>
+<meta name="description" content="How freeCAM runs the CAM atmosphere under a Python control layer, with every physics process owned by a Python class and its numerical kernels replaceable behind a validated interface.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap">
+<style>
+  :root {
+    --bg: #f6f7f6; --panel: #ffffff; --ink: #15191b; --ink-2: #4d5559; --ink-3: #737b7f; --rule: #dde2e0;
+    --accent: #2a78d6; --code-bg: #f0f2f1; --shadow: 0 1px 2px rgba(20, 30, 35, 0.04), 0 6px 20px rgba(20, 30, 35, 0.06);
+    --python: #2c5f8a; --python-bg: #e8f0f7; --abi: #8a5a2c; --abi-bg: #f7efe6;
+    --fortran: #3b7a4a; --fortran-bg: #e9f3eb; --cesm: #6b4c8a; --cesm-bg: #efe8f5; --cut: #b8372a;
+    --muted: var(--ink-2); --line: var(--rule);
+    --sans: "IBM Plex Sans", system-ui, sans-serif;
+    --serif: "IBM Plex Serif", Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #15181a; --panel: #1d2124; --ink: #eef0f0; --ink-2: #b0b7ba; --ink-3: #868e92; --rule: #2e3438;
+    --accent: #4a93ea; --code-bg: #23282b; --shadow: none;
+    --python: #7fb2dd; --python-bg: #1c2a38; --abi: #d6a271; --abi-bg: #2e2419;
+    --fortran: #7fc48f; --fortran-bg: #1c2d21; --cesm: #b99bd9; --cesm-bg: #2a2133; --cut: #e0705f;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #15181a; --panel: #1d2124; --ink: #eef0f0; --ink-2: #b0b7ba; --ink-3: #868e92; --rule: #2e3438;
+    --accent: #4a93ea; --code-bg: #23282b; --shadow: none;
+    --python: #7fb2dd; --python-bg: #1c2a38; --abi: #d6a271; --abi-bg: #2e2419;
+    --fortran: #7fc48f; --fortran-bg: #1c2d21; --cesm: #b99bd9; --cesm-bg: #2a2133; --cut: #e0705f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15.5px/1.6 var(--sans); }
+  a { color: var(--accent); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  h1, h2 { font-family: var(--serif); font-weight: 700; text-wrap: balance; }
+  h1 { margin: 0; font-size: clamp(32px, 4.2vw, 46px); line-height: 1.1; letter-spacing: -0.01em; }
+  h2 { font-size: clamp(22px, 2.4vw, 28px); line-height: 1.2; margin: 64px 0 12px; }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  p { max-width: 78ch; }
+  code, pre { font: 13px/1.5 var(--mono); }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 12px 14px; border-radius: 6px; overflow-x: auto; }
+  .hero { padding: 56px 0 8px; display: grid; gap: 16px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  .lede { font-size: 18px; color: var(--muted); max-width: 46em; margin: 0; }
+  .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 36px; }
+  .fact { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 20px 22px; box-shadow: var(--shadow); }
+  .fact b { display: block; font-family: var(--serif); font-size: 20px; margin-bottom: 6px; }
+  .fact span { font-size: 14.5px; color: var(--ink-2); line-height: 1.55; }
+  .overview { padding-top: 64px; }
+  .section-head { display: grid; gap: 10px; margin-bottom: 24px; max-width: 46em; }
+  .section-head h2 { margin: 0; }
+  .section-head p { color: var(--ink-2); margin: 0; }
+  .frame { display: block; background: #fff; border: 1px solid var(--rule); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+  .frame img { display: block; width: 100%; height: auto; }
+  .numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0 8px; }
+  .number { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .number b { display: block; font-family: var(--mono); font-weight: 500; font-size: 24px; letter-spacing: -0.02em; }
+  .number span { color: var(--muted); font-size: 13px; }
+  @media (max-width: 860px) { .facts { grid-template-columns: minmax(0, 1fr); } .hero { padding-top: 40px; } }
+
+  /* the layer diagram */
+  .diagram { display: flex; flex-direction: column; gap: 0; margin: 20px 0; }
+  .layer { border: 1.5px solid; border-radius: 10px; padding: 14px 16px 16px; background: var(--panel); }
+  .layer > .title { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin-bottom: 10px; }
+  .layer > .title b { font-size: 15px; }
+  .layer > .title span { color: var(--muted); font-size: 13px; }
+  .layer.python { border-color: var(--python); background: var(--python-bg); }
+  .layer.abi { border-color: var(--abi); background: var(--abi-bg); }
+  .layer.fortran { border-color: var(--fortran); background: var(--fortran-bg); }
+  .layer.cesm { border-color: var(--cesm); background: var(--cesm-bg); }
+  .layer.user { border-color: var(--line); }
+  .arrow { display: flex; justify-content: center; align-items: center; height: 34px; color: var(--muted); font-size: 12px; gap: 10px; }
+  .arrow::before { content: ""; width: 2px; height: 100%; background: var(--line); position: absolute; }
+  .arrow { position: relative; }
+  .arrow span { background: var(--bg); padding: 0 8px; position: relative; }
+  .boxes { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; }
+  .box b { display: block; margin-bottom: 4px; }
+  .box .path { color: var(--muted); font-size: 12px; display: block; margin-top: 6px; }
+  .box.wide { grid-column: 1 / -1; }
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: stretch; margin-top: 10px; }
+  .flow .or { display: flex; align-items: center; color: var(--muted); font-size: 12px; padding: 0 4px; }
+  .flow .box.whole { border-left: 4px solid var(--fortran); }
+  .flow .box.segmented { border-left: 4px solid var(--cut); }
+  .steps { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+  .steps li { margin: 2px 0; }
+  @media (max-width: 640px) { .flow { grid-template-columns: 1fr; } .flow .or { justify-content: center; } }
+
+  table { border-collapse: collapse; width: 100%; margin: 12px 0 8px; font-size: 13.5px; background: var(--panel); }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .ok { color: var(--fortran); font-weight: 600; }
+  .note { color: var(--muted); font-size: 13px; }
+  ul.rules { padding-left: 20px; max-width: 80ch; }
+  ul.rules li { margin: 6px 0; }
+
+/* site navigation, shared by the docs pages */
+  .topnav { border-bottom: 1px solid var(--rule); background: var(--panel); }
+  .topnav .wrap { display: flex; align-items: center; gap: 8px 20px; min-height: 56px; flex-wrap: wrap; }
+  .topnav .brand { font-family: var(--serif); font-weight: 700; font-size: 19px; color: var(--ink); text-decoration: none; margin-right: auto; }
+  .topnav nav { display: flex; gap: 6px 18px; flex-wrap: wrap; font-size: 14.5px; }
+  .topnav nav a { color: var(--ink-2); text-decoration: none; }
+  .topnav nav a:hover, .topnav nav a[aria-current] { color: var(--accent); }
+
+  /* moved from the overview: feature rows, captions and the animation player */
+  .fig { margin: 0; }
+  .caption { margin-top: 10px; font-size: 14px; line-height: 1.55; color: var(--ink-2); }
+  .player .caption { margin-top: 0; }
+  .caption b { color: var(--ink); font-weight: 600; }
+  .feature { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 40px; align-items: center; }
+  .feature + .feature { margin-top: 56px; }
+  .feature.flip .feature-media { order: 2; }
+  .feature.portrait { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); }
+  .feature.portrait .feature-media { max-width: 440px; justify-self: center; width: 100%; }
+  .feature-text { display: grid; gap: 14px; }
+  .feature-text p { color: var(--ink-2); }
+  .wide-text { display: grid; gap: 14px; max-width: 46em; margin-bottom: 20px; }
+  .wide-text p { color: var(--ink-2); }
+  .block { margin-top: 56px; }
+  .wide-text.block { margin-bottom: 18px; }
+  .feature.after-figure { margin-top: 48px; }
+  pre.launch { max-width: 760px; }
+  .player { margin: 0; display: grid; gap: 10px; outline: none; }
+  .player .frame img { cursor: pointer; }
+  .player:focus-visible .frame { box-shadow: 0 0 0 3px var(--accent); }
+  .controls { display: flex; align-items: center; gap: 8px; }
+  .controls button { flex: none; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid var(--rule); border-radius: 999px; background: var(--panel); color: var(--ink); cursor: pointer; }
+  .controls button:hover { border-color: var(--accent); color: var(--accent); }
+  .controls button.play { width: 40px; height: 40px; background: var(--accent); border-color: var(--accent); color: #fff; }
+  .controls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .controls button.play svg { fill: currentColor; stroke: none; }
+  .controls input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+  .controls .count { flex: none; min-width: 4.5em; text-align: right; font: 12.5px var(--mono); color: var(--ink-3); }
+  .feature-text h3, .wide-text h3 { margin: 0; }
+  .feature-text p, .wide-text p { margin: 0; }
+  .feature.portrait + .feature, .feature + .feature.portrait { margin-top: 56px; }
+  @media (max-width: 860px) { .feature, .feature.portrait { grid-template-columns: minmax(0, 1fr); gap: 24px; } .feature.flip .feature-media { order: 0; } }
+
+  /* in step with the overview page */
+  body { font: 16px/1.65 var(--sans); }
+  .overview { padding-top: 72px; }
+  .section-head { margin-bottom: 24px; }
+  .section-head h2 { margin: 0; }
+  .hero { padding: 64px 0 8px; }
+  .hero-text { display: grid; gap: 20px; }
+  .facts { margin-top: 40px; }
+  .table-caption { margin: 0 0 10px; }
+  table { margin: 0; }
+  .diagram { margin: 0; }
+  footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rule); font-size: 13.5px; color: var(--ink-3); }
+  /* the roadmap: the page's sections, beside the content */
+  .layout { max-width: 1320px; margin: 0 auto; padding: 0 20px; display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 48px; }
+  .roadmap-inner { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; padding: 64px 0 24px; }
+  .roadmap-title { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 12px; }
+  .roadmap ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--rule); }
+  .roadmap a { display: block; padding: 6px 0 6px 14px; margin-left: -1px; border-left: 2px solid transparent; font-size: 14px; line-height: 1.4; color: var(--ink-2); text-decoration: none; }
+  .roadmap a:hover { color: var(--accent); }
+  .roadmap a[aria-current] { color: var(--accent); border-left-color: var(--accent); font-weight: 500; }
+  html { scroll-behavior: smooth; }
+  section[id], .hero[id] { scroll-margin-top: 16px; }
+  @media (max-width: 1000px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .roadmap-inner { position: static; max-height: none; padding: 28px 0 0; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topnav">
+  <div class="wrap">
+    <a class="brand" href="index.html">freeCAM</a>
+    <nav>
+      <a href="index.html">Overview</a>
+      <a href="architecture.html" aria-current="page">Architecture</a>
+      <a href="manual.html">Manual</a>
+      <a href="https://github.com/a85tract/freeCAM">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="roadmap" aria-label="Roadmap">
+    <div class="roadmap-inner">
+      <div class="roadmap-title">Roadmap</div>
+      <ol>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#three-layers">Three layers</a></li>
+        <li><a href="#one-simulation-step">One simulation step</a></li>
+      </ol>
+    </div>
+  </nav>
+  <div class="content">
+<header class="hero" id="overview">
+  <div class="hero-text">
+  <h1>How freeCAM works</h1>
+  <p class="lede">In freeCAM, Python owns the workflow, the clock, the coupling decisions, and rank-local state, while the original Fortran stays the numerical source of truth and is called through generated, C-interoperable adapters. Every physics process is owned by a Python class, and inside each class the numerical cores are kernels that can be replaced.</p>
+  </div>
+</header>
+<main>
+
+  <section id="three-layers" class="overview">
+    <div class="section-head">
+      <h2>Three layers</h2>
+      <p>Figure 1 shows the architecture of freeCAM, which consists of three layers. In this section, we describe them from top to bottom.</p>
+      <p><b>User interface.</b> The user interface runs on the user's machine or a login node. A user drives freeCAM in one of three ways: ➊ a notebook or script, ➋ the Workflow Builder, which edits the step in a browser, and ➌ a PBS batch job. All of them reach the control layer through a persistent MPI job of 512 ranks.</p>
+      <p><b>Python control layer.</b> This layer runs on every MPI rank of the compute nodes and decides which process runs next. Specifically, the driver holds the step as an ordered plan of processes, together with the clock and a trace of what ran. The StatePool exposes the model state as NumPy arrays, into which the Fortran points directly. Further, each of the 23 physics processes is a Python class with slots, and a slot can be filled by a Python function, a compiled plugin, a replay, or a trained network on CPU or GPU. Finally, the boundary couples CAM online with the live CESM surface models, or replays captured boundary data.</p>
+      <p><b>Native layer.</b> Below the control layer, generated adapters call the original CAM Fortran. These adapters convert only pointers, shapes, scalars, and communicators, and contain no arithmetic of their own. As such, the original Fortran still computes every number, both in the CAM image and in the library of the surface models and the coupler.</p>
+    </div>
+    <figure class="fig" style="max-width: 860px"><a class="frame" href="figures/architecture.svg" style="display:block"><img src="figures/architecture.svg" alt="freeCAM's architecture by where it runs: the user interface on the user's machine or a login node; the Python control layer and the native layer, where generated adapters call the original CAM Fortran, on the compute nodes of the NSF NCAR Derecho Supercomputer"></a><figcaption class="caption"><b>Figure 1.</b> The architecture of freeCAM. The user interface runs on the user's machine or a login node, whereas the Python control layer and the native layer run on the compute nodes in one persistent MPI job. The control layer decides what runs, and the original CAM Fortran computes every number.</figcaption></figure>
+  </section>
+
+  <section id="one-simulation-step" class="overview">
+    <div class="section-head">
+      <h2>One simulation step</h2>
+      <p>Figure 2 shows one model simulation step of freeCAM. Specifically, each step advances the simulation by 30 minutes, during which Python runs the processes one at a time, following an ordered list. Users can change the step at three levels. ➊ Every process in the list, the SE dynamical core included, can be switched off, moved, run on its own, or replaced by a Python function. ➋ Radiation and cloud macro/microphysics each have a whole-process slot, which a trained network or a replay can fill. ➌ Eleven processes have kernel slots, and each kernel can be filled by a Python function or a trained network. For example, the network that replaces <code>compute_uwshcu_inv</code> in the <a href="index.html#close-to-the-original-with-a-trained-network">Overview</a> fills such a kernel slot, on CPU or GPU.</p>
+    </div>
+    <figure class="fig" style="max-width: 860px"><a class="frame" href="figures/step.svg" style="display:block"><img src="figures/step.svg" alt="One model step of freeCAM as an ordered list of processes that Python runs in each 30-minute step, with the processes that have a whole-process slot or kernel slots marked"></a><figcaption class="caption"><b>Figure 2.</b> One model step of freeCAM. In each step, which advances the simulation by 30 minutes, Python runs the listed processes in order. The number beside a process is the count of its kernel slots. With nothing replaced, the step is bit-for-bit identical to that of the original CESM.</figcaption></figure>
+  </section>
+
+
+
+
+
+
+
+
+
+</main>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">freeCAM on <a href="https://github.com/a85tract/freeCAM">GitHub</a>. The full record: <a href="https://github.com/a85tract/freeCAM/blob/main/docs/physics_kernel_decoupling.md">docs/physics_kernel_decoupling.md</a>, <a href="https://github.com/a85tract/freeCAM/blob/main/docs/validation.md">docs/validation.md</a>, <a href="https://github.com/a85tract/freeCAM/blob/main/validation/physics_kernel_decoupling.json">the coverage ledger</a>. Configuration: ne16 PI-atm, CAM5 physics, SE dynamics, 512 MPI ranks on NCAR Derecho.</div>
+</footer>
+<script>
+// Each animation waits on its first frame: step through it, drag the slider, or press play.
+(() => {
+  const PLAY = '<svg viewBox="0 0 16 16"><path d="M5 3 L13 8 L5 13 Z"/></svg>';
+  const PAUSE = '<svg viewBox="0 0 16 16"><path d="M4 3 H7 V13 H4 Z M9 3 H12 V13 H9 Z"/></svg>';
+  document.querySelectorAll('.player').forEach((player) => {
+    const base = player.dataset.src;
+    const count = Number(player.dataset.count);
+    const durations = player.dataset.durations.split(',').map(Number);
+    const img = player.querySelector('img');
+    const range = player.querySelector('input');
+    const label = player.querySelector('.count');
+    const play = player.querySelector('[data-act=play]');
+    const name = (k) => `${base}${String(k).padStart(2, '0')}.webp`;
+    const cache = [];
+    let at = 0;
+    let timer = null;
+    const preload = () => { for (let k = 0; k < count; k += 1) if (!cache[k]) { cache[k] = new Image(); cache[k].src = name(k); } };
+    const show = (k) => {
+      at = Math.max(0, Math.min(count - 1, k));
+      img.src = name(at);
+      range.value = at;
+      label.textContent = `${at + 1} / ${count}`;
+    };
+    const stop = () => {
+      clearTimeout(timer);
+      timer = null;
+      play.innerHTML = PLAY;
+      play.setAttribute('aria-label', 'Play');
+    };
+    const tick = () => {
+      show(at + 1);
+      if (at >= count - 1) stop(); else timer = setTimeout(tick, durations[at]);
+    };
+    const start = () => {
+      preload();
+      if (at >= count - 1) show(0);
+      play.innerHTML = PAUSE;
+      play.setAttribute('aria-label', 'Pause');
+      timer = setTimeout(tick, durations[at]);
+    };
+    const toggle = () => (timer ? stop() : start());
+    const step = (by) => { stop(); preload(); show(at + by); };
+    play.innerHTML = PLAY;
+    play.addEventListener('click', toggle);
+    img.addEventListener('click', toggle);
+    player.querySelector('[data-act=prev]').addEventListener('click', () => step(-1));
+    player.querySelector('[data-act=next]').addEventListener('click', () => step(1));
+    range.addEventListener('input', () => { stop(); preload(); show(Number(range.value)); });
+    player.addEventListener('keydown', (event) => {
+      if (event.target === range) return;
+      if (event.key === 'ArrowLeft') { step(-1); event.preventDefault(); }
+      if (event.key === 'ArrowRight') { step(1); event.preventDefault(); }
+      if (event.key === ' ' && event.target === player) { toggle(); event.preventDefault(); }
+    });
+    if ('IntersectionObserver' in window) {
+      const seen = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) { preload(); seen.disconnect(); }
+      }, { rootMargin: '400px' });
+      seen.observe(player);
+    }
+  });
+})();
+</script>
+<script>
+// The roadmap marks the section being read: the last one whose top has scrolled past a third of the window.
+(() => {
+  const links = [...document.querySelectorAll('.roadmap a')];
+  const targets = links.map((a) => document.querySelector(a.getAttribute('href')));
+  const mark = () => {
+    const line = window.innerHeight / 3;
+    let at = 0;
+    targets.forEach((t, k) => { if (t && t.getBoundingClientRect().top <= line) at = k; });
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) at = targets.length - 1;
+    links.forEach((a, k) => (k === at ? a.setAttribute('aria-current', 'location') : a.removeAttribute('aria-current')));
+  };
+  window.addEventListener('scroll', mark, { passive: true });
+  window.addEventListener('resize', mark);
+  mark();
+})();
+</script>
+</body>
+</html>

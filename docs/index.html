@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>freeCAM Overview</title>
+<meta name="description" content="CAM from iCESM1.3.1, run step by step from Python: a notebook drives a 512-rank model on NCAR Derecho, and the original Fortran computes every number.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap">
+<style>
+:root {
+  --bg: #f6f7f6;
+  --panel: #ffffff;
+  --ink: #15191b;
+  --ink-2: #4d5559;
+  --ink-3: #737b7f;
+  --rule: #dde2e0;
+  --accent: #2a78d6;
+  --code-bg: #f0f2f1;
+  --shadow: 0 1px 2px rgba(20, 30, 35, 0.04), 0 6px 20px rgba(20, 30, 35, 0.06);
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --serif: "IBM Plex Serif", Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #15181a;
+    --panel: #1d2124;
+    --ink: #eef0f0;
+    --ink-2: #b0b7ba;
+    --ink-3: #868e92;
+    --rule: #2e3438;
+    --accent: #4a93ea;
+    --code-bg: #23282b;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #15181a;
+  --panel: #1d2124;
+  --ink: #eef0f0;
+  --ink-2: #b0b7ba;
+  --ink-3: #868e92;
+  --rule: #2e3438;
+  --accent: #4a93ea;
+  --code-bg: #23282b;
+  --shadow: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.65 var(--sans); }
+a { color: var(--accent); }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+h1, h2 { font-family: var(--serif); font-weight: 700; }
+h1 { font-size: clamp(34px, 4.6vw, 52px); line-height: 1.08; letter-spacing: -0.01em; }
+h2 { font-size: clamp(24px, 2.6vw, 30px); line-height: 1.2; }
+h3 { font-size: 19px; font-weight: 600; line-height: 1.3; }
+p { margin: 0; }
+code { font-family: var(--mono); font-size: 0.88em; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+
+/* hero */
+.hero { padding: 64px 0 48px; }
+.hero .wrap { display: grid; }
+.hero-text { display: grid; gap: 20px; }
+.lede { font-size: 18px; color: var(--ink-2); max-width: 46em; }
+.links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.links a { text-decoration: none; font-size: 14px; font-weight: 500; padding: 7px 14px; border: 1px solid var(--rule); border-radius: 999px; color: var(--ink); background: var(--panel); }
+.links a.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.links a:hover { border-color: var(--accent); }
+
+/* media frames */
+.frame { background: #fff; border: 1px solid var(--rule); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+.frame img { display: block; width: 100%; height: auto; }
+.note { font-size: 13.5px; color: var(--ink-3); margin-top: 10px; }
+.fig { margin: 0; }
+.caption { margin-top: 10px; font-size: 14px; line-height: 1.55; color: var(--ink-2); }
+.player .caption { margin-top: 0; }
+.caption b { color: var(--ink); font-weight: 600; }
+.pair { display: grid; grid-template-columns: minmax(0, 0.886fr) minmax(0, 0.876fr) minmax(0, 1.6fr); gap: 24px; margin-top: 28px; align-items: start; }
+/* a notebook cell drawn like the notebook in Figure 1 */
+.nb { --nb-bg: #f6f8fa; --nb-head: #e6eef6; --nb-line: #9aa7b1; --nb-ink: #1f2933; --nb-muted: #5b6670;
+  background: var(--nb-bg); border: 1px solid var(--nb-line); border-radius: 10px; overflow: hidden; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .nb { --nb-bg: #1d2124; --nb-head: #23303d; --nb-line: #3c4850; --nb-ink: #eef0f0; --nb-muted: #9aa5ab; } }
+:root[data-theme="dark"] .nb { --nb-bg: #1d2124; --nb-head: #23303d; --nb-line: #3c4850; --nb-ink: #eef0f0; --nb-muted: #9aa5ab; }
+.nb-head { display: grid; gap: 2px; padding: 12px 18px; background: var(--nb-head); border-bottom: 1px solid var(--nb-line); font-family: Helvetica, Arial, sans-serif; color: var(--nb-ink); }
+.nb-head b { font-size: 16px; }
+.nb-head span { font-size: 12px; color: var(--nb-muted); }
+.nb-code { margin: 0; padding: 14px 18px 16px; background: none; border: 0; border-radius: 0; font: 12.5px/1.95 Menlo, Consolas, monospace; color: var(--nb-ink); overflow-x: auto; }
+.nb-com { color: var(--nb-muted); }
+.feature.net { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+.pair > * { min-width: 0; }
+.pair .player { grid-template-columns: minmax(0, 1fr); }
+.single { margin-top: 32px; max-width: 760px; }
+@media (max-width: 860px) { .pair { grid-template-columns: minmax(0, 1fr); } }
+.walk { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 14px; }
+.walk li { display: grid; grid-template-columns: minmax(0, 20em) minmax(0, 1fr); gap: 20px; align-items: start; }
+.walk li > code { display: block; padding: 6px 10px; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 8px; font-size: 13px; white-space: pre; overflow-x: auto; }
+.walk li > p { color: var(--ink-2); }
+.after-walk { margin-top: 28px; max-width: 46em; color: var(--ink-2); }
+@media (max-width: 860px) { .walk li { grid-template-columns: minmax(0, 1fr); gap: 6px; } }
+
+/* facts */
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.fact { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 20px 22px; box-shadow: var(--shadow); }
+.fact b { display: block; font-family: var(--serif); font-size: 20px; margin-bottom: 6px; }
+.fact span { font-size: 14.5px; color: var(--ink-2); line-height: 1.55; }
+
+/* sections */
+section { padding: 72px 0 0; }
+main > section:first-child { padding-top: 24px; }
+.section-head { display: grid; gap: 10px; margin-bottom: 24px; max-width: 46em; }
+.section-head p { color: var(--ink-2); }
+
+/* feature rows: media and text side by side, alternating */
+.feature { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 40px; align-items: center; }
+.feature + .feature { margin-top: 56px; }
+.feature.flip .feature-media { order: 2; }
+.feature.portrait { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); }
+.feature.portrait .feature-media { max-width: 440px; justify-self: center; width: 100%; }
+.feature-text { display: grid; gap: 14px; }
+.feature-text p { color: var(--ink-2); }
+pre { margin: 0; padding: 14px 16px; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 10px; overflow-x: auto; font: 13px/1.6 var(--mono); color: var(--ink); }
+.wide-text { display: grid; gap: 14px; max-width: 46em; margin-bottom: 20px; }
+.wide-text p { color: var(--ink-2); }
+.block { margin-top: 56px; }
+.wide-text.block { margin-bottom: 18px; }
+.feature.after-figure { margin-top: 48px; }
+pre.launch { max-width: 760px; }
+
+/* GPU cards */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.card { display: grid; gap: 8px; align-content: start; padding: 20px 22px; background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; text-decoration: none; color: var(--ink); box-shadow: var(--shadow); }
+.card:hover { border-color: var(--accent); }
+.card b { font-size: 16px; color: var(--accent); line-height: 1.35; }
+.card span { font-size: 14px; color: var(--ink-2); line-height: 1.55; }
+
+/* animations, played by hand */
+.player { margin: 0; display: grid; gap: 10px; outline: none; }
+.player .frame img { cursor: pointer; }
+.player:focus-visible .frame { box-shadow: 0 0 0 3px var(--accent); }
+.controls { display: flex; align-items: center; gap: 8px; }
+.controls button { flex: none; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid var(--rule); border-radius: 999px; background: var(--panel); color: var(--ink); cursor: pointer; }
+.controls button:hover { border-color: var(--accent); color: var(--accent); }
+.controls button.play { width: 40px; height: 40px; background: var(--accent); border-color: var(--accent); color: #fff; }
+.controls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.controls button.play svg { fill: currentColor; stroke: none; }
+.controls input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.controls .count { flex: none; min-width: 4.5em; text-align: right; font: 12.5px var(--mono); color: var(--ink-3); }
+
+/* site navigation, shared by the docs pages */
+.topnav { border-bottom: 1px solid var(--rule); background: var(--panel); }
+.topnav .wrap { display: flex; align-items: center; gap: 8px 20px; min-height: 56px; flex-wrap: wrap; }
+.topnav .brand { font-family: var(--serif); font-weight: 700; font-size: 19px; color: var(--ink); text-decoration: none; margin-right: auto; }
+.topnav nav { display: flex; gap: 6px 18px; flex-wrap: wrap; font-size: 14.5px; }
+.topnav nav a { color: var(--ink-2); text-decoration: none; }
+.topnav nav a:hover, .topnav nav a[aria-current] { color: var(--accent); }
+
+/* the roadmap: the page's sections, beside the content */
+.layout { max-width: 1320px; margin: 0 auto; padding: 0 20px; display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 48px; }
+.roadmap-inner { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; padding: 64px 0 24px; }
+.roadmap-title { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 12px; }
+.roadmap ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--rule); }
+.roadmap a { display: block; padding: 6px 0 6px 14px; margin-left: -1px; border-left: 2px solid transparent; font-size: 14px; line-height: 1.4; color: var(--ink-2); text-decoration: none; }
+.roadmap a:hover { color: var(--accent); }
+.roadmap a[aria-current] { color: var(--accent); border-left-color: var(--accent); font-weight: 500; }
+html { scroll-behavior: smooth; }
+section[id], .hero[id] { scroll-margin-top: 16px; }
+@media (max-width: 1000px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .roadmap-inner { position: static; max-height: none; padding: 28px 0 0; }
+}
+
+footer { margin-top: 80px; padding: 24px 0 48px; border-top: 1px solid var(--rule); font-size: 13.5px; color: var(--ink-3); }
+
+@media (max-width: 860px) {
+  .hero .wrap, .feature, .feature.portrait { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .feature.flip .feature-media { order: 0; }
+  .facts { grid-template-columns: minmax(0, 1fr); }
+  .hero { padding-top: 40px; }
+  section { padding-top: 56px; }
+}
+</style>
+</head>
+<body>
+
+<header class="topnav">
+  <div class="wrap">
+    <a class="brand" href="index.html">freeCAM</a>
+    <nav>
+      <a href="index.html" aria-current="page">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="manual.html">Manual</a>
+      <a href="https://github.com/a85tract/freeCAM">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="roadmap" aria-label="Roadmap">
+    <div class="roadmap-inner">
+      <div class="roadmap-title">Roadmap</div>
+      <ol>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#driving-cam-from-a-jupyter-notebook">Driving CAM from a Jupyter notebook</a></li>
+        <li><a href="#bit-for-bit-with-the-original">Bit-for-bit with the original</a></li>
+        <li><a href="#close-to-the-original-with-a-trained-network">Close to the original with a trained network</a></li>
+      </ol>
+    </div>
+  </nav>
+  <div class="content">
+<header class="hero" id="overview">
+  <div class="hero-text">
+      <h1>Run the CAM Freely</h1>
+      <p class="lede">CAM is the atmosphere component of the Community Earth System Model (CESM). However, its current workflow requires the model to be compiled into a Fortran executable and then submitted and queued on an HPC system. As a result, changing which process runs, or what computes it, requires editing the model, rebuilding it, and resubmitting it. Further, the entire case preparation process follows a Fortran style that is difficult to use. These limit the efficiency of scientific exploration.</p>
+      <p class="lede">To this end, we developed freeCAM, which drives the CAM atmosphere component from a Jupyter notebook. It supports deciding which process runs next and freely replacing a whole process or a single kernel with numerical code written in Python or a trained ML model, without stopping the running simulation.</p>
+      <nav class="links">
+        <a class="primary" href="https://github.com/a85tract/freeCAM">Source on GitHub</a>
+        <a href="https://github.com/a85tract/freeCAM/blob/main/docs/installation.md">Installation</a>
+        <a href="https://github.com/a85tract/freeCAM/tree/main/examples">Example notebooks</a>
+      </nav>
+    </div>
+</header>
+
+
+<main>
+  <section id="driving-cam-from-a-jupyter-notebook">
+    <div class="section-head">
+      <h2>Driving CAM from a Jupyter notebook</h2>
+      <p>Figure 1 shows how a Jupyter notebook drives freeCAM on the NSF NCAR Derecho Supercomputer. Below the figure, we explain the notebook code line by line.</p>
+    </div>
+    <figure class="fig"><a class="frame" href="figures/notebook-hpc.svg" style="display:block"><img src="figures/notebook-hpc.svg" alt="A Jupyter notebook starts one 512-rank MPI job on the NSF NCAR Derecho Supercomputer with initialize() and then sends it commands; on every rank, freeCAM in Python decides what runs and CAM in the original Fortran computes it"></a><figcaption class="caption"><b>Figure 1.</b> A Jupyter notebook starts one 512-rank MPI job on the NSF NCAR Derecho Supercomputer with <code>initialize()</code> and then sends it commands. On every rank, freeCAM (Python) decides what runs, and CAM (the original Fortran) computes it.</figcaption></figure>
+    <ol class="walk" aria-label="The notebook code in Figure 1, line by line">
+      <li><code>import freecam as fc</code><p>Imports freeCAM.</p></li>
+      <li><code>d = fc.Driver(case="PI-atm")</code><p>Creates a driver for the <code>PI-atm</code> case, i.e., the preindustrial atmosphere with the CESM land, sea ice, data ocean, and river components coupled online.</p></li>
+      <li><code>d.initialize()</code><p>Submits one job of 512 MPI ranks to Derecho and waits for every rank to connect. Every later cell reuses this job rather than submitting a new one.</p></li>
+      <li><code>d.run(steps=48)</code><p>Advances the model by 48 steps, i.e., one model day.</p></li>
+      <li><code>d.cam.state.T.stats(rank="global")</code><p>Computes the statistics of temperature over all 512 ranks and sends them back to the notebook.</p></li>
+      <li><code>rad = d.processes["radiation"]</code><p>Looks up the radiation process of this run.</p></li>
+      <li><code>rad.process = my_network</code><p>Puts <code>my_network</code>, e.g., a trained ML model, in place of the whole radiation process. The simulation is not rebuilt and the job is not resubmitted.</p></li>
+      <li><code>d.run(steps=48)</code><p>Runs one more model day, in which <code>my_network</code> computes radiation and every other process still runs in the original Fortran.</p></li>
+    </ol>
+    <p class="after-walk">Besides Jupyter notebooks, freeCAM can also be driven ➊ from a Python script, ➋ as a PBS batch job, or ➌ from the Workflow Builder, a browser page we developed to edit, run, and watch the model. All of them reach the same Python control layer. Readers can refer to the <a href="manual.html#editing-and-watching-the-model-in-the-browser">Manual</a> for how to use the Workflow Builder.</p>
+  </section>
+
+  <section id="bit-for-bit-with-the-original">
+    <div class="section-head">
+      <h2>Bit-for-bit with the original</h2>
+      <p>freeCAM with nothing replaced reproduces the original CESM bit for bit. We compare the five-year simulation of freeCAM with that of the original CESM. All 215 variables and 884 files written by the coupled run are identical, with no numerical tolerance. Figures 2 to 4 exemplify the state of a freeCAM run with different settings.</p>
+    </div>
+    <div class="pair">
+      <figure class="player" data-src="figures/globe-processes/" data-count="8" data-durations="2200,1600,1600,1600,1600,1600,1600,1600" tabindex="0" aria-label="Animation, 8 frames; arrow keys step through it"><div class="frame"><img src="figures/globe-processes/00.webp" width="620" height="700" alt="Temperature at 848 hPa at the start of a step, then the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics and radiation"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="7" value="0" step="1" aria-label="Frame"><span class="count">1 / 8</span></div><figcaption class="caption"><b>Figure 2.</b> Temperature at 848 hPa at the start of step 24, followed by the change made by each process in turn: vertical diffusion, gravity-wave drag, dynamics, deep convection, shallow convection, cloud macro/microphysics, and radiation.</figcaption></figure>
+      <figure class="player" data-src="figures/globe-steps/" data-count="50" data-durations="160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,160,1400" tabindex="0" aria-label="Animation, 50 frames; arrow keys step through it"><div class="frame"><img src="figures/globe-steps/00.webp" width="560" height="639" alt="Temperature at the lowest model level through 50 steps, one model day: the land warms by day and cools by night, the ocean barely changes"></div><div class="controls"><button type="button" data-act="prev" aria-label="Previous frame"><svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13"/></svg></button><button type="button" data-act="play" class="play" aria-label="Play"></button><button type="button" data-act="next" aria-label="Next frame"><svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13"/></svg></button><input type="range" min="0" max="49" value="0" step="1" aria-label="Frame"><span class="count">1 / 50</span></div><figcaption class="caption"><b>Figure 3.</b> Temperature at the lowest model level over 50 steps, i.e., one model day. The land warms by day and cools by night, while the ocean barely changes.</figcaption></figure>
+      <figure class="fig"><div class="frame"><img src="figures/globe.png" alt="The globe viewer: temperature at 848 hPa over the globe, the column picked at 23.5N 12.8E, and the latitude-pressure section along its meridian"></div><figcaption class="caption"><b>Figure 4.</b> The globe viewer, showing temperature at 848 hPa, the column picked at 23.5°N 12.8°E, and the latitude-pressure section along its meridian.</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="close-to-the-original-with-a-trained-network">
+    <div class="section-head">
+      <h2>Close to the original with a trained network</h2>
+      <p>We replaced the shallow-convection kernel, <code>compute_uwshcu_inv</code>, with a trained network inside the coupled model. The network runs on A100 GPUs, with land, sea ice, ocean, and rivers running live on CPU. As shown in Figure 5, its mean precipitation preserves the spatial pattern of the original (correlation 0.95) and its global mean (3.05 and 3.06 mm/day). That said, the network run produced 2.7% more low cloud and 5% more cloud liquid water. On A100 GPUs, the half year took 1.16 times as long as the original Fortran.</p>
+    </div>
+    <div class="feature net">
+      <div class="nb">
+        <div class="nb-head"><b>Jupyter notebook</b><span>your Python session</span></div>
+<pre class="nb-code">import freecam as fc
+d = fc.Driver(case="PI-atm")
+d.initialize()
+shallow = d.processes["shallow_convection"]
+net = fc.NativeModel("uwshcu.pt")
+shallow.kernels["compute_uwshcu_inv"] = net
+d.run(steps=8688)   <span class="nb-com"># half a model year</span></pre>
+      </div>
+      <div class="feature-media"><figure class="fig"><div class="frame"><img src="figures/shallow-network-halfyear.png" alt="Half-year mean total precipitation from the original Fortran and from the run with a network in compute_uwshcu_inv, and their zonal means: the patterns agree, global means 3.05 and 3.06 mm/day"></div><figcaption class="caption"><b>Figure 5.</b> Half-year mean total precipitation from the original Fortran and from the run with a network in <code>compute_uwshcu_inv</code>, together with their zonal means.</figcaption></figure></div>
+    </div>
+    <div class="wide-text block"><p>Readers can refer to the following pages for the accuracy, cost, and GPU details of this experiment.</p></div>
+    <div class="cards">
+      <a class="card" href="shallow-convection-model-month.html"><b>Shallow-convection model month</b><span>Accuracy and speed of the network against the original Fortran and an earlier MLP, and the output limits the network required.</span></a>
+      <a class="card" href="ranks-and-model-cost.html"><b>Ranks and model cost</b><span>The same month at 128 to 512 ranks on four A100 nodes, with the cost per step and the one-time start-up cost.</span></a>
+      <a class="card" href="month-timing-by-process.html"><b>Month timing by process</b><span>The time of every process over one 512-rank month with nothing replaced, bit-for-bit with the original.</span></a>
+      <a class="card" href="gpu-forward.html"><b>The GPU forward, step by step</b><span>An animated walk-through, from creating a CUDA context to CUDA Graph, compiled fusion, and TF32.</span></a>
+    </div>
+  </section>
+</main>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">Configuration: iCESM1.3.1 PI-atm, ne16, CAM5 physics, SE dynamics, 512 MPI ranks on NCAR Derecho. Source and documentation: <a href="https://github.com/a85tract/freeCAM">github.com/a85tract/freeCAM</a>.</div>
+</footer>
+<script>
+// Each animation waits on its first frame: step through it, drag the slider, or press play.
+(() => {
+  const PLAY = '<svg viewBox="0 0 16 16"><path d="M5 3 L13 8 L5 13 Z"/></svg>';
+  const PAUSE = '<svg viewBox="0 0 16 16"><path d="M4 3 H7 V13 H4 Z M9 3 H12 V13 H9 Z"/></svg>';
+  document.querySelectorAll('.player').forEach((player) => {
+    const base = player.dataset.src;
+    const count = Number(player.dataset.count);
+    const durations = player.dataset.durations.split(',').map(Number);
+    const img = player.querySelector('img');
+    const range = player.querySelector('input');
+    const label = player.querySelector('.count');
+    const play = player.querySelector('[data-act=play]');
+    const name = (k) => `${base}${String(k).padStart(2, '0')}.webp`;
+    const cache = [];
+    let at = 0;
+    let timer = null;
+    const preload = () => { for (let k = 0; k < count; k += 1) if (!cache[k]) { cache[k] = new Image(); cache[k].src = name(k); } };
+    const show = (k) => {
+      at = Math.max(0, Math.min(count - 1, k));
+      img.src = name(at);
+      range.value = at;
+      label.textContent = `${at + 1} / ${count}`;
+    };
+    const stop = () => {
+      clearTimeout(timer);
+      timer = null;
+      play.innerHTML = PLAY;
+      play.setAttribute('aria-label', 'Play');
+    };
+    const tick = () => {
+      show(at + 1);
+      if (at >= count - 1) stop(); else timer = setTimeout(tick, durations[at]);
+    };
+    const start = () => {
+      preload();
+      if (at >= count - 1) show(0);
+      play.innerHTML = PAUSE;
+      play.setAttribute('aria-label', 'Pause');
+      timer = setTimeout(tick, durations[at]);
+    };
+    const toggle = () => (timer ? stop() : start());
+    const step = (by) => { stop(); preload(); show(at + by); };
+    play.innerHTML = PLAY;
+    play.addEventListener('click', toggle);
+    img.addEventListener('click', toggle);
+    player.querySelector('[data-act=prev]').addEventListener('click', () => step(-1));
+    player.querySelector('[data-act=next]').addEventListener('click', () => step(1));
+    range.addEventListener('input', () => { stop(); preload(); show(Number(range.value)); });
+    player.addEventListener('keydown', (event) => {
+      if (event.target === range) return;
+      if (event.key === 'ArrowLeft') { step(-1); event.preventDefault(); }
+      if (event.key === 'ArrowRight') { step(1); event.preventDefault(); }
+      if (event.key === ' ' && event.target === player) { toggle(); event.preventDefault(); }
+    });
+    if ('IntersectionObserver' in window) {
+      const seen = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) { preload(); seen.disconnect(); }
+      }, { rootMargin: '400px' });
+      seen.observe(player);
+    }
+  });
+})();
+</script>
+<script>
+// The roadmap marks the section being read: the last one whose top has scrolled past a third of the window.
+(() => {
+  const links = [...document.querySelectorAll('.roadmap a')];
+  const targets = links.map((a) => document.querySelector(a.getAttribute('href')));
+  const mark = () => {
+    const line = window.innerHeight / 3;
+    let at = 0;
+    targets.forEach((t, k) => { if (t && t.getBoundingClientRect().top <= line) at = k; });
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) at = targets.length - 1;
+    links.forEach((a, k) => (k === at ? a.setAttribute('aria-current', 'location') : a.removeAttribute('aria-current')));
+  };
+  window.addEventListener('scroll', mark, { passive: true });
+  window.addEventListener('resize', mark);
+  mark();
+})();
+</script>
+</body>
+</html>
