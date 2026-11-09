@@ -148,7 +148,7 @@ jobs:
           python3 -m http.server 8123 --directory site &
           sleep 2
           set -e
-          for path in /index.html /docs/ /docs/index.html /docs/architecture.html /builder/ /builder/index.html /builder/catalog.json /progress/ /progress/index.html /progress/progress.json /site-manifest.json; do
+          for path in /index.html /docs/ /docs/index.html /docs/architecture.html /docs/manual.html /builder/ /builder/index.html /builder/catalog.json /progress/ /progress/index.html /progress/progress.json /site-manifest.json; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8123${path}")
             echo "${code} ${path}"
             test "${code}" = "200"

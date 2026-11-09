@@ -14,7 +14,7 @@ beside CAM. Other rank counts run as explorations, and other compile-time
 options (today `pcols`) are rebuilt by `fc.build` and checked against their own
 original.
 
-![freeCAM in layers: notebooks, scripts, the Workflow Builder, batch jobs and viewers drive a Python control layer on every MPI rank; generated adapters call the original iCESM Fortran, built from the pinned source and checked bit-for-bit against the original](web/site/docs/figures/architecture.svg)
+![freeCAM's architecture by where it runs: the user interface on the user's machine or a login node; the Python control layer and the native layer, where generated adapters call the original CAM Fortran, on the compute nodes of the NSF NCAR Derecho Supercomputer](web/site/docs/figures/architecture.svg)
 
 ## Features
 
@@ -39,7 +39,7 @@ original.
   step, and `fc.build(pcols=32)` or `fc.Driver(ntasks=N, exploratory=True)`
   change the build or the rank count.
 
-![One model step is an ordered list of processes; the list can be edited, a whole process or one kernel inside it can be answered by a network, and with nothing replaced the run is bit-for-bit the original](web/site/docs/figures/step.svg)
+![One model simulation step of freeCAM as an ordered list of processes, which can be edited, with whole-process slots and kernel slots that a trained network can fill, and with nothing replaced the step is bit-for-bit identical to the original CESM](web/site/docs/figures/step.svg)
 
 ## Installation
 
@@ -94,7 +94,7 @@ From a notebook the model is one MPI job that stays up between cells; each
 rank keeps its part of the globe, and the notebook gets back only what it
 asks for:
 
-![A Jupyter notebook submits one 512-rank MPI job on Derecho and sends it commands; every rank runs freeCAM's Python driver over its own NumPy state, and the original iCESM Fortran computes every number](web/site/docs/figures/notebook-hpc.svg)
+![A Jupyter notebook starts one 512-rank MPI job on the NSF NCAR Derecho Supercomputer with initialize() and then sends it commands; on every rank, freeCAM in Python decides what runs and CAM in the original Fortran computes it](web/site/docs/figures/notebook-hpc.svg)
 
 ## Examples
 
